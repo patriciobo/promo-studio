@@ -1,0 +1,204 @@
+// Promo Studio: apps conectadas, lotes semanales, posts, archivos generados, métricas, anuncios y costos.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model App {
+  id               String    @id @default(cuid())
+  slug             String    @unique
+  name             String
+  repo             String // owner/name en GitHub
+  branch           String    @default("main")
+  manifestPath     String    @default("promo.yaml")
+  manifest         Json? // último promo.yaml válido (ya parseado)
+  manifestHash     String?
+  manifestError    String?
+  syncedAt         DateTime?
+  // Meta / Instagram
+  pageId           String?
+  igUserId         String?
+  igUsername       String?
+  adAccountId      String?
+  // Generación
+  textModel        String    @default("openai/gpt-4o-mini")
+  imageModel       String?
+  monthlyBudgetUsd Float     @default(5)
+  // Publicación
+  timezone         String    @default("America/Argentina/Buenos_Aires")
+  postTime         String    @default("10:00")
+  autoApproveHours Int       @default(48)
+  dryRun           Boolean   @default(true)
+  paused           Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  batches  Batch[]
+  posts    Post[]
+  usage    UsageLedger[]
+  adDrafts AdDraft[]
+  linkHits LinkHit[]
+}
+
+model Batch {
+  id        String      @id @default(cuid())
+  appId     String
+  app       App         @relation(fields: [appId], references: [id], onDelete: Cascade)
+  weekStart DateTime // lunes de la semana que cubre
+  status    BatchStatus @default(PLANNING)
+  error     String?
+  notes     String?
+  createdAt DateTime    @default(now())
+  posts     Post[]
+
+  @@unique([appId, weekStart])
+}
+
+enum BatchStatus {
+  PLANNING
+  GENERATING
+  READY
+  FAILED
+}
+
+model Post {
+  id          String     @id @default(cuid())
+  appId       String
+  app         App        @relation(fields: [appId], references: [id], onDelete: Cascade)
+  batchId     String?
+  batch       Batch?     @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  type        PostType
+  status      PostStatus @default(DRAFT)
+  pillar      String?
+  hook        String?
+  caption     String     @default("")
+  altText     String?
+  slides      Json? // [{ title, body }]
+  imagePrompt String?
+  scheduledAt DateTime?
+  reviewDueAt DateTime?
+  publishedAt DateTime?
+  igMediaId   String?
+  permalink   String?
+  attempts    Int        @default(0)
+  error       String?
+  score       Float?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  assets   Asset[]
+  insights InsightSnapshot[]
+  adDraft  AdDraft?
+
+  @@index([status, scheduledAt])
+}
+
+enum PostType {
+  IMAGE
+  CAROUSEL
+  REEL
+  STORY
+}
+
+enum PostStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  REJECTED
+}
+
+model Asset {
+  id        String    @id @default(cuid())
+  postId    String
+  post      Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  kind      AssetKind
+  position  Int       @default(0)
+  path      String // relativo a MEDIA_DIR
+  width     Int?
+  height    Int?
+  prompt    String?
+  model     String?
+  costUsd   Float?
+  createdAt DateTime  @default(now())
+}
+
+enum AssetKind {
+  BACKGROUND // imagen generada por IA, sin texto
+  SLIDE // pieza final (JPEG) que se publica
+  VIDEO // reel o story en video
+}
+
+model InsightSnapshot {
+  id        String   @id @default(cuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  hoursAfter Int
+  reach     Int?
+  views     Int?
+  likes     Int?
+  comments  Int?
+  saves     Int?
+  shares    Int?
+  profileVisits Int?
+  raw       Json?
+  createdAt DateTime @default(now())
+
+  @@unique([postId, hoursAfter])
+}
+
+model AdDraft {
+  id             String   @id @default(cuid())
+  postId         String   @unique
+  post           Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  appId          String
+  app            App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+  objective      String
+  dailyBudget    Int // en centavos de la moneda de la cuenta publicitaria
+  days           Int
+  campaignId     String?
+  adSetId        String?
+  creativeId     String?
+  adId           String?
+  status         String   @default("PAUSED")
+  error          String?
+  metrics        Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model UsageLedger {
+  id        String   @id @default(cuid())
+  appId     String?
+  app       App?     @relation(fields: [appId], references: [id], onDelete: SetNull)
+  kind      String // text | image
+  model     String
+  costUsd   Float
+  tokens    Int?
+  purpose   String?
+  createdAt DateTime @default(now())
+
+  @@index([appId, createdAt])
+}
+
+model LinkHit {
+  id        String   @id @default(cuid())
+  appId     String
+  app       App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+  target    String
+  createdAt DateTime @default(now())
+}
+
+/// Secretos cargados desde la web (cifrados con APP_SECRET). Si no están, se usan las variables de entorno.
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}

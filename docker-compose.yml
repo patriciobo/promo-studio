@@ -1,0 +1,53 @@
+# Producción: docker compose up -d --build
+# Desarrollo: docker compose up -d db  (y npm run dev + npm run worker)
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: promo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-promo}
+      POSTGRES_DB: promo
+    ports:
+      - "${DB_PORT:-5434}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U promo"]
+      interval: 5s
+      retries: 10
+
+  web:
+    build: .
+    restart: unless-stopped
+    command: ["sh", "-c", "npx prisma migrate deploy && npm run start"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://promo:${POSTGRES_PASSWORD:-promo}@db:5432/promo
+      MEDIA_DIR: /data/media
+    ports:
+      - "3000:3000"
+    volumes:
+      - media:/data/media
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: ["npm", "run", "worker"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://promo:${POSTGRES_PASSWORD:-promo}@db:5432/promo
+      MEDIA_DIR: /data/media
+      CHROME_PATH: /usr/bin/chromium
+    volumes:
+      - media:/data/media
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  media:
