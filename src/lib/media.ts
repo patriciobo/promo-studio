@@ -9,7 +9,11 @@ export const mediaPath = (rel: string) => {
   return p
 }
 
-export const mediaUrl = (rel: string) => `${env.publicUrl}/media/${rel.split('/').map(encodeURIComponent).join('/')}`
+/** Ruta relativa para mostrar en la web: funciona en cualquier host o puerto. */
+export const mediaSrc = (rel: string) => `/media/${rel.split('/').map(encodeURIComponent).join('/')}`
+
+/** URL absoluta (PUBLIC_URL) para que Instagram descargue la media. */
+export const mediaUrl = (rel: string) => `${env.publicUrl}${mediaSrc(rel)}`
 
 export async function saveMedia(rel: string, data: Buffer | Uint8Array) {
   const p = mediaPath(rel)

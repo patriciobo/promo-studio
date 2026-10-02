@@ -3,7 +3,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { db } from '@/lib/db'
 import type { Manifest } from '@/lib/manifest'
-import { mediaUrl } from '@/lib/media'
+import { mediaSrc } from '@/lib/media'
 import { existsSync } from 'node:fs'
 import { extname } from 'node:path'
 import { mediaPath } from '@/lib/media'
@@ -25,7 +25,7 @@ export default async function LinkPage({ params }: PageProps<'/l/[slug]'>) {
   if (!r) notFound()
   const { app, m } = r
   const logoRel = m.brand.logo ? `apps/${app.slug}/logo${extname(m.brand.logo) || '.png'}` : null
-  const logo = logoRel && existsSync(mediaPath(logoRel)) ? mediaUrl(logoRel) : null
+  const logo = logoRel && existsSync(mediaPath(logoRel)) ? mediaSrc(logoRel) : null
   const links = [{ label: `Abrir ${m.name}`, url: m.url }, ...m.links]
   const primary = m.brand.colors[0]
   return (

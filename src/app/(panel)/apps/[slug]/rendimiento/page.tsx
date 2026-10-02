@@ -2,7 +2,7 @@ import { adAction, createAdAction } from '@/app/actions'
 import { ConfirmButton, SubmitButton } from '@/components/client'
 import { PostMeta } from '@/components/PostPreview'
 import { db } from '@/lib/db'
-import { mediaUrl } from '@/lib/media'
+import { mediaSrc } from '@/lib/media'
 import { adCandidates } from '@/lib/score'
 import { TYPE } from '@/lib/view'
 
@@ -122,7 +122,7 @@ export default async function Performance({ params }: PageProps<'/apps/[slug]/re
             <article key={p.id} className="card row" style={{ alignItems: 'flex-start', gap: 16 }}>
               {p.assets[0] && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={mediaUrl(p.assets[0].path)} alt="" style={{ width: 84, borderRadius: 8, border: '1px solid var(--border)' }} />
+                <img src={mediaSrc(p.assets[0].path)} alt="" style={{ width: 84, borderRadius: 8, border: '1px solid var(--border)' }} />
               )}
               <div className="stack-sm" style={{ flex: 1, minWidth: 240 }}>
                 <PostMeta post={p} tz={app.timezone} />

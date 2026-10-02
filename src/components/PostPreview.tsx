@@ -1,5 +1,6 @@
 import type { Asset, Post } from '@prisma/client'
-import { mediaUrl } from '@/lib/media'
+import { mediaSrc } from '@/lib/media'
+import { Gallery } from './Gallery'
 import { fmtDate, STATUS, TYPE } from '@/lib/view'
 
 export function PostThumbs({ post }: { post: Post & { assets: Asset[] } }) {
@@ -7,16 +8,11 @@ export function PostThumbs({ post }: { post: Post & { assets: Asset[] } }) {
   const slides = post.assets.filter((a) => a.kind === 'SLIDE').sort((a, b) => a.position - b.position)
   const vertical = post.type === 'REEL' || post.type === 'STORY'
   if (!video && !slides.length) return <div className="notice small">Todavía no se renderizó.</div>
+  if (!video) return <Gallery images={slides.map((s) => mediaSrc(s.path))} vertical={vertical} />
+  // Reel: el reproductor ya tiene pantalla completa.
   return (
     <div className={`thumbs${vertical ? ' vertical' : ''}`}>
-      {video ? (
-        <video src={mediaUrl(video.path)} poster={slides[0] ? mediaUrl(slides[0].path) : undefined} controls muted playsInline preload="none" />
-      ) : (
-        slides.map((s) => (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img key={s.id} src={mediaUrl(s.path)} alt="" loading="lazy" />
-        ))
-      )}
+      <video src={mediaSrc(video.path)} poster={slides[0] ? mediaSrc(slides[0].path) : undefined} controls muted playsInline preload="none" />
     </div>
   )
 }
