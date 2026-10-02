@@ -40,7 +40,7 @@ Cada app arranca en **simulación** (no publica en Instagram); se desactiva en A
 ## Producción (VPS con Docker)
 
 1. Subdominio HTTPS apuntando al VPS (por ejemplo `promo.tudominio.com`). Instagram descarga la media desde `PUBLIC_URL/media/...`.
-2. `.env` desde `.env.example`: `PUBLIC_URL`, `APP_SECRET`, `AUTH_SECRET`, OAuth de GitHub (`AUTH_GITHUB_ID/SECRET`) y `ALLOWED_GITHUB_LOGIN`.
+2. `.env` desde `.env.example`: `PUBLIC_URL`, `APP_SECRET`, `AUTH_SECRET`, `ADMIN_USER` y `ADMIN_PASSWORD_HASH` (generalo con `npm run password -- 'tu contraseña'`).
 3. `docker compose up -d --build` (web en el puerto 3000 detrás de Coolify o Caddy, worker y Postgres).
 4. En la web: Configuración → Claves (Meta, OpenRouter, GitHub y, si querés avisos por WhatsApp, WAHA).
 5. Backups: volumen `pgdata` (Postgres) y `media`.
@@ -81,7 +81,7 @@ cadence: { feed: 3, reels: 1, stories: 2 }     # por semana
 
 ## Seguridad
 
-- La interfaz pide login con GitHub y sólo admite `ALLOWED_GITHUB_LOGIN`. Son públicas sólo `/media/*` (lo que Instagram descarga) y `/l/*` (página de links).
+- La interfaz pide usuario y contraseña (`ADMIN_USER` + `ADMIN_PASSWORD_HASH`, hash scrypt); tras 5 intentos fallidos la IP queda bloqueada 15 minutos. Son públicas sólo `/media/*` (lo que Instagram descarga) y `/l/*` (página de links).
 - Los secretos cargados desde la web se guardan cifrados (AES-256-GCM con `APP_SECRET`).
 - Los anuncios se crean en pausa; activarlos pide confirmación y muestra el gasto diario.
 - La página de links sólo redirige a destinos declarados en el `promo.yaml`.

@@ -192,3 +192,18 @@ describe('otros', () => {
     expect(b).toMatchObject({ primary: '#1c6a4e', bg: '#f6f6f3', ink: '#17191b', url: 'x.app' })
   })
 })
+
+describe('login', () => {
+  it('verifica usuario y contraseña con hash y bloquea tras varios intentos', async () => {
+    const { checkCredentials, hashPassword, isLocked, loginConfigError, recordFail } = await import('../password')
+    const env = { ADMIN_USER: 'Admin', ADMIN_PASSWORD_HASH: hashPassword('una clave bien larga') }
+    expect(checkCredentials('admin', 'una clave bien larga', env)).toBe(true)
+    expect(checkCredentials('admin', 'otra clave cualquiera', env)).toBe(false)
+    expect(checkCredentials('otro', 'una clave bien larga', env)).toBe(false)
+    expect(loginConfigError({ ADMIN_USER: 'a', ADMIN_PASSWORD: 'corta' })).toMatch(/al menos/)
+    expect(checkCredentials('a', 'corta', { ADMIN_USER: 'a', ADMIN_PASSWORD: 'corta' })).toBe(false)
+    for (let i = 0; i < 5; i++) recordFail('1.2.3.4', 0)
+    expect(isLocked('1.2.3.4', 1000)).toBe(true)
+    expect(isLocked('1.2.3.4', 16 * 60e3)).toBe(false)
+  })
+})

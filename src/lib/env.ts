@@ -13,8 +13,6 @@ export const env = {
   metaGraph: (process.env.META_GRAPH ?? 'https://graph.facebook.com/v23.0').replace(/\/$/, ''),
   /** Presupuesto global mensual en USD para OpenRouter (todas las apps). */
   globalBudgetUsd: Number(process.env.GLOBAL_BUDGET_USD ?? 20),
-  /** Login: sólo este usuario de GitHub puede entrar. */
-  allowedGithubLogin: process.env.ALLOWED_GITHUB_LOGIN ?? '',
-  /** En desarrollo se puede entrar sin GitHub. */
+  /** En desarrollo se puede entrar sin login. */
   authBypass: process.env.NODE_ENV !== 'production' && process.env.AUTH_BYPASS === '1',
 }
