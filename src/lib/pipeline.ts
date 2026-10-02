@@ -7,9 +7,10 @@ import { coverSlide, ctaSlide, SIZES, textSlide, type SlideData } from '@/templa
 import { buildReel, renderHtml } from '@/render/renderer'
 import { db } from './db'
 import { getFile, getRawBytes, latestReleases } from './github'
-import { FeedSchema, parseManifest, type Feed, type Manifest } from './manifest'
+import { DEFAULT_IMAGE_STYLE, FeedSchema, parseManifest, type Feed, type Manifest } from './manifest'
 import { bufferDataUri, dataUri, mediaPath, saveMedia } from './media'
 import { notify } from './notify'
+import type { ImageChoice } from './models'
 import { completeJson, generateImage } from './openrouter'
 import { weekSlots, type Slot } from './schedule'
 import { existsSync } from 'node:fs'
@@ -109,7 +110,7 @@ const PlanSchema = z.object({
       altText: z.string().default(''),
       imagePrompt: z.string(),
       sourceId: z.string().optional().nullable(),
-      slides: z.array(z.object({ eyebrow: z.string().optional(), title: z.string(), body: z.string().optional(), items: z.array(z.string()).optional() })).min(1),
+      slides: z.array(z.object({ eyebrow: z.string().optional(), title: z.string(), body: z.string().optional(), items: z.array(z.string()).optional(), imagePrompt: z.string().optional() })).min(1),
     }),
   ),
 })
@@ -122,14 +123,15 @@ const SLIDE_RULES: Record<PostType, string> = {
   STORY: '1 slide: a short title (max 50 chars) and body (max 90 chars), conversational, inviting a reply or a link tap.',
 }
 
-export function buildPlanPrompt(m: Manifest, slots: Slot[], ctx: { feed: Feed['items']; texts: string[]; releases: { name: string; body: string }[]; recent: { pillar: string | null; hook: string | null }[]; bestPillars: string[] }) {
+export function buildPlanPrompt(m: Manifest, slots: Slot[], ctx: { feed: Feed['items']; texts: string[]; releases: { name: string; body: string }[]; recent: { pillar: string | null; hook: string | null }[]; bestPillars: string[]; topic?: string }) {
   const system = `You are the social media manager of the app "${m.name}". You write Instagram content that promotes the app with real value for its audience, never clickbait.
 Write ALL user-facing text in ${m.languages[0]} with this tone: ${m.tone}.
 Never mention: ${m.avoid.join('; ') || 'nothing in particular'}.
-Image prompts are in English and describe a photographic or illustrated scene WITHOUT any text, letters, logos or UI; they must fit the brand colors ${m.brand.colors.join(', ')} and leave calm space for overlaid text.
+Image prompts are in English and describe an illustration in this style: ${m.brand.imageStyle ?? DEFAULT_IMAGE_STYLE}. Show people using the app or the problem it solves, with simplified UI shapes but WITHOUT any readable text, letters, numbers or logos; fit the brand colors ${m.brand.colors.join(', ')} and leave calm space for overlaid text.
+Every slide (or reel scene) also gets its own imagePrompt: the same characters and style, illustrating that slide's idea.
 Captions: first line is a hook, 2-5 short lines of value, then the CTA "${m.cta}", then 3-5 specific hashtags (from: ${m.hashtags.join(' ') || 'choose relevant ones'}).
 altText describes the image for accessibility and includes keywords people would search.
-Answer only with JSON: {"posts":[{"slot":number,"pillar":string,"hook":string,"caption":string,"hashtags":string[],"altText":string,"imagePrompt":string,"sourceId":string|null,"slides":[{"eyebrow"?:string,"title":string,"body"?:string,"items"?:string[]}]}]}`
+Answer only with JSON: {"posts":[{"slot":number,"pillar":string,"hook":string,"caption":string,"hashtags":string[],"altText":string,"imagePrompt":string,"sourceId":string|null,"slides":[{"eyebrow"?:string,"title":string,"body"?:string,"items"?:string[],"imagePrompt":string}]}]}`
   const user = JSON.stringify({
     app: { name: m.name, url: m.url, tagline: m.tagline, description: m.description, audience: m.audience, features: m.features, pillars: m.pillars, location: m.location },
     week: slots.map((s, i) => ({ slot: i, type: s.type, day: ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'][s.day], slideRules: SLIDE_RULES[s.type] })),
@@ -138,7 +140,9 @@ Answer only with JSON: {"posts":[{"slot":number,"pillar":string,"hook":string,"c
     recentReleases: ctx.releases,
     doNotRepeat: ctx.recent.map((r) => `${r.pillar}: ${r.hook}`),
     bestPerformingPillars: ctx.bestPillars,
-    instructions: 'Create exactly one post per slot. Balance the pillars (favor the best performing ones), use ideasFromApp when relevant (set sourceId), announce recent releases if any, and do not repeat hooks from doNotRepeat.',
+    instructions: ctx.topic
+      ? `Create exactly one post about this topic chosen by the user: "${ctx.topic}". Stay on that topic, connect it to the app naturally and do not repeat hooks from doNotRepeat.`
+      : 'Create exactly one post per slot. Balance the pillars (favor the best performing ones), use ideasFromApp when relevant (set sourceId), announce recent releases if any, and do not repeat hooks from doNotRepeat.',
   })
   return { system, user }
 }
@@ -207,7 +211,7 @@ export function mockPlan(m: Manifest, slots: Slot[], feed: Feed['items']) {
   }
 }
 
-export function postFromPlan(app: Pick<App, 'id'>, batchId: string, slot: Slot, p: PlannedPost): Prisma.PostUncheckedCreateInput {
+export function postFromPlan(app: Pick<App, 'id'>, batchId: string | null, slot: Slot, p: PlannedPost): Prisma.PostUncheckedCreateInput {
   const tags = p.hashtags.map((h) => (h.startsWith('#') ? h : `#${h}`)).filter((h) => !p.caption.includes(h))
   const slides = slot.type === 'CAROUSEL' ? p.slides.slice(0, 10) : slot.type === 'REEL' ? p.slides.slice(0, 5) : p.slides.slice(0, 1)
   return {
@@ -229,39 +233,66 @@ export function postFromPlan(app: Pick<App, 'id'>, batchId: string, slot: Slot, 
 // 3. Generar y renderizar
 // ---------------------------------------------------------------------------
 
-type Slide = { eyebrow?: string; title: string; body?: string; items?: string[] }
+type Slide = { eyebrow?: string; title: string; body?: string; items?: string[]; imagePrompt?: string }
 
 const vertical = (t: PostType) => t === 'REEL' || t === 'STORY'
 
-/** Fondo con IA para un post (reutiliza el existente salvo que se pida regenerar). */
-async function background(app: App, post: Post, force = false): Promise<string | undefined> {
-  const prev = await db.asset.findFirst({ where: { postId: post.id, kind: 'BACKGROUND' }, orderBy: { createdAt: 'desc' } })
-  if (prev && !force) return dataUri(prev.path)
-  if (!app.imageModel || !post.imagePrompt) return undefined
+/** Cómo se arma cada diapositiva: portada a sangre, texto (con ilustración o captura) o cierre de color. */
+export function slideLayout(type: PostType, total: number, i: number, hasShot: boolean, slide: Slide): 'cover' | 'text-illustration' | 'text-shot' | 'cta' {
+  const isCta = i === total - 1 && total > 2
+  if (isCta) return 'cta'
+  if (i === 0 || type === 'REEL') return 'cover'
+  return i === 1 && hasShot && !slide.items?.length ? 'text-shot' : 'text-illustration'
+}
+
+/**
+ * Ilustración con IA para una diapositiva (`position`). Reutiliza la existente salvo que se pida regenerar,
+ * así volver a renderizar no cuesta nada. `references`: ilustraciones anteriores del post, para mantener el estilo.
+ */
+async function background(app: App, post: Post, position: number, scene: string | undefined, opts: { force?: boolean; references?: string[]; image: ImageChoice }): Promise<string | undefined> {
+  const prev = await db.asset.findFirst({ where: { postId: post.id, kind: 'BACKGROUND', position }, orderBy: { createdAt: 'desc' } })
+  if (prev && !opts.force && existsSync(mediaPath(prev.path))) return dataUri(prev.path)
+  const { model, quality } = opts.image
+  if (!model || !scene || process.env.OPENROUTER_MOCK === '1') return undefined
   const m = manifestOf(app)
-  const prompt = `${post.imagePrompt}. Style: clean, modern, high quality, soft natural light, color palette ${m.brand.colors.join(', ')}. Absolutely no text, letters, numbers, logos or watermarks.`
-  const img = await generateImage({ appId: app.id, model: app.imageModel, prompt, aspectRatio: vertical(post.type) ? '9:16' : '4:5', purpose: `fondo ${post.type}` })
-  const rel = await saveMedia(`apps/${app.slug}/posts/${post.id}/bg-${Date.now()}.jpg`, img.data)
-  await db.asset.create({ data: { postId: post.id, kind: 'BACKGROUND', path: rel, prompt, model: app.imageModel, costUsd: img.cost } })
+  const prompt = `${scene}. Style: ${m.brand.imageStyle ?? DEFAULT_IMAGE_STYLE}. Color palette ${m.brand.colors.join(', ')}. Absolutely no text, letters, numbers, logos or watermarks.`
+  const img = await generateImage({ appId: app.id, model, quality, prompt, aspectRatio: vertical(post.type) ? '9:16' : '4:5', references: opts.references, purpose: `ilustración ${post.type} ${position + 1}` })
+  const rel = await saveMedia(`apps/${app.slug}/posts/${post.id}/bg-${position}-${Date.now()}.jpg`, img.data)
+  await db.asset.create({ data: { postId: post.id, kind: 'BACKGROUND', position, path: rel, prompt, model, costUsd: img.cost } })
   return bufferDataUri(img.data, img.mime)
 }
 
-/** Renderiza las piezas finales del post (JPEG o MP4) y las guarda como assets publicables. */
-export async function renderPost(postId: string, opts: { regenerateImage?: boolean } = {}) {
+/**
+ * Renderiza las piezas finales del post (JPEG o MP4) y las guarda como assets publicables.
+ * `image`: modelo elegido junto al botón; si no viene, el de la app (Ajustes).
+ */
+export async function renderPost(postId: string, opts: { regenerateImage?: boolean; image?: ImageChoice } = {}) {
   const post = await db.post.findUniqueOrThrow({ where: { id: postId }, include: { app: true } })
   const app = post.app
   const brand = await brandOf(app)
   const slides = (post.slides as Slide[] | null) ?? [{ title: post.hook ?? app.name }]
-  const bg = await background(app, post, opts.regenerateImage)
   const shots = await screenshots(app)
   const size = vertical(post.type) ? SIZES.story : SIZES.feed
-  const html = slides.map((s, i): string => {
+  const image = opts.image ?? { model: app.imageModel, quality: app.imageQuality }
+  // Una ilustración por diapositiva (salvo el cierre y la de la captura), en orden: la primera es la referencia de estilo.
+  const html: string[] = []
+  const refs: string[] = []
+  for (const [i, s] of slides.entries()) {
+    const layout = slideLayout(post.type, slides.length, i, shots.length > 0, s)
     const d: SlideData = { ...s, index: i, total: post.type === 'CAROUSEL' ? slides.length : undefined }
-    if (i === 0) return coverSlide(brand, { ...d, background: bg }, size)
-    if (i === slides.length - 1 && slides.length > 2) return ctaSlide(brand, d, size)
-    // Una captura de la app en la segunda diapositiva, si hay.
-    return textSlide(brand, { ...d, screenshot: i === 1 && !s.items?.length ? shots[0] : undefined }, size)
-  })
+    if (layout === 'cta') {
+      html.push(ctaSlide(brand, d, size))
+      continue
+    }
+    if (layout === 'text-shot') {
+      html.push(textSlide(brand, { ...d, screenshot: shots[0] }, size))
+      continue
+    }
+    const scene = s.imagePrompt ?? (i === 0 ? post.imagePrompt ?? undefined : post.imagePrompt ? `${post.imagePrompt}. Scene about: ${s.title}` : undefined)
+    const img = await background(app, post, i, scene, { force: opts.regenerateImage, references: refs.slice(0, 1), image })
+    if (img && !refs.length) refs.push(img)
+    html.push(layout === 'cover' ? coverSlide(brand, { ...d, background: img }, size) : textSlide(brand, { ...d, illustration: img }, size))
+  }
   await db.asset.deleteMany({ where: { postId, kind: { in: ['SLIDE', 'VIDEO'] } } })
   const stamp = Date.now()
   if (post.type === 'REEL') {
@@ -286,12 +317,12 @@ export async function renderPost(postId: string, opts: { regenerateImage?: boole
   }
 }
 
-export async function generateBatch(batchId: string) {
+export async function generateBatch(batchId: string, image?: ImageChoice) {
   const batch = await db.batch.findUniqueOrThrow({ where: { id: batchId }, include: { app: true, posts: true } })
   const reviewHours = batch.app.autoApproveHours
   try {
     for (const post of batch.posts) {
-      await renderPost(post.id)
+      await renderPost(post.id, { image })
       const due = new Date(Math.min(Date.now() + reviewHours * 3600e3, (post.scheduledAt?.getTime() ?? Infinity) - 3600e3))
       await db.post.update({ where: { id: post.id }, data: { status: 'PENDING_REVIEW', reviewDueAt: due } })
     }
@@ -305,12 +336,48 @@ export async function generateBatch(batchId: string) {
 }
 
 /** Sincronizar + planificar + generar la semana que empieza en `weekStart`. */
-export async function runWeekly(appId: string, weekStart: Date) {
+export async function runWeekly(appId: string, weekStart: Date, image?: ImageChoice) {
   const app = await db.app.findUniqueOrThrow({ where: { id: appId } })
   if (app.paused) return null
   const s = await syncApp(appId)
   if (!s.ok && !app.manifest) throw new Error(`${app.name}: ${'error' in s ? s.error : 'manifiesto inválido'}`)
   const batch = await planBatch(appId, weekStart)
-  if (batch.status === 'GENERATING') await generateBatch(batch.id)
+  if (batch.status === 'GENERATING') await generateBatch(batch.id, image)
   return batch
+}
+
+// ---------------------------------------------------------------------------
+// 4. Publicación a pedido
+// ---------------------------------------------------------------------------
+
+/**
+ * Arma y renderiza un solo post sobre un tema elegido. Queda en revisión sin fecha ni aprobación automática:
+ * se publica cuando lo pedís desde Revisión.
+ */
+export async function createOnDemand(postId: string, topic: string, image?: ImageChoice) {
+  const post = await db.post.findUniqueOrThrow({ where: { id: postId }, include: { app: true } })
+  const app = post.app
+  try {
+    const m = manifestOf(app)
+    const now = new Date()
+    const slot: Slot = { type: post.type, day: (now.getDay() + 6) % 7, at: now }
+    const fullTopic = post.pillar ? `${topic} (pillar: ${post.pillar})` : topic
+    const [src, recent] = await Promise.all([
+      sources(m),
+      db.post.findMany({ where: { appId: app.id, id: { not: postId } }, orderBy: { createdAt: 'desc' }, take: 30, select: { pillar: true, hook: true } }),
+    ])
+    const { system, user } = buildPlanPrompt(m, [slot], { feed: [], texts: src.texts, releases: [], recent, bestPillars: [], topic: fullTopic })
+    const raw =
+      process.env.OPENROUTER_MOCK === '1'
+        ? mockPlan(m, [slot], [{ id: 'tema', title: topic, body: m.tagline, pillar: post.pillar ?? m.pillars[0] }])
+        : await completeJson({ appId: app.id, model: app.textModel, system, user, purpose: `a pedido ${post.type}` })
+    const p = PlanSchema.parse(raw).posts[0]
+    if (!p) throw new Error('El modelo no devolvió ninguna publicación')
+    const { pillar, hook, caption, altText, slides, imagePrompt } = postFromPlan(app, null, slot, p)
+    await db.post.update({ where: { id: postId }, data: { pillar: post.pillar ?? pillar, hook, caption, altText, slides, imagePrompt } })
+    await renderPost(postId, { image })
+    await db.post.update({ where: { id: postId }, data: { status: 'PENDING_REVIEW', reviewDueAt: null, error: null } })
+  } catch (e) {
+    await db.post.update({ where: { id: postId }, data: { status: 'FAILED', error: `No se pudo generar: ${(e as Error).message}` } })
+  }
 }

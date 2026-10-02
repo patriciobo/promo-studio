@@ -12,7 +12,7 @@ export const env = {
   ffmpegPath: process.env.FFMPEG_PATH ?? 'ffmpeg',
   metaGraph: (process.env.META_GRAPH ?? 'https://graph.facebook.com/v23.0').replace(/\/$/, ''),
   /** Presupuesto global mensual en USD para OpenRouter (todas las apps). */
-  globalBudgetUsd: Number(process.env.GLOBAL_BUDGET_USD ?? 15),
+  globalBudgetUsd: Number(process.env.GLOBAL_BUDGET_USD ?? 20),
   /** Login: sólo este usuario de GitHub puede entrar. */
   allowedGithubLogin: process.env.ALLOWED_GITHUB_LOGIN ?? '',
   /** En desarrollo se puede entrar sin GitHub. */

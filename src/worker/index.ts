@@ -1,9 +1,10 @@
 // Worker: tareas programadas y en cola. Se corre con `npm run worker`.
 import type { Job } from 'pg-boss'
 import { db } from '@/lib/db'
+import type { ImageChoice } from '@/lib/models'
 import { getBoss, QUEUES } from '@/lib/jobs'
 import { autoApprove, collectInsights, publishDue } from '@/lib/publisher'
-import { renderPost, runWeekly, syncApp } from '@/lib/pipeline'
+import { createOnDemand, renderPost, runWeekly, syncApp } from '@/lib/pipeline'
 import { nextMonday } from '@/lib/schedule'
 import { closeBrowser, renderHtml } from '@/render/renderer'
 import { mediaPath, saveMedia } from '@/lib/media'
@@ -44,16 +45,25 @@ async function main() {
     for (const a of apps) await boss.send(QUEUES.runWeekly, { appId: a.id, weekStart: weekStart.toISOString() }, { singletonKey: `${a.id}-${weekStart.toISOString()}` })
   })
 
-  await boss.work<{ appId: string; weekStart: string }>(QUEUES.runWeekly, async (jobs: Job<{ appId: string; weekStart: string }>[]) => {
+  // `image`: modelo elegido junto al botón; el lote automático del domingo no lo trae y usa el de Ajustes.
+  await boss.work<{ appId: string; weekStart: string; image?: ImageChoice }>(QUEUES.runWeekly, async (jobs: Job<{ appId: string; weekStart: string; image?: ImageChoice }>[]) => {
     for (const j of jobs) {
       console.log(`[lote] ${j.data.appId} semana ${j.data.weekStart.slice(0, 10)}`)
-      await runWeekly(j.data.appId, new Date(j.data.weekStart))
+      await runWeekly(j.data.appId, new Date(j.data.weekStart), j.data.image)
       await closeBrowser()
     }
   })
 
-  await boss.work<{ postId: string; regenerateImage?: boolean }>(QUEUES.renderPost, async (jobs: Job<{ postId: string; regenerateImage?: boolean }>[]) => {
-    for (const j of jobs) await renderPost(j.data.postId, { regenerateImage: j.data.regenerateImage })
+  await boss.work<{ postId: string; regenerateImage?: boolean; image?: ImageChoice }>(QUEUES.renderPost, async (jobs: Job<{ postId: string; regenerateImage?: boolean; image?: ImageChoice }>[]) => {
+    for (const j of jobs) await renderPost(j.data.postId, { regenerateImage: j.data.regenerateImage, image: j.data.image })
+  })
+
+  await boss.work<{ postId: string; topic: string; image?: ImageChoice }>(QUEUES.createPost, async (jobs: Job<{ postId: string; topic: string; image?: ImageChoice }>[]) => {
+    for (const j of jobs) {
+      console.log(`[a pedido] ${j.data.postId}: ${j.data.topic}`)
+      await createOnDemand(j.data.postId, j.data.topic, j.data.image)
+      await closeBrowser()
+    }
   })
 
   await boss.work<{ appId: string }>(QUEUES.syncApp, async (jobs: Job<{ appId: string }>[]) => {

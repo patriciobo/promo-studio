@@ -9,9 +9,23 @@ export function StepsList({ steps }: { steps: GuideStep[] }) {
             {s.id} · {s.title}
           </strong>
           <ul>
-            {s.items.map((i) => (
-              <li key={i}>{i}</li>
-            ))}
+            {s.items.map((i) =>
+              typeof i === 'string' ? (
+                <li key={i}>{i}</li>
+              ) : (
+                <li key={i.text}>
+                  {i.text}
+                  <details className="how">
+                    <summary>Cómo hacerlo</summary>
+                    <ol>
+                      {i.steps.map((st) => (
+                        <li key={st}>{st}</li>
+                      ))}
+                    </ol>
+                  </details>
+                </li>
+              ),
+            )}
           </ul>
         </li>
       ))}

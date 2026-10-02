@@ -1,5 +1,6 @@
 'use server'
 // Acciones de la interfaz. Todas verifican la sesión; las pesadas se encolan para el worker.
+import type { PostType } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { requireUser } from '@/auth'
@@ -8,6 +9,7 @@ import { normalizeRepo } from '@/lib/github'
 import { enqueue, QUEUES } from '@/lib/jobs'
 import { discoverAccounts, graph, adAccounts, token } from '@/lib/instagram'
 import { parseManifest } from '@/lib/manifest'
+import { parseImageChoice } from '@/lib/models'
 import { activateAd, createPausedAd, pauseAd, refreshAdMetrics } from '@/lib/meta-ads'
 import { explain } from '@/lib/meta-errors'
 import { draftManifest, logoFromRepo, proposeManifestPR, repoContext } from '@/lib/onboarding/manifest-wizard'
@@ -25,7 +27,7 @@ export async function createApp(f: FormData) {
   await requireUser()
   const repo = normalizeRepo(str(f, 'repo'))
   const slug = (str(f, 'slug') || repo.split('/')[1]).toLowerCase().replace(/[^a-z0-9-]+/g, '-')
-  const app = await db.app.create({ data: { slug, repo, name: str(f, 'name') || repo.split('/')[1], branch: str(f, 'branch') || 'main', imageModel: str(f, 'imageModel') || null } })
+  const app = await db.app.create({ data: { slug, repo, name: str(f, 'name') || repo.split('/')[1], branch: str(f, 'branch') || 'main', imageModel: str(f, 'imageModel') || null, imageQuality: str(f, 'imageQuality') || null } })
   await syncApp(app.id).catch(() => null)
   redirect(`/apps/${app.slug}/manifiesto`)
 }
@@ -40,7 +42,8 @@ export async function updateSettings(slug: string, f: FormData) {
       branch: str(f, 'branch') || 'main',
       textModel: str(f, 'textModel'),
       imageModel: str(f, 'imageModel') || null,
-      monthlyBudgetUsd: Number(str(f, 'monthlyBudgetUsd') || 5),
+      imageQuality: str(f, 'imageQuality') || null,
+      monthlyBudgetUsd: Number(str(f, 'monthlyBudgetUsd') || 7),
       timezone: str(f, 'timezone'),
       postTime: str(f, 'postTime') || '10:00',
       autoApproveHours: Number(str(f, 'autoApproveHours') || 48),
@@ -64,8 +67,33 @@ export async function generateWeek(slug: string, f: FormData) {
   const week = str(f, 'week')
   const weekStart = week ? new Date(`${week}T00:00:00Z`) : nextMonday()
   // Un lote fallido de esa semana se rehace (planBatch lo detecta).
-  await enqueue(QUEUES.runWeekly, { appId: app.id, weekStart: weekStart.toISOString() })
+  await enqueue(QUEUES.runWeekly, { appId: app.id, weekStart: weekStart.toISOString(), image: parseImageChoice(str(f, 'imageChoice')) })
   revalidatePath(`/apps/${slug}`)
+}
+
+// --- A pedido ----------------------------------------------------------------
+
+const POST_TYPES: PostType[] = ['IMAGE', 'CAROUSEL', 'REEL', 'STORY']
+
+export async function createPostNow(slug: string, f: FormData) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  const type = str(f, 'type') as PostType
+  const topic = str(f, 'topic').slice(0, 500)
+  if (!POST_TYPES.includes(type) || !topic || !app.manifest) return
+  const post = await db.post.create({ data: { appId: app.id, type, status: 'DRAFT', hook: topic.slice(0, 200), pillar: str(f, 'pillar') || null } })
+  await enqueue(QUEUES.createPost, { postId: post.id, topic, image: parseImageChoice(str(f, 'imageChoice')) })
+  revalidatePath(`/apps/${slug}`, 'layout')
+}
+
+/** Aprueba el post y lo publica ya (el worker lo toma en el momento). */
+export async function publishNow(postId: string) {
+  await requireUser()
+  const post = await db.post.findUniqueOrThrow({ where: { id: postId }, include: { app: true, _count: { select: { assets: true } } } })
+  if (!post._count.assets || !['PENDING_REVIEW', 'APPROVED'].includes(post.status)) return
+  await db.post.update({ where: { id: postId }, data: { status: 'APPROVED', scheduledAt: new Date(), reviewDueAt: null, attempts: 0, error: null } })
+  await enqueue(QUEUES.tick, {})
+  revalidatePath(`/apps/${post.app.slug}`, 'layout')
 }
 
 // --- Revisión ---------------------------------------------------------------
@@ -74,7 +102,7 @@ export async function savePost(postId: string, f: FormData) {
   await requireUser()
   const slides = JSON.parse(str(f, 'slides') || '[]')
   const post = await db.post.update({ where: { id: postId }, data: { caption: str(f, 'caption'), altText: str(f, 'altText'), slides, imagePrompt: str(f, 'imagePrompt') || undefined }, include: { app: true } })
-  await enqueue(QUEUES.renderPost, { postId, regenerateImage: f.get('regenerateImage') === 'on' })
+  await enqueue(QUEUES.renderPost, { postId, regenerateImage: f.get('regenerateImage') === 'on', image: parseImageChoice(str(f, 'imageChoice')) })
   revalidatePath(`/apps/${post.app.slug}/revision`)
 }
 

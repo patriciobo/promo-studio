@@ -35,6 +35,8 @@ export interface SlideData {
   background?: string
   /** data: URI de una captura de la app. */
   screenshot?: string
+  /** data: URI de una ilustración generada por IA para esta diapositiva. */
+  illustration?: string
 }
 
 /** Portada o imagen única: fondo generado a sangre, degradado y título grande. */
@@ -64,7 +66,7 @@ export function textSlide(b: Brand, d: SlideData, size: { w: number; h: number }
   const list = d.items?.length
     ? `<ol>${d.items.map((x) => `<li>${esc(x)}</li>`).join('')}</ol>`
     : ''
-  const shot = d.screenshot ? `<div class="shot"><img src="${d.screenshot}"></div>` : ''
+  const shot = d.screenshot ? `<div class="shot"><img src="${d.screenshot}"></div>` : d.illustration ? `<div class="illu"><img src="${d.illustration}"></div>` : ''
   return shell(
     b,
     size.w,
@@ -73,13 +75,15 @@ export function textSlide(b: Brand, d: SlideData, size: { w: number; h: number }
 .mid{margin:auto 0;display:flex;flex-direction:column}
 .mid.with-shot{flex:1;margin:56px 0 0;min-height:0}
 .wrap .eyebrow{margin:0 0 22px}
-h1{font-size:${d.items?.length || d.screenshot ? 72 : 88}px}
+h1{font-size:${d.items?.length || shot ? 72 : 88}px}
 .body{font-size:40px;line-height:1.35;margin-top:30px;color:${b.ink};opacity:.82}
 ol{list-style:none;counter-reset:i;display:grid;gap:36px;margin-top:56px}
 li{counter-increment:i;position:relative;padding-left:96px;font-size:48px;line-height:1.3;opacity:.88}
 li::before{content:counter(i);position:absolute;left:0;top:0;width:62px;height:62px;border-radius:50%;display:grid;place-items:center;background:${b.primary};color:${onColor(b.primary)};font-size:32px;font-weight:700}
 .shot{flex:1;min-height:0;display:flex;justify-content:center;align-items:flex-end;margin-top:40px}
 .shot img{max-height:100%;max-width:70%;border-radius:36px;box-shadow:0 30px 70px -20px rgba(0,0,0,.35);border:10px solid ${b.ink}}
+.illu{flex:1;min-height:0;margin-top:40px;border-radius:36px;overflow:hidden}
+.illu img{width:100%;height:100%;object-fit:cover;display:block}
 .foot{display:flex;justify-content:space-between;margin-top:auto;padding-top:36px;font-size:28px;font-weight:600;opacity:.6}`,
     `<div class="wrap">${brandRow(b)}<div class="mid${shot ? ' with-shot' : ''}">${d.eyebrow ? `<p class="eyebrow">${esc(d.eyebrow)}</p>` : ''}<h1>${esc(d.title)}</h1>${d.body ? `<p class="body">${esc(d.body)}</p>` : ''}${list}${shot}</div><div class="foot"><span>${esc(b.url)}</span>${d.total && d.total > 1 ? `<span>${(d.index ?? 0) + 1} / ${d.total}</span>` : ''}</div></div>`,
   )

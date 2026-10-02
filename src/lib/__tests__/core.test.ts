@@ -9,7 +9,9 @@ import { adCandidates, engagement, median, relativeScore } from '../score'
 import { containerRequests, publish, type GraphClient } from '../instagram'
 import { explain, MetaError } from '../meta-errors'
 import { adRequests } from '../meta-ads'
-import { buildPlanPrompt, postFromPlan } from '../pipeline'
+import { buildPlanPrompt, postFromPlan, slideLayout } from '../pipeline'
+import { encodeImageChoice, IMAGE_MODELS, imagePrice, imagesPerMonth, parseImageChoice } from '../models'
+import { aspectFor } from '../openrouter'
 import { normalizeRepo } from '../github'
 import { brandFrom } from '@/templates/brand'
 
@@ -131,12 +133,52 @@ describe('planificación', () => {
     expect(p.system).toMatch(/promesas médicas/)
     expect(p.user).toMatch(/Cómo ganarle al frontón/)
     expect(JSON.parse(p.user).week).toHaveLength(2)
+    expect(p.system).toMatch(/flat vector illustration/)
+    expect(p.system).toMatch(/own imagePrompt/)
   })
   it('agrega hashtags que faltan y recorta diapositivas según el tipo', () => {
     const slot = { type: 'IMAGE' as const, day: 0, at: new Date() }
     const d = postFromPlan({ id: 'a' }, 'b', slot, { slot: 0, pillar: 'x', hook: 'h', caption: 'Texto #tenis', hashtags: ['tenis', 'padel'], altText: 'alt', imagePrompt: 'p', slides: [{ title: '1' }, { title: '2' }] })
     expect(d.caption).toBe('Texto #tenis\n\n#padel')
     expect(d.slides).toHaveLength(1)
+  })
+})
+
+describe('modelos de imagen', () => {
+  it('el catálogo tiene 5 o 6 modelos, de los tres usos, con todos los datos', () => {
+    expect(IMAGE_MODELS.length).toBeGreaterThanOrEqual(5)
+    expect(IMAGE_MODELS.length).toBeLessThanOrEqual(6)
+    expect(new Set(IMAGE_MODELS.map((m) => m.tier))).toEqual(new Set(['pruebas', 'costo-calidad', 'mejor-calidad']))
+    for (const m of IMAGE_MODELS) expect(m.level && m.uses && m.popularity && m.priceUsd > 0).toBeTruthy()
+  })
+  it('estima las ilustraciones por mes según la cadencia (una por diapositiva o escena)', () => {
+    // carrusel 5 + imagen 1 + reel 4 + 2 stories = 12 por semana
+    expect(imagesPerMonth({ feed: 3, reels: 1, stories: 2 })).toBe(52)
+    expect(imagesPerMonth({ feed: 0, reels: 0, stories: 0 })).toBe(0)
+  })
+  it('el precio depende de la calidad en los modelos que cobran por tokens', () => {
+    const gpt = IMAGE_MODELS.find((m) => m.qualities)!
+    expect(imagePrice(gpt, 'low')).toBeLessThan(imagePrice(gpt, null))
+    expect(imagePrice(gpt, 'high')).toBeGreaterThan(imagePrice(gpt, null))
+  })
+  it('codifica la elección del selector junto a los botones', () => {
+    expect(parseImageChoice(encodeImageChoice({ model: 'openai/gpt-image-2.5-sunburst', quality: 'medium' }))).toEqual({ model: 'openai/gpt-image-2.5-sunburst', quality: 'medium' })
+    expect(parseImageChoice(encodeImageChoice({ model: 'recraft/recraft-v4.1-flash', quality: null }))).toEqual({ model: 'recraft/recraft-v4.1-flash', quality: null })
+    expect(parseImageChoice('none')).toEqual({ model: null, quality: null })
+    expect(parseImageChoice('')).toBeUndefined()
+  })
+  it('pide 3:4 para el feed a los modelos que no aceptan 4:5', () => {
+    expect(aspectFor('recraft/recraft-v4.1-flash', '4:5')).toBe('3:4')
+    expect(aspectFor('openai/gpt-image-2.5-sunburst', '4:5')).toBe('3:4')
+    expect(aspectFor('google/gemini-3.1-flash-image', '4:5')).toBe('4:5')
+    expect(aspectFor('recraft/recraft-v4.1-flash', '9:16')).toBe('9:16')
+  })
+  it('ilustra cada diapositiva salvo el cierre y la de la captura', () => {
+    const s = { title: 't' }
+    expect([0, 1, 2, 3].map((i) => slideLayout('CAROUSEL', 4, i, true, s))).toEqual(['cover', 'text-shot', 'text-illustration', 'cta'])
+    expect([0, 1, 2].map((i) => slideLayout('CAROUSEL', 3, i, false, s))).toEqual(['cover', 'text-illustration', 'cta'])
+    expect([0, 1, 2, 3].map((i) => slideLayout('REEL', 4, i, true, s))).toEqual(['cover', 'cover', 'cover', 'cta'])
+    expect(slideLayout('STORY', 1, 0, true, s)).toBe('cover')
   })
 })
 

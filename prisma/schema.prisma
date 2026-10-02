@@ -26,9 +26,10 @@ model App {
   igUsername       String?
   adAccountId      String?
   // Generación
-  textModel        String    @default("openai/gpt-4o-mini")
+  textModel        String    @default("google/gemini-3.5-flash")
   imageModel       String?
-  monthlyBudgetUsd Float     @default(5)
+  imageQuality     String? // low | medium | high, para modelos que cobran según la calidad
+  monthlyBudgetUsd Float     @default(7)
   // Publicación
   timezone         String    @default("America/Argentina/Buenos_Aires")
   postTime         String    @default("10:00")

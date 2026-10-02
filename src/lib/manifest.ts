@@ -3,6 +3,10 @@ import { createHash } from 'node:crypto'
 import { parse as parseYaml, stringify } from 'yaml'
 import { z } from 'zod'
 
+/** Estilo de las ilustraciones si el promo.yaml no define brand.imageStyle. */
+export const DEFAULT_IMAGE_STYLE =
+  'flat vector illustration, clean shapes, soft gradients, friendly characters using a phone or laptop, simplified app UI without readable text, not a photo, not photorealistic'
+
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'color en formato #rrggbb')
 
 export const ManifestSchema = z.object({
@@ -25,6 +29,7 @@ export const ManifestSchema = z.object({
     colors: z.array(hex).min(2).max(5),
     font: z.string().default('Inter'),
     logo: z.string().optional(), // ruta en el repo o URL
+    imageStyle: z.string().max(400).optional(), // estilo de las ilustraciones (en inglés)
   }),
   features: z.array(z.string()).min(1),
   screenshots: z.array(z.string()).default([]),

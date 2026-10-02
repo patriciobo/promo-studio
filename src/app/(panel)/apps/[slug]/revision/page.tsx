@@ -1,5 +1,6 @@
-import { approveAll, savePost, setPostStatus } from '@/app/actions'
-import { SubmitButton } from '@/components/client'
+import { approveAll, publishNow, savePost, setPostStatus } from '@/app/actions'
+import { ConfirmButton, SubmitButton } from '@/components/client'
+import { ModelSelect } from '@/components/ModelSelect'
 import { PostMeta, PostThumbs } from '@/components/PostPreview'
 import { db } from '@/lib/db'
 import { fmtDate } from '@/lib/view'
@@ -28,6 +29,14 @@ export default async function Review({ params }: PageProps<'/apps/[slug]/revisio
             <PostThumbs post={p} />
             {p.reviewDueAt && p.status === 'PENDING_REVIEW' && <p className="xs muted">Se aprueba solo: {fmtDate(p.reviewDueAt, app.timezone)}</p>}
             <div className="row">
+              {p.assets.length > 0 && p.status !== 'DRAFT' && (
+                <ConfirmButton
+                  action={publishNow.bind(null, p.id)}
+                  label="Publicar ahora"
+                  className="btn primary sm"
+                  confirm={app.dryRun ? 'Simulación activa: no llega a Instagram.' : `Se publica ya en @${app.igUsername ?? '?'}.`}
+                />
+              )}
               {p.status !== 'APPROVED' && (
                 <form action={setPostStatus.bind(null, p.id, 'APPROVED')}>
                   <SubmitButton className="btn primary sm">Aprobar</SubmitButton>
@@ -63,11 +72,13 @@ export default async function Review({ params }: PageProps<'/apps/[slug]/revisio
             <label className="check">
               <input type="checkbox" name="regenerateImage" /> Generar una imagen nueva (consume crédito de OpenRouter)
             </label>
-            <div>
+            <div className="row">
+              <ModelSelect app={app} label="Modelo para ilustraciones nuevas" />
               <SubmitButton className="btn" pendingText="Guardando…">
                 Guardar y volver a renderizar
               </SubmitButton>
             </div>
+            <p className="xs muted">El modelo se usa si marcás &quot;Generar una imagen nueva&quot; o si a alguna diapositiva le falta su ilustración.</p>
           </form>
         </article>
       ))}

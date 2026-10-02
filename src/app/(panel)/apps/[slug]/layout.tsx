@@ -22,6 +22,7 @@ export default async function AppLayout({ children, params }: LayoutProps<'/apps
       <Tabs
         items={[
           { href: base, label: 'Calendario' },
+          { href: `${base}/crear`, label: 'Crear ahora' },
           { href: `${base}/revision`, label: 'Revisión', count: app._count.posts },
           { href: `${base}/rendimiento`, label: 'Rendimiento y anuncios' },
           { href: `${base}/manifiesto`, label: 'promo.yaml' },

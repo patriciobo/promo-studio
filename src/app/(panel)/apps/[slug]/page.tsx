@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { generateWeek, retryPost, syncNow } from '@/app/actions'
 import { SubmitButton } from '@/components/client'
+import { ModelSelect } from '@/components/ModelSelect'
 import { PostMeta, PostThumbs } from '@/components/PostPreview'
 import { db } from '@/lib/db'
 import { nextMonday } from '@/lib/schedule'
@@ -32,6 +33,7 @@ export default async function Calendar({ params }: PageProps<'/apps/[slug]'>) {
           </form>
           <form action={generateWeek.bind(null, slug)} className="row">
             <input type="date" name="week" defaultValue={nm} style={{ width: 160 }} aria-label="Lunes de la semana" />
+            <ModelSelect app={app} />
             <SubmitButton pendingText="Encolando…">Generar semana</SubmitButton>
           </form>
         </div>

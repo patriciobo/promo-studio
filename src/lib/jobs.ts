@@ -6,9 +6,10 @@ export const QUEUES = {
   tick: 'tick', // cada minuto: aprobar, publicar
   insights: 'insights', // cada hora: métricas
   weekly: 'weekly', // domingo: lote de cada app
-  runWeekly: 'run-weekly', // { appId, weekStart }
-  renderPost: 'render-post', // { postId, regenerateImage? }
+  runWeekly: 'run-weekly', // { appId, weekStart, image? }
+  renderPost: 'render-post', // { postId, regenerateImage?, image? }
   syncApp: 'sync-app', // { appId }
+  createPost: 'create-post', // { postId, topic, image? }: publicación a pedido
 } as const
 
 let boss: Promise<PgBoss> | null = null

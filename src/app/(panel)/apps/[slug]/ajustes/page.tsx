@@ -1,16 +1,20 @@
 import { updateSettings } from '@/app/actions'
 import { SubmitButton } from '@/components/client'
+import { ImageModelPicker, TextModelPicker } from '@/components/ModelPicker'
 import { spentThisMonth } from '@/lib/budget'
 import { db } from '@/lib/db'
+import type { Manifest } from '@/lib/manifest'
+import { imagesPerMonth } from '@/lib/models'
 import { imageModels, textModels } from '@/lib/openrouter'
 import { usd } from '@/lib/view'
 
 export default async function Settings({ params }: PageProps<'/apps/[slug]/ajustes'>) {
   const { slug } = await params
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  const cadence = (app.manifest as unknown as Manifest | null)?.cadence ?? { feed: 3, reels: 1, stories: 2 }
   const [images, texts, spent] = await Promise.all([imageModels().catch(() => []), textModels().catch(() => []), spentThisMonth(app.id)])
   return (
-    <form action={updateSettings.bind(null, slug)} className="stack" style={{ maxWidth: 760, gap: 20 }}>
+    <form action={updateSettings.bind(null, slug)} className="stack" style={{ maxWidth: 960, gap: 20 }}>
       <section className="card stack">
         <h2>App</h2>
         <div className="form-grid">
@@ -30,28 +34,16 @@ export default async function Settings({ params }: PageProps<'/apps/[slug]/ajust
       </section>
       <section className="card stack">
         <h2>Modelos de OpenRouter</h2>
-        <label>
-          Modelo de imagen <span className="hint">genera los fondos (sin texto). {images.length} modelos disponibles.</span>
-          <input name="imageModel" defaultValue={app.imageModel ?? ''} list="image-models" placeholder="proveedor/modelo" />
-          <datalist id="image-models">
-            {images.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name} {m.price ?? ''}
-              </option>
-            ))}
-          </datalist>
-        </label>
-        <label>
-          Modelo de texto <span className="hint">planifica la semana (1 llamada por semana). Conviene uno barato.</span>
-          <input name="textModel" defaultValue={app.textModel} list="text-models" required />
-          <datalist id="text-models">
-            {texts.slice(0, 150).map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name} {m.price ?? ''}
-              </option>
-            ))}
-          </datalist>
-        </label>
+        <div className="stack-sm">
+          <strong>Modelo de imagen para la generación automática</strong>
+          <span className="hint">Lo usa el lote semanal de cada domingo y es el que aparece preseleccionado junto a los botones de generar (Calendario, Crear ahora, Revisión), donde lo podés cambiar para esa vez. Genera una ilustración por diapositiva o escena; el texto lo pone la plantilla.</span>
+          <ImageModelPicker current={app.imageModel} quality={app.imageQuality} imagesPerMonth={imagesPerMonth(cadence)} budget={app.monthlyBudgetUsd} available={images} />
+        </div>
+        <div className="stack-sm">
+          <strong>Modelo de texto</strong>
+          <span className="hint">Planifica la semana (1 llamada por semana por app).</span>
+          <TextModelPicker current={app.textModel} available={texts} />
+        </div>
         <label>
           Presupuesto mensual (USD) <span className="hint">Este mes: {usd(spent)}. Al llegar al tope se deja de generar; lo aprobado se publica igual.</span>
           <input name="monthlyBudgetUsd" type="number" min={0} step={0.5} defaultValue={app.monthlyBudgetUsd} />

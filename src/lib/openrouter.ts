@@ -1,6 +1,7 @@
 // OpenRouter: texto (planificación) e imágenes (fondos). Cada llamada registra su costo real.
 import { assertBudget } from './budget'
 import { db } from './db'
+import { imageModel } from './models'
 import { getSecret } from './settings'
 
 const API = 'https://openrouter.ai/api/v1'
@@ -57,30 +58,50 @@ export async function completeJson<T = unknown>(opts: { appId: string | null; mo
   }
 }
 
-export type AspectRatio = '4:5' | '9:16' | '1:1'
+export type AspectRatio = '4:5' | '3:4' | '9:16' | '1:1'
+
+/** Aspecto a pedir: algunos modelos no aceptan 4:5 para el feed (la plantilla recorta con object-fit: cover). */
+export const aspectFor = (model: string, aspect: AspectRatio): AspectRatio => (aspect === '4:5' && imageModel(model)?.feedAspect === '3:4' ? '3:4' : aspect)
+
+const imagePart = (url: string) => ({ type: 'image_url', image_url: { url } })
 
 /**
  * Genera una imagen. Usa el endpoint de imágenes y, si el modelo no lo soporta,
  * el de chat con salida de imagen (modelos tipo Gemini Image).
+ * `references` (data URIs) sirve para mantener el estilo entre las piezas de un post.
  */
-export async function generateImage(opts: { appId: string; model: string; prompt: string; aspectRatio: AspectRatio; purpose: string }): Promise<{ data: Buffer; mime: string; cost: number }> {
+export async function generateImage(opts: { appId: string; model: string; prompt: string; aspectRatio: AspectRatio; purpose: string; quality?: string | null; references?: string[] }): Promise<{ data: Buffer; mime: string; cost: number }> {
   await assertBudget(opts.appId, 0.1)
-  try {
-    const r = (await call('/images', { model: opts.model, prompt: opts.prompt, aspect_ratio: opts.aspectRatio, n: 1, output_format: 'jpeg' })) as {
-      data: { b64_json: string; media_type?: string }[]
-      usage?: { cost?: number }
+  const info = imageModel(opts.model)
+  const refs = info?.references ? (opts.references ?? []).slice(0, 4) : []
+  let aspect = aspectFor(opts.model, opts.aspectRatio)
+  if (info?.api !== 'chat') {
+    const quality = info?.qualities ? (opts.quality ?? info.defaultQuality) : undefined
+    const body = () => ({ model: opts.model, prompt: opts.prompt, aspect_ratio: aspect, n: 1, output_format: 'jpeg', resolution: '1K', ...(quality ? { quality } : {}), ...(refs.length ? { input_references: refs.map(imagePart) } : {}) })
+    try {
+      let r
+      try {
+        r = await call('/images', body())
+      } catch (e) {
+        // Modelos fuera del catálogo que no aceptan 4:5: se reintenta con 3:4.
+        if (!(e instanceof OpenRouterError) || e.status !== 400 || aspect !== '4:5' || info) throw e
+        aspect = '3:4'
+        r = await call('/images', body())
+      }
+      const img = r as { data: { b64_json: string; media_type?: string }[]; usage?: { cost?: number } }
+      const cost = img.usage?.cost ?? 0
+      await record(opts.appId, 'image', opts.model, cost, undefined, opts.purpose)
+      return { data: Buffer.from(img.data[0].b64_json, 'base64'), mime: img.data[0].media_type ?? 'image/jpeg', cost }
+    } catch (e) {
+      if (!(e instanceof OpenRouterError) || ![400, 404, 405].includes(e.status)) throw e
     }
-    const cost = r.usage?.cost ?? 0
-    await record(opts.appId, 'image', opts.model, cost, undefined, opts.purpose)
-    return { data: Buffer.from(r.data[0].b64_json, 'base64'), mime: r.data[0].media_type ?? 'image/jpeg', cost }
-  } catch (e) {
-    if (!(e instanceof OpenRouterError) || ![400, 404, 405].includes(e.status)) throw e
   }
+  const text = `${opts.prompt}\n\nAspect ratio ${aspect}. No text, no letters, no logos.${refs.length ? ' Keep exactly the same illustration style, palette and characters as the reference images.' : ''}`
   const r = (await call('/chat/completions', {
     model: opts.model,
     modalities: ['image', 'text'],
-    messages: [{ role: 'user', content: `${opts.prompt}\n\nAspect ratio ${opts.aspectRatio}. No text, no letters, no logos.` }],
-    image_config: { aspect_ratio: opts.aspectRatio },
+    messages: [{ role: 'user', content: refs.length ? [{ type: 'text', text }, ...refs.map(imagePart)] : text }],
+    image_config: { aspect_ratio: aspect },
     usage: { include: true },
   })) as { choices: { message: { images?: { image_url: { url: string } }[] } }[]; usage?: { cost?: number; total_tokens?: number } }
   const url = r.choices?.[0]?.message?.images?.[0]?.image_url?.url
@@ -93,7 +114,7 @@ export async function generateImage(opts: { appId: string; model: string; prompt
 
 export type ModelInfo = { id: string; name: string; price?: string }
 
-/** Modelos de OpenRouter que generan imágenes (para el selector de la web). */
+/** Modelos de OpenRouter que generan imágenes (para el selector de la web y para saber qué modelos del catálogo siguen disponibles). */
 export async function imageModels(): Promise<ModelInfo[]> {
   const res = await fetch(`${API}/models?output_modalities=image`)
   const j = (await res.json()) as { data: { id: string; name: string; pricing?: Record<string, string> }[] }

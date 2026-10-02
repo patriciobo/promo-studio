@@ -1,5 +1,6 @@
 'use client'
-import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
+import { useEffect, useState, useTransition } from 'react'
 import { useFormStatus } from 'react-dom'
 
 export function CopyButton({ text, label = 'Copiar' }: { text: string; label?: string }) {
@@ -49,4 +50,14 @@ export function SubmitButton({ children, className = 'btn primary', pendingText 
       {pending ? pendingText : children}
     </button>
   )
+}
+
+/** Recarga los datos de la página cada tantos segundos mientras haya algo en proceso. */
+export function AutoRefresh({ every = 4000 }: { every?: number }) {
+  const router = useRouter()
+  useEffect(() => {
+    const t = setInterval(() => router.refresh(), every)
+    return () => clearInterval(t)
+  }, [router, every])
+  return null
 }

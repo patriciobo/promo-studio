@@ -1,7 +1,11 @@
 import { createApp } from '@/app/actions'
 import { SubmitButton } from '@/components/client'
+import { ImageModelPicker } from '@/components/ModelPicker'
+import { imagesPerMonth } from '@/lib/models'
+import { imageModels } from '@/lib/openrouter'
 
-export default function NewApp() {
+export default async function NewApp() {
+  const images = await imageModels().catch(() => [])
   return (
     <>
       <div className="page-head">
@@ -10,7 +14,7 @@ export default function NewApp() {
           <p>Paso 1 de 3: el repositorio. Después el asistente arma el promo.yaml y conectás la cuenta de Instagram.</p>
         </div>
       </div>
-      <form action={createApp} className="card stack" style={{ maxWidth: 640 }}>
+      <form action={createApp} className="card stack" style={{ maxWidth: 960 }}>
         <label>
           Repositorio de GitHub
           <input name="repo" required placeholder="https://github.com/usuario/mi-app" />
@@ -31,11 +35,11 @@ export default function NewApp() {
             <input name="branch" defaultValue="main" />
           </label>
         </div>
-        <label>
-          Modelo de imagen de OpenRouter (opcional ahora)
-          <input name="imageModel" placeholder="google/gemini-2.5-flash-image" />
-          <span className="hint">Lo podés cambiar en Ajustes; ahí se listan los modelos disponibles con su precio.</span>
-        </label>
+        <div className="stack-sm">
+          <strong>Modelo de imagen de OpenRouter</strong>
+          <span className="hint">Lo podés cambiar después en Ajustes. El estimado mensual usa la cadencia por defecto (3 posts y 2 stories por semana).</span>
+          <ImageModelPicker current={null} quality={null} imagesPerMonth={imagesPerMonth({ feed: 3, reels: 1, stories: 2 })} available={images} />
+        </div>
         <div>
           <SubmitButton pendingText="Conectando…">Conectar y seguir</SubmitButton>
         </div>
