@@ -58,6 +58,17 @@ export const ManifestSchema = z.object({
       stories: z.number().int().min(0).max(7).default(2),
     })
     .default({ feed: 3, reels: 1, stories: 2 }),
+  /**
+   * Edición diaria (apps de noticias): cada día lee `source` (con {fecha} = AAAA-MM-DD en la zona de la app),
+   * arma los posts sólo con ese contenido y los programa a `time`. Quedan en revisión y se aprueban solos al llegar la hora.
+   */
+  daily: z
+    .object({
+      source: z.string().refine((u) => u.includes('{fecha}') && URL.canParse(u.replaceAll('{fecha}', '2026-01-01')), 'URL con {fecha}, p. ej. https://sitio.com/reportes/{fecha}.md'),
+      time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'hora HH:MM').default('08:00'),
+      types: z.array(z.enum(['CAROUSEL', 'IMAGE', 'STORY'])).min(1).default(['CAROUSEL', 'STORY']),
+    })
+    .optional(),
 })
 
 export type Manifest = z.infer<typeof ManifestSchema>

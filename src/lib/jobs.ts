@@ -5,6 +5,7 @@ import { env } from './env'
 export const QUEUES = {
   tick: 'tick', // cada minuto: aprobar, publicar
   insights: 'insights', // cada hora: métricas
+  daily: 'daily', // cada 10 minutos: edición diaria de las apps que la tienen
   weekly: 'weekly', // domingo: lote de cada app
   runWeekly: 'run-weekly', // { appId, weekStart, image? }
   renderPost: 'render-post', // { postId, regenerateImage?, image? }

@@ -4,12 +4,12 @@ vi.mock('@/lib/db', () => ({ db: {} }))
 vi.mock('../db', () => ({ db: {} }))
 
 import { parseManifest } from '../manifest'
-import { weekSlots, zonedTime } from '../schedule'
+import { localParts, weekSlots, zonedTime } from '../schedule'
 import { adCandidates, engagement, median, relativeScore } from '../score'
 import { containerRequests, publish, type GraphClient } from '../instagram'
 import { explain, MetaError } from '../meta-errors'
 import { adRequests } from '../meta-ads'
-import { buildPlanPrompt, postFromPlan, slideLayout } from '../pipeline'
+import { buildPlanPrompt, compactReport, dailySourceUrl, postFromPlan, slideLayout } from '../pipeline'
 import { encodeImageChoice, IMAGE_MODELS, imagePrice, imagesPerMonth, parseImageChoice } from '../models'
 import { aspectFor } from '../openrouter'
 import { normalizeRepo } from '../github'
@@ -141,6 +141,37 @@ describe('planificación', () => {
     const d = postFromPlan({ id: 'a' }, 'b', slot, { slot: 0, pillar: 'x', hook: 'h', caption: 'Texto #tenis', hashtags: ['tenis', 'padel'], altText: 'alt', imagePrompt: 'p', slides: [{ title: '1' }, { title: '2' }] })
     expect(d.caption).toBe('Texto #tenis\n\n#padel')
     expect(d.slides).toHaveLength(1)
+  })
+})
+
+describe('edición diaria', () => {
+  const daily = `${YAML}daily: { source: "https://raw.githubusercontent.com/x/y/main/reports/{fecha}.md", time: "08:00" }\n`
+  it('el promo.yaml acepta la edición diaria y valida la URL con {fecha}', () => {
+    const r = parseManifest(daily)
+    expect(r.ok && r.manifest.daily).toMatchObject({ time: '08:00', types: ['CAROUSEL', 'STORY'] })
+    expect(parseManifest(`${YAML}daily: { source: "https://x.com/hoy.md" }\n`).ok).toBe(false)
+    expect(parseManifest(`${YAML}daily: { source: "no es url {fecha}" }\n`).ok).toBe(false)
+  })
+  it('arma la URL del día en la zona horaria de la app', () => {
+    // 02:30 UTC del 3/10 todavía es 2/10 en Argentina
+    const { date, minutes } = localParts(new Date('2026-10-03T02:30:00Z'), 'America/Argentina/Buenos_Aires')
+    expect(date).toBe('2026-10-02')
+    expect(minutes).toBe(23 * 60 + 30)
+    expect(dailySourceUrl('https://a.com/reports/{fecha}.md', date)).toBe('https://a.com/reports/2026-10-02.md')
+  })
+  it('saca las referencias con link del reporte', () => {
+    expect(compactReport('- Hecho [[57]](<https://a.com/x>)[[78]](<https://b.com/y>)\n')).toBe('- Hecho\n')
+  })
+  it('el prompt diario incluye el reporte y prohíbe salir de él', () => {
+    const m = (parseManifest(daily) as unknown as { manifest: never }).manifest
+    const slots = [{ type: 'CAROUSEL' as const, day: 4, at: new Date() }]
+    const p = buildPlanPrompt(m, slots, { feed: [], texts: [], releases: [], recent: [], bestPillars: [], daily: { date: '2026-10-02', report: '## Resumen ejecutivo\nTexto del día' } })
+    const u = JSON.parse(p.user)
+    expect(u.todaysEdition.report).toMatch(/Texto del día/)
+    expect(u.instructions).toMatch(/ONLY facts/)
+  })
+  it('suma las ilustraciones diarias al estimado mensual', () => {
+    expect(imagesPerMonth({ feed: 0, reels: 0, stories: 0 }, { types: ['CAROUSEL', 'STORY'] })).toBe(180)
   })
 })
 

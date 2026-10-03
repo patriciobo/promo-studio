@@ -4,6 +4,7 @@ import { SubmitButton } from '@/components/client'
 import { ModelSelect } from '@/components/ModelSelect'
 import { PostMeta, PostThumbs } from '@/components/PostPreview'
 import { db } from '@/lib/db'
+import type { Manifest } from '@/lib/manifest'
 import { nextMonday } from '@/lib/schedule'
 
 export default async function Calendar({ params }: PageProps<'/apps/[slug]'>) {
@@ -16,6 +17,8 @@ export default async function Calendar({ params }: PageProps<'/apps/[slug]'>) {
     include: { posts: { orderBy: { scheduledAt: 'asc' }, include: { assets: true } } },
   })
   const nm = nextMonday().toISOString().slice(0, 10)
+  const daily = (app.manifest as unknown as Manifest | null)?.daily
+  const dailyPosts = daily ? await db.post.findMany({ where: { appId: app.id, dailyDate: { not: null } }, orderBy: [{ dailyDate: 'desc' }, { type: 'asc' }], take: 14, include: { assets: true } }) : []
   return (
     <div className="stack" style={{ gap: 24 }}>
       <div className="card row between">
@@ -38,6 +41,32 @@ export default async function Calendar({ params }: PageProps<'/apps/[slug]'>) {
           </form>
         </div>
       </div>
+      {daily && (
+        <section className="stack">
+          <div className="row between">
+            <h2>Edición diaria</h2>
+            <span className="small muted">
+              Todos los días a las {daily.time}, con el reporte de {new URL(daily.source.replace('{fecha}', 'x')).host}. Se aprueba sola a esa hora si no la revisás.
+            </span>
+          </div>
+          {!dailyPosts.length && <div className="card empty">Todavía no hay ediciones. La próxima se arma cuando se publique el reporte del día.</div>}
+          <div className="grid">
+            {dailyPosts.map((p) => (
+              <article key={p.id} className="card post-card">
+                <PostMeta post={p} tz={app.timezone} />
+                <span className="xs muted">Edición {p.dailyDate}</span>
+                <PostThumbs post={p} />
+                {p.error && <p className={`notice small ${p.status === 'FAILED' ? 'bad' : 'warn'}`}>{p.error}</p>}
+                {p.status === 'PENDING_REVIEW' && (
+                  <Link className="btn sm" href={`/apps/${slug}/revision#${p.id}`}>
+                    Revisar
+                  </Link>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
       {!batches.length && <div className="card empty">Todavía no hay lotes. Generá la primera semana.</div>}
       {batches.map((b) => (
         <section key={b.id} className="stack">

@@ -12,7 +12,7 @@ import { bufferDataUri, dataUri, mediaPath, saveMedia } from './media'
 import { notify } from './notify'
 import type { ImageChoice } from './models'
 import { completeJson, generateImage } from './openrouter'
-import { weekSlots, type Slot } from './schedule'
+import { localParts, weekSlots, zonedTime, type Slot } from './schedule'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { extname } from 'node:path'
@@ -123,7 +123,7 @@ const SLIDE_RULES: Record<PostType, string> = {
   STORY: '1 slide: a short title (max 50 chars) and body (max 90 chars), conversational, inviting a reply or a link tap.',
 }
 
-export function buildPlanPrompt(m: Manifest, slots: Slot[], ctx: { feed: Feed['items']; texts: string[]; releases: { name: string; body: string }[]; recent: { pillar: string | null; hook: string | null }[]; bestPillars: string[]; topic?: string }) {
+export function buildPlanPrompt(m: Manifest, slots: Slot[], ctx: { feed: Feed['items']; texts: string[]; releases: { name: string; body: string }[]; recent: { pillar: string | null; hook: string | null }[]; bestPillars: string[]; topic?: string; daily?: { date: string; report: string } }) {
   const system = `You are the social media manager of the app "${m.name}". You write Instagram content that promotes the app with real value for its audience, never clickbait.
 Write ALL user-facing text in ${m.languages[0]} with this tone: ${m.tone}.
 Never mention: ${m.avoid.join('; ') || 'nothing in particular'}.
@@ -140,7 +140,10 @@ Answer only with JSON: {"posts":[{"slot":number,"pillar":string,"hook":string,"c
     recentReleases: ctx.releases,
     doNotRepeat: ctx.recent.map((r) => `${r.pillar}: ${r.hook}`),
     bestPerformingPillars: ctx.bestPillars,
-    instructions: ctx.topic
+    todaysEdition: ctx.daily ? { date: ctx.daily.date, report: ctx.daily.report } : undefined,
+    instructions: ctx.daily
+      ? `Create exactly one post per slot about TODAY's edition (${ctx.daily.date}) in todaysEdition. Use ONLY facts stated in that report: no other news, no opinions, no predictions, no invented figures; attribute claims to the sources as the report does. CAROUSEL: slide 1 is a cover with the date as eyebrow and the day's main story as title; then 3-5 slides with the most relevant regions or the trade/commodities climate (title + up to 4 short items each); last slide invites to read the full edition and subscribe. STORY: the 3 main headlines of the day, very short. Captions summarize the day in 2-4 lines and invite to read the full edition.`
+      : ctx.topic
       ? `Create exactly one post about this topic chosen by the user: "${ctx.topic}". Stay on that topic, connect it to the app naturally and do not repeat hooks from doNotRepeat.`
       : 'Create exactly one post per slot. Balance the pillars (favor the best performing ones), use ideasFromApp when relevant (set sourceId), announce recent releases if any, and do not repeat hooks from doNotRepeat.',
   })
@@ -158,6 +161,7 @@ export async function planBatch(appId: string, weekStart: Date) {
   await db.post.deleteMany({ where: { batchId: batch.id } })
 
   const slots = weekSlots(weekStart, m.cadence, app.postTime, app.timezone)
+  if (!slots.length) return db.batch.update({ where: { id: batch.id }, data: { status: 'READY', notes: 'Cadencia semanal en 0' } })
   const [src, releases, recent, scored] = await Promise.all([
     sources(m),
     latestReleases(app.repo),
@@ -379,5 +383,88 @@ export async function createOnDemand(postId: string, topic: string, image?: Imag
     await db.post.update({ where: { id: postId }, data: { status: 'PENDING_REVIEW', reviewDueAt: null, error: null } })
   } catch (e) {
     await db.post.update({ where: { id: postId }, data: { status: 'FAILED', error: `No se pudo generar: ${(e as Error).message}` } })
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 5. Edición diaria (apps de noticias)
+// ---------------------------------------------------------------------------
+
+/** Desde cuánto antes de la hora de publicación se empieza a buscar el reporte del día. */
+const DAILY_LOOKAHEAD_MIN = 4 * 60
+/** Hasta cuánto después de la hora se sigue esperando el reporte antes de avisar que no llegó. */
+const DAILY_GIVE_UP_MIN = 4 * 60
+/** Margen mínimo para revisar si el reporte llega tarde. */
+const DAILY_REVIEW_MIN = 20
+
+export const dailySourceUrl = (template: string, date: string) => template.replaceAll('{fecha}', date)
+
+/** Achica el reporte para el prompt: saca las referencias numeradas con link y recorta. */
+export function compactReport(md: string, max = 14000) {
+  return md
+    .replace(/\[\[\d+\]\]\(<[^>]*>\)/g, '')
+    .replace(/\(<https?:[^>]*>\)/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .slice(0, max)
+}
+
+/**
+ * Corre cada pocos minutos: si a la app le toca la edición de hoy y el reporte ya está publicado,
+ * arma los posts del día, los deja en revisión y los programa a la hora de `daily.time` (se aprueban solos).
+ */
+export async function runDaily(appId: string, now = new Date()) {
+  const app = await db.app.findUniqueOrThrow({ where: { id: appId } })
+  const daily = app.manifest ? manifestOf(app).daily : undefined
+  if (!daily || app.paused) return 'sin edición diaria'
+  const { date, minutes } = localParts(now, app.timezone)
+  const [hh, mm] = daily.time.split(':').map(Number)
+  const publishMin = hh * 60 + mm
+  if (minutes < publishMin - DAILY_LOOKAHEAD_MIN) return 'todavía no'
+  if (await db.post.count({ where: { appId, dailyDate: date } })) return 'ya hecha'
+
+  const url = dailySourceUrl(daily.source, date)
+  const res = await fetch(url, { signal: AbortSignal.timeout(20000) }).catch(() => null)
+  if (!res?.ok) {
+    if (minutes < publishMin + DAILY_GIVE_UP_MIN) return 'reporte sin publicar'
+    // Marca el día como fallido (así no se reintenta ni se avisa de nuevo) y avisa.
+    await db.post.createMany({ data: daily.types.map((type) => ({ appId, type, dailyDate: date, status: 'FAILED' as const, hook: `Edición ${date}`, error: `No se encontró el reporte del día en ${url}` })), skipDuplicates: true })
+    await notify(`⚠️ ${app.name}: no apareció el reporte del ${date} (${url}). Hoy no hay edición diaria.`)
+    return 'reporte no llegó'
+  }
+  const report = compactReport(await res.text())
+
+  // Reserva los posts del día (la clave única appId+dailyDate+type evita duplicados si dos workers corren a la vez).
+  const [y, mo, d] = date.split('-').map(Number)
+  const publishAt = new Date(Math.max(zonedTime(y, mo, d, hh, mm, app.timezone).getTime(), now.getTime() + DAILY_REVIEW_MIN * 60e3))
+  const slots: Slot[] = daily.types.map((type, i) => ({ type, day: (now.getDay() + 6) % 7, at: new Date(publishAt.getTime() + i * 5 * 60e3) }))
+  const claimed = await db.post.createMany({ data: slots.map((s) => ({ appId, type: s.type, dailyDate: date, status: 'DRAFT' as const, hook: `Edición ${date}`, scheduledAt: s.at })), skipDuplicates: true })
+  if (claimed.count !== slots.length) return 'ya en curso'
+  const posts = await db.post.findMany({ where: { appId, dailyDate: date } })
+
+  try {
+    const m = manifestOf(app)
+    const { system, user } = buildPlanPrompt(m, slots, { feed: [], texts: [], releases: [], recent: [], bestPillars: [], daily: { date, report } })
+    const raw =
+      process.env.OPENROUTER_MOCK === '1'
+        ? mockPlan(m, slots, [...report.matchAll(/^#{2,3} (.+)$/gm)].slice(0, 6).map((h, i) => ({ id: `d${i}`, title: h[1], body: m.tagline, pillar: m.pillars[0] })))
+        : await completeJson({ appId, model: app.textModel, system, user, purpose: `edición diaria ${date}` })
+    const plan = PlanSchema.parse(raw)
+    for (const [i, slot] of slots.entries()) {
+      const p = plan.posts.find((x) => x.slot === i) ?? plan.posts[i]
+      const post = posts.find((x) => x.type === slot.type)!
+      if (!p) throw new Error(`el modelo no armó el post ${slot.type}`)
+      const { pillar, hook, caption, altText, slides, imagePrompt } = postFromPlan(app, null, slot, p)
+      await db.post.update({ where: { id: post.id }, data: { pillar, hook, caption, altText, slides, imagePrompt } })
+      await renderPost(post.id)
+      // Se aprueba solo un minuto antes de publicarse, si no lo tocaste.
+      await db.post.update({ where: { id: post.id }, data: { status: 'PENDING_REVIEW', reviewDueAt: new Date(slot.at.getTime() - 60e3), error: null } })
+    }
+    const hora = new Intl.DateTimeFormat('es-AR', { timeZone: app.timezone, hour: '2-digit', minute: '2-digit' }).format(publishAt)
+    await notify(`📰 ${app.name}: edición del ${date} lista para revisar. Se publica sola a las ${hora}.`)
+    return 'lista'
+  } catch (e) {
+    await db.post.updateMany({ where: { appId, dailyDate: date, status: 'DRAFT' }, data: { status: 'FAILED', error: `No se pudo generar la edición: ${(e as Error).message}` } })
+    await notify(`⚠️ ${app.name}: falló la edición diaria del ${date}: ${(e as Error).message}`)
+    return 'falló'
   }
 }

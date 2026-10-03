@@ -25,6 +25,16 @@ function tzOffsetMinutes(date: Date, timeZone: string) {
   return (asUtc - date.getTime()) / 60000
 }
 
+/** Fecha local (AAAA-MM-DD) y minutos desde la medianoche de un instante, en una zona horaria. */
+export function localParts(date: Date, timeZone: string) {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', { timeZone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+      .formatToParts(date)
+      .map((x) => [x.type, x.value]),
+  )
+  return { date: `${p.year}-${p.month}-${p.day}`, minutes: +p.hour * 60 + +p.minute }
+}
+
 /** Fecha y hora local de una zona horaria → instante UTC. */
 export function zonedTime(y: number, m: number, d: number, hh: number, mm: number, timeZone: string) {
   const guess = new Date(Date.UTC(y, m - 1, d, hh, mm))

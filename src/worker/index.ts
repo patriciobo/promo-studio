@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 import type { ImageChoice } from '@/lib/models'
 import { getBoss, QUEUES } from '@/lib/jobs'
 import { autoApprove, collectInsights, publishDue } from '@/lib/publisher'
-import { createOnDemand, renderPost, runWeekly, syncApp } from '@/lib/pipeline'
+import { createOnDemand, renderPost, runDaily, runWeekly, syncApp } from '@/lib/pipeline'
 import { nextMonday } from '@/lib/schedule'
 import { closeBrowser, renderHtml } from '@/render/renderer'
 import { mediaPath, saveMedia } from '@/lib/media'
@@ -25,6 +25,7 @@ async function main() {
 
   await boss.schedule(QUEUES.tick, '* * * * *', {}, { tz: TZ })
   await boss.schedule(QUEUES.insights, '15 * * * *', {}, { tz: TZ })
+  await boss.schedule(QUEUES.daily, '*/10 * * * *', {}, { tz: TZ })
   // Domingo 18:00: se arma el lote de la semana siguiente de cada app.
   await boss.schedule(QUEUES.weekly, '0 18 * * 0', {}, { tz: TZ })
 
@@ -37,6 +38,16 @@ async function main() {
   await boss.work(QUEUES.insights, async () => {
     const n = await collectInsights().catch((e) => (console.error('[métricas]', e.message), 0))
     if (n) console.log(`[métricas] ${n} snapshots`)
+  })
+
+  await boss.work(QUEUES.daily, async () => {
+    const apps = await db.app.findMany({ where: { paused: false, manifest: { not: undefined } }, select: { id: true, slug: true, manifest: true } })
+    for (const a of apps) {
+      if (!(a.manifest as { daily?: unknown } | null)?.daily) continue
+      const r = await runDaily(a.id).catch((e) => `error: ${e.message}`)
+      if (!['todavía no', 'ya hecha', 'reporte sin publicar'].includes(r)) console.log(`[diaria] ${a.slug}: ${r}`)
+      await closeBrowser()
+    }
   })
 
   await boss.work(QUEUES.weekly, async () => {

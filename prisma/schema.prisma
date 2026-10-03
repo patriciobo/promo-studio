@@ -89,6 +89,7 @@ model Post {
   attempts    Int        @default(0)
   error       String?
   score       Float?
+  dailyDate   String? // AAAA-MM-DD si es de la edición diaria
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
@@ -97,6 +98,7 @@ model Post {
   adDraft  AdDraft?
 
   @@index([status, scheduledAt])
+  @@unique([appId, dailyDate, type])
 }
 
 enum PostType {
