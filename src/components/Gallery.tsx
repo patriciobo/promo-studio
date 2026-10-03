@@ -1,13 +1,17 @@
 'use client'
-// Miniaturas de un post que se abren en grande (clic), con flechas para recorrer las diapositivas.
+// Miniaturas de un post que se abren en grande (clic): imágenes con flechas para recorrer las diapositivas,
+// y reels con su reproductor al mismo tamaño.
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-export function Gallery({ images, vertical }: { images: string[]; vertical: boolean }) {
+export type GalleryItem = { src: string; video?: boolean; poster?: string }
+
+export function Gallery({ items, vertical }: { items: GalleryItem[]; vertical: boolean }) {
   const ref = useRef<HTMLDialogElement>(null)
+  const player = useRef<HTMLVideoElement>(null)
   const [i, setI] = useState(0)
   const open = (n: number) => (setI(n), ref.current?.showModal())
   const close = () => ref.current?.close()
-  const step = useCallback((d: number) => setI((n) => (n + d + images.length) % images.length), [images.length])
+  const step = useCallback((d: number) => setI((n) => (n + d + items.length) % items.length), [items.length])
   useEffect(() => {
     const dlg = ref.current
     const onKey = (e: KeyboardEvent) => {
@@ -18,34 +22,53 @@ export function Gallery({ images, vertical }: { images: string[]; vertical: bool
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [step])
+  const item = items[i]
+  const label = item?.video ? 'reel' : `diapositiva ${i + 1}`
   return (
     <>
       <div className={`thumbs${vertical ? ' vertical' : ''}`}>
-        {images.map((src, n) => (
-          <button key={src} type="button" className="thumb-btn" onClick={() => open(n)} aria-label={`Ampliar diapositiva ${n + 1}`}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={src} alt="" loading="lazy" />
+        {items.map((it, n) => (
+          <button key={it.src} type="button" className="thumb-btn" onClick={() => open(n)} aria-label={it.video ? 'Ver el reel' : `Ampliar diapositiva ${n + 1}`}>
+            {it.video ? (
+              <span className="thumb-video">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {it.poster ? <img src={it.poster} alt="" loading="lazy" /> : <video src={it.src} muted playsInline preload="metadata" />}
+                <span className="play" aria-hidden>
+                  ▶
+                </span>
+              </span>
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={it.src} alt="" loading="lazy" />
+            )}
           </button>
         ))}
       </div>
-      <dialog ref={ref} className="lightbox" onClick={(e) => e.target === e.currentTarget && close()}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={images[i]} alt={`Diapositiva ${i + 1} de ${images.length}`} />
+      {/* Al cerrar se pausa el reel: el <dialog> sigue montado. */}
+      <dialog ref={ref} className="lightbox" onClose={() => player.current?.pause()} onClick={(e) => e.target === e.currentTarget && close()}>
+        {item?.video ? (
+          <video ref={player} key={item.src} src={item.src} poster={item.poster} controls autoPlay playsInline />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={item?.src} alt={`Diapositiva ${i + 1} de ${items.length}`} />
+        )}
         <div className="lightbox-bar">
-          {images.length > 1 && (
+          {items.length > 1 && (
             <button type="button" className="btn sm" onClick={() => step(-1)} aria-label="Anterior">
               ←
             </button>
           )}
-          <span className="small">
-            {i + 1} / {images.length}
-          </span>
-          {images.length > 1 && (
+          {items.length > 1 && (
+            <span className="small">
+              {i + 1} / {items.length}
+            </span>
+          )}
+          {items.length > 1 && (
             <button type="button" className="btn sm" onClick={() => step(1)} aria-label="Siguiente">
               →
             </button>
           )}
-          <a className="btn sm ghost" href={images[i]} target="_blank" rel="noreferrer">
+          <a className="btn sm ghost" href={item?.src} target="_blank" rel="noreferrer" aria-label={`Abrir ${label} en tamaño real`}>
             Tamaño real ↗
           </a>
           <button type="button" className="btn sm" onClick={close}>

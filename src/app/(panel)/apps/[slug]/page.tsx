@@ -1,14 +1,17 @@
 import Link from 'next/link'
 import { generateWeek, retryPost, syncNow } from '@/app/actions'
-import { SubmitButton } from '@/components/client'
+import { AutoRefresh, SubmitButton } from '@/components/client'
 import { ModelSelect } from '@/components/ModelSelect'
 import { PostMeta, PostThumbs } from '@/components/PostPreview'
 import { db } from '@/lib/db'
 import type { Manifest } from '@/lib/manifest'
 import { nextMonday } from '@/lib/schedule'
 
-export default async function Calendar({ params }: PageProps<'/apps/[slug]'>) {
+const BATCH_STATUS = { PLANNING: 'Planificando', GENERATING: 'Generando', READY: 'Lista', FAILED: 'Falló' } as const
+
+export default async function Calendar({ params, searchParams }: PageProps<'/apps/[slug]'>) {
   const { slug } = await params
+  const { aviso, semana } = await searchParams
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
   const batches = await db.batch.findMany({
     where: { appId: app.id },
@@ -17,10 +20,18 @@ export default async function Calendar({ params }: PageProps<'/apps/[slug]'>) {
     include: { posts: { orderBy: { scheduledAt: 'asc' }, include: { assets: true } } },
   })
   const nm = nextMonday().toISOString().slice(0, 10)
+  const working = batches.some((b) => b.status === 'PLANNING' || b.status === 'GENERATING')
   const daily = (app.manifest as unknown as Manifest | null)?.daily
   const dailyPosts = daily ? await db.post.findMany({ where: { appId: app.id, dailyDate: { not: null } }, orderBy: [{ dailyDate: 'desc' }, { type: 'asc' }], take: 14, include: { assets: true } }) : []
   return (
     <div className="stack" style={{ gap: 24 }}>
+      {working && <AutoRefresh />}
+      {aviso === 'generando' && working && (
+        <p className="notice ok">
+          Generando la semana del {String(semana)}: primero se escriben los textos y después se arman las piezas, una por una. Tarda unos minutos; esta página se actualiza sola.
+        </p>
+      )}
+      {aviso === 'ya-generada' && <p className="notice warn">La semana del {String(semana)} ya está generada. Para rehacer una publicación, editala o regenerá su imagen desde Revisión.</p>}
       <div className="card row between">
         <div className="stack-sm">
           <h2>Lote semanal</h2>
@@ -72,8 +83,21 @@ export default async function Calendar({ params }: PageProps<'/apps/[slug]'>) {
         <section key={b.id} className="stack">
           <div className="row between">
             <h2>Semana del {b.weekStart.toISOString().slice(0, 10)}</h2>
-            <span className={`badge ${b.status === 'READY' ? 'ok' : b.status === 'FAILED' ? 'bad' : 'info'}`}>{{ PLANNING: 'Planificando', GENERATING: 'Generando', READY: 'Lista', FAILED: 'Falló' }[b.status]}</span>
+            <span className={`badge ${b.status === 'READY' ? 'ok' : b.status === 'FAILED' ? 'bad' : 'info'}`}>
+              {(b.status === 'PLANNING' || b.status === 'GENERATING') && <span className="spinner" aria-hidden />}
+              {BATCH_STATUS[b.status]}
+            </span>
           </div>
+          {b.status === 'PLANNING' && (
+            <p className="notice small">
+              <span className="spinner" aria-hidden /> Escribiendo los textos de la semana con IA (suele tardar menos de un minuto)… Si en unos minutos no avanza, revisá que el worker esté corriendo.
+            </p>
+          )}
+          {b.status === 'GENERATING' && (
+            <p className="notice small">
+              <span className="spinner" aria-hidden /> Generando ilustraciones y piezas: {b.posts.filter((p) => p.status !== 'DRAFT').length} de {b.posts.length} listas…
+            </p>
+          )}
           {b.error && <p className="notice bad small">{b.error}</p>}
           <div className="grid">
             {b.posts.map((p) => (

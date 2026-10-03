@@ -14,6 +14,7 @@ import { encodeImageChoice, IMAGE_MODELS, imagePrice, imagesPerMonth, parseImage
 import { aspectFor } from '../openrouter'
 import { normalizeRepo } from '../github'
 import { brandFrom } from '@/templates/brand'
+import { postCost, usdSmall } from '../view'
 
 const YAML = `
 name: Mi Tenis
@@ -141,6 +142,16 @@ describe('planificación', () => {
     const d = postFromPlan({ id: 'a' }, 'b', slot, { slot: 0, pillar: 'x', hook: 'h', caption: 'Texto #tenis', hashtags: ['tenis', 'padel'], altText: 'alt', imagePrompt: 'p', slides: [{ title: '1' }, { title: '2' }] })
     expect(d.caption).toBe('Texto #tenis\n\n#padel')
     expect(d.slides).toHaveLength(1)
+  })
+})
+
+describe('costo por publicación', () => {
+  it('suma su parte del texto y todas sus ilustraciones, sin contar las piezas renderizadas', () => {
+    const c = postCost({ textCostUsd: 0.002, assets: [{ kind: 'BACKGROUND', costUsd: 0.05 }, { kind: 'BACKGROUND', costUsd: 0.05 }, { kind: 'SLIDE', costUsd: null }] })
+    expect(c).toMatchObject({ text: 0.002, image: 0.1, images: 2 })
+    expect(c.total).toBeCloseTo(0.102)
+    expect(usdSmall(0.0042)).toBe('US$ 0,004')
+    expect(usdSmall(0.35)).toBe('US$ 0,35')
   })
 })
 

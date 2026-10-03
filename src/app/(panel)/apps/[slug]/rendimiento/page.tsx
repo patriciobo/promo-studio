@@ -125,7 +125,7 @@ export default async function Performance({ params }: PageProps<'/apps/[slug]/re
                 <img src={mediaSrc(p.assets[0].path)} alt="" style={{ width: 84, borderRadius: 8, border: '1px solid var(--border)' }} />
               )}
               <div className="stack-sm" style={{ flex: 1, minWidth: 240 }}>
-                <PostMeta post={p} tz={app.timezone} />
+                <PostMeta post={p} tz={app.timezone} showCost={false} />
                 <p className="small">{p.hook}</p>
                 <p className="small muted num">
                   {i ? `Alcance ${i.reach ?? 0} · ${i.likes ?? 0} me gusta · ${i.comments ?? 0} comentarios · ${i.saves ?? 0} guardados · ${i.shares ?? 0} compartidos (a las ${i.hoursAfter} h)` : 'Métricas a las 24 h de publicado.'}

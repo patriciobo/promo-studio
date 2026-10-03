@@ -37,7 +37,7 @@ async function record(appId: string | null, kind: 'text' | 'image', model: strin
 }
 
 /** Pide una respuesta JSON al modelo de texto. */
-export async function completeJson<T = unknown>(opts: { appId: string | null; model: string; system: string; user: string; purpose: string; maxTokens?: number }): Promise<T> {
+export async function completeJson<T = unknown>(opts: { appId: string | null; model: string; system: string; user: string; purpose: string; maxTokens?: number; onCost?: (usd: number) => void }): Promise<T> {
   await assertBudget(opts.appId, 0.05)
   const r = (await call('/chat/completions', {
     model: opts.model,
@@ -50,6 +50,7 @@ export async function completeJson<T = unknown>(opts: { appId: string | null; mo
     usage: { include: true },
   })) as { choices: { message: { content: string }; finish_reason?: string }[]; usage?: { cost?: number; total_tokens?: number } }
   await record(opts.appId, 'text', opts.model, r.usage?.cost ?? 0, r.usage?.total_tokens, opts.purpose)
+  opts.onCost?.(r.usage?.cost ?? 0)
   const content = r.choices?.[0]?.message?.content ?? ''
   if (r.choices?.[0]?.finish_reason === 'length') throw new OpenRouterError(200, `la respuesta de ${opts.model} se cortó por el límite de tokens (${opts.maxTokens ?? 6000}); probá con otro modelo de texto`)
   try {

@@ -90,6 +90,7 @@ model Post {
   error       String?
   score       Float?
   dailyDate   String? // AAAA-MM-DD si es de la edición diaria
+  textCostUsd Float? // su parte del costo del modelo de texto (las imágenes suman Asset.costUsd)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 

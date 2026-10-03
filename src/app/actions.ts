@@ -66,9 +66,15 @@ export async function generateWeek(slug: string, f: FormData) {
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
   const week = str(f, 'week')
   const weekStart = week ? new Date(`${week}T00:00:00Z`) : nextMonday()
-  // Un lote fallido de esa semana se rehace (planBatch lo detecta).
+  const day = weekStart.toISOString().slice(0, 10)
+  const existing = await db.batch.findUnique({ where: { appId_weekStart: { appId: app.id, weekStart } } })
+  if (existing?.status === 'READY' && !existing.error) redirect(`/apps/${slug}?aviso=ya-generada&semana=${day}`)
+  // El lote aparece enseguida en el Calendario ("Planificando") aunque el worker tarde unos segundos en tomarlo.
+  if (!existing) await db.batch.create({ data: { appId: app.id, weekStart, status: 'PLANNING' } })
+  // Un lote fallido de esa semana se retoma (planBatch lo detecta).
   await enqueue(QUEUES.runWeekly, { appId: app.id, weekStart: weekStart.toISOString(), image: parseImageChoice(str(f, 'imageChoice')) }, { singletonKey: `${app.id}-${weekStart.toISOString()}` })
   revalidatePath(`/apps/${slug}`)
+  redirect(`/apps/${slug}?aviso=generando&semana=${day}`)
 }
 
 // --- A pedido ----------------------------------------------------------------

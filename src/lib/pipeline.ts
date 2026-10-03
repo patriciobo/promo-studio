@@ -191,12 +191,14 @@ async function planPosts(app: App, m: Manifest, batchId: string, weekStart: Date
     .slice(0, 3)
     .map((s) => s.pillar!)
   const { system, user } = buildPlanPrompt(m, slots, { ...src, releases: releases.filter((r) => Date.now() - Date.parse(r.date) < 30 * 864e5), recent, bestPillars })
-  const raw = process.env.OPENROUTER_MOCK === '1' ? mockPlan(m, slots, src.feed) : await completeJson({ appId, model: app.textModel, system, user, purpose: `plan ${weekStart.toISOString().slice(0, 10)}` })
+  let textCost = 0
+  const raw = process.env.OPENROUTER_MOCK === '1' ? mockPlan(m, slots, src.feed) : await completeJson({ appId, model: app.textModel, system, user, purpose: `plan ${weekStart.toISOString().slice(0, 10)}`, onCost: (c) => (textCost = c) })
   const plan = PlanSchema.parse(raw)
   for (const [i, slot] of slots.entries()) {
     const p = plan.posts.find((x) => x.slot === i) ?? plan.posts[i]
     if (!p) continue
-    await db.post.create({ data: postFromPlan(app, batch.id, slot, p) })
+    // Una llamada planifica toda la semana: cada post carga su parte.
+    await db.post.create({ data: { ...postFromPlan(app, batch.id, slot, p), textCostUsd: textCost / slots.length } })
   }
   return db.batch.update({ where: { id: batch.id }, data: { status: 'GENERATING' } })
 }
@@ -399,14 +401,15 @@ export async function createOnDemand(postId: string, topic: string, image?: Imag
       db.post.findMany({ where: { appId: app.id, id: { not: postId } }, orderBy: { createdAt: 'desc' }, take: 30, select: { pillar: true, hook: true } }),
     ])
     const { system, user } = buildPlanPrompt(m, [slot], { feed: [], texts: src.texts, releases: [], recent, bestPillars: [], topic: fullTopic })
+    let textCost = 0
     const raw =
       process.env.OPENROUTER_MOCK === '1'
         ? mockPlan(m, [slot], [{ id: 'tema', title: topic, body: m.tagline, pillar: post.pillar ?? m.pillars[0] }])
-        : await completeJson({ appId: app.id, model: app.textModel, system, user, purpose: `a pedido ${post.type}` })
+        : await completeJson({ appId: app.id, model: app.textModel, system, user, purpose: `a pedido ${post.type}`, onCost: (c) => (textCost = c) })
     const p = PlanSchema.parse(raw).posts[0]
     if (!p) throw new Error('El modelo no devolvió ninguna publicación')
     const { pillar, hook, caption, altText, slides, imagePrompt } = postFromPlan(app, null, slot, p)
-    await db.post.update({ where: { id: postId }, data: { pillar: post.pillar ?? pillar, hook, caption, altText, slides, imagePrompt } })
+    await db.post.update({ where: { id: postId }, data: { pillar: post.pillar ?? pillar, hook, caption, altText, slides, imagePrompt, textCostUsd: textCost } })
     await renderPost(postId, { image })
     await db.post.update({ where: { id: postId }, data: { status: 'PENDING_REVIEW', reviewDueAt: null, error: null } })
   } catch (e) {
@@ -472,17 +475,18 @@ export async function runDaily(appId: string, now = new Date()) {
   try {
     const m = manifestOf(app)
     const { system, user } = buildPlanPrompt(m, slots, { feed: [], texts: [], releases: [], recent: [], bestPillars: [], daily: { date, report } })
+    let textCost = 0
     const raw =
       process.env.OPENROUTER_MOCK === '1'
         ? mockPlan(m, slots, [...report.matchAll(/^#{2,3} (.+)$/gm)].slice(0, 6).map((h, i) => ({ id: `d${i}`, title: h[1], body: m.tagline, pillar: m.pillars[0] })))
-        : await completeJson({ appId, model: app.textModel, system, user, purpose: `edición diaria ${date}` })
+        : await completeJson({ appId, model: app.textModel, system, user, purpose: `edición diaria ${date}`, onCost: (c) => (textCost = c) })
     const plan = PlanSchema.parse(raw)
     for (const [i, slot] of slots.entries()) {
       const p = plan.posts.find((x) => x.slot === i) ?? plan.posts[i]
       const post = posts.find((x) => x.type === slot.type)!
       if (!p) throw new Error(`el modelo no armó el post ${slot.type}`)
       const { pillar, hook, caption, altText, slides, imagePrompt } = postFromPlan(app, null, slot, p)
-      await db.post.update({ where: { id: post.id }, data: { pillar, hook, caption, altText, slides, imagePrompt } })
+      await db.post.update({ where: { id: post.id }, data: { pillar, hook, caption, altText, slides, imagePrompt, textCostUsd: textCost / slots.length } })
       await renderPost(post.id)
       // Se aprueba solo un minuto antes de publicarse, si no lo tocaste.
       await db.post.update({ where: { id: post.id }, data: { status: 'PENDING_REVIEW', reviewDueAt: new Date(slot.at.getTime() - 60e3), error: null } })
