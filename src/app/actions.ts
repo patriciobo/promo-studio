@@ -16,7 +16,7 @@ import { draftManifest, logoFromRepo, proposeManifestPR, repoContext } from '@/l
 import { healthCheck, type Check } from '@/lib/onboarding/meta-health'
 import { buildProfileKit, type ProfileKit } from '@/lib/onboarding/profile-kit'
 import { syncApp } from '@/lib/pipeline'
-import { nextMonday } from '@/lib/schedule'
+import { fromLocalInput, nextMonday } from '@/lib/schedule'
 import { setSecret, type SecretKey } from '@/lib/settings'
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').replace(/\r\n/g, '\n').trim()
@@ -67,7 +67,7 @@ export async function generateWeek(slug: string, f: FormData) {
   const week = str(f, 'week')
   const weekStart = week ? new Date(`${week}T00:00:00Z`) : nextMonday()
   // Un lote fallido de esa semana se rehace (planBatch lo detecta).
-  await enqueue(QUEUES.runWeekly, { appId: app.id, weekStart: weekStart.toISOString(), image: parseImageChoice(str(f, 'imageChoice')) })
+  await enqueue(QUEUES.runWeekly, { appId: app.id, weekStart: weekStart.toISOString(), image: parseImageChoice(str(f, 'imageChoice')) }, { singletonKey: `${app.id}-${weekStart.toISOString()}` })
   revalidatePath(`/apps/${slug}`)
 }
 
@@ -104,6 +104,22 @@ export async function savePost(postId: string, f: FormData) {
   const post = await db.post.update({ where: { id: postId }, data: { caption: str(f, 'caption'), altText: str(f, 'altText'), slides, imagePrompt: str(f, 'imagePrompt') || undefined }, include: { app: true } })
   await enqueue(QUEUES.renderPost, { postId, regenerateImage: f.get('regenerateImage') === 'on', image: parseImageChoice(str(f, 'imageChoice')) })
   revalidatePath(`/apps/${post.app.slug}/revision`)
+}
+
+/** Cambia fecha y hora de publicación (en la zona de la app). Vacío = sin fecha: se publica con "Publicar ahora". */
+export async function reschedulePost(postId: string, f: FormData) {
+  await requireUser()
+  const post = await db.post.findUniqueOrThrow({ where: { id: postId }, include: { app: true } })
+  if (!['DRAFT', 'PENDING_REVIEW', 'APPROVED', 'FAILED'].includes(post.status)) return
+  const value = str(f, 'scheduledAt')
+  const parsed = value ? fromLocalInput(value, post.app.timezone) : null
+  if (value && !parsed) return
+  // Una fecha pasada se toma como "ya": si está aprobado, sale en el próximo minuto.
+  const at = parsed ? new Date(Math.max(parsed.getTime(), Date.now())) : null
+  // La aprobación automática no puede quedar después de la publicación.
+  const reviewDueAt = post.reviewDueAt && at ? new Date(Math.min(post.reviewDueAt.getTime(), at.getTime() - 60e3)) : post.reviewDueAt
+  await db.post.update({ where: { id: postId }, data: { scheduledAt: at, reviewDueAt } })
+  revalidatePath(`/apps/${post.app.slug}`, 'layout')
 }
 
 export async function setPostStatus(postId: string, status: 'APPROVED' | 'REJECTED' | 'PENDING_REVIEW') {

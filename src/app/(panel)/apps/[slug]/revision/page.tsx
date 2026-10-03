@@ -1,8 +1,9 @@
-import { approveAll, publishNow, savePost, setPostStatus } from '@/app/actions'
+import { approveAll, publishNow, reschedulePost, savePost, setPostStatus } from '@/app/actions'
 import { ConfirmButton, SubmitButton } from '@/components/client'
 import { ModelSelect } from '@/components/ModelSelect'
 import { PostMeta, PostThumbs } from '@/components/PostPreview'
 import { db } from '@/lib/db'
+import { toLocalInput } from '@/lib/schedule'
 import { fmtDate } from '@/lib/view'
 
 export default async function Review({ params }: PageProps<'/apps/[slug]/revision'>) {
@@ -27,6 +28,17 @@ export default async function Review({ params }: PageProps<'/apps/[slug]/revisio
           <div className="stack">
             <PostMeta post={p} tz={app.timezone} />
             <PostThumbs post={p} />
+            <form action={reschedulePost.bind(null, p.id)} className="row">
+              <label className="small" style={{ flex: 1 }}>
+                Fecha y hora de publicación <span className="hint">{app.timezone.split('/').pop()?.replace(/_/g, ' ')}</span>
+                <input type="datetime-local" name="scheduledAt" defaultValue={p.scheduledAt ? toLocalInput(p.scheduledAt, app.timezone) : ''} />
+              </label>
+              <SubmitButton className="btn sm" pendingText="Guardando…">
+                Guardar fecha
+              </SubmitButton>
+            </form>
+            {!p.scheduledAt && <p className="xs muted">Sin fecha: se publica cuando toques &quot;Publicar ahora&quot;, o poné una fecha y aprobalo.</p>}
+            {p.scheduledAt && p.status !== 'APPROVED' && <p className="xs muted">Se publica en esa fecha sólo si está aprobado.</p>}
             {p.reviewDueAt && p.status === 'PENDING_REVIEW' && <p className="xs muted">Se aprueba solo: {fmtDate(p.reviewDueAt, app.timezone)}</p>}
             <div className="row">
               {p.assets.length > 0 && p.status !== 'DRAFT' && (

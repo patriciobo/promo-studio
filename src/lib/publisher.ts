@@ -48,7 +48,7 @@ export async function publishDue(now = new Date(), log: (s: string) => void = co
         await db.post.update({ where: { id: post.id }, data: { status: 'APPROVED', scheduledAt: new Date(Date.now() + 10 * 60e3 * 2 ** attempts), error: `${x.title}: ${x.cause} (reintento ${attempts})` } })
       } else {
         await db.post.update({ where: { id: post.id }, data: { status: 'FAILED', error: `${x.title}: ${x.cause} → ${x.fix}` } })
-        await notify(`⚠️ ${app.name}: no se pudo publicar. ${x.title}. ${x.fix}`)
+        await notify(`⚠️ ${app.name}: no se pudo publicar. ${x.title}: ${x.cause}. ${x.fix}`)
       }
     }
   }

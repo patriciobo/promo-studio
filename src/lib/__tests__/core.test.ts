@@ -4,12 +4,12 @@ vi.mock('@/lib/db', () => ({ db: {} }))
 vi.mock('../db', () => ({ db: {} }))
 
 import { parseManifest } from '../manifest'
-import { localParts, weekSlots, zonedTime } from '../schedule'
+import { fromLocalInput, localParts, toLocalInput, weekSlots, zonedTime } from '../schedule'
 import { adCandidates, engagement, median, relativeScore } from '../score'
 import { containerRequests, publish, type GraphClient } from '../instagram'
 import { explain, MetaError } from '../meta-errors'
 import { adRequests } from '../meta-ads'
-import { buildPlanPrompt, compactReport, dailySourceUrl, postFromPlan, slideLayout } from '../pipeline'
+import { buildPlanPrompt, compactReport, dailySourceUrl, needsRender, postFromPlan, slideLayout } from '../pipeline'
 import { encodeImageChoice, IMAGE_MODELS, imagePrice, imagesPerMonth, parseImageChoice } from '../models'
 import { aspectFor } from '../openrouter'
 import { normalizeRepo } from '../github'
@@ -141,6 +141,25 @@ describe('planificación', () => {
     const d = postFromPlan({ id: 'a' }, 'b', slot, { slot: 0, pillar: 'x', hook: 'h', caption: 'Texto #tenis', hashtags: ['tenis', 'padel'], altText: 'alt', imagePrompt: 'p', slides: [{ title: '1' }, { title: '2' }] })
     expect(d.caption).toBe('Texto #tenis\n\n#padel')
     expect(d.slides).toHaveLength(1)
+  })
+})
+
+describe('fecha de publicación', () => {
+  it('convierte el datetime-local en la zona de la app, ida y vuelta', () => {
+    const tz = 'America/Argentina/Buenos_Aires'
+    const at = fromLocalInput('2026-10-06T09:30', tz)!
+    expect(at.toISOString()).toBe('2026-10-06T12:30:00.000Z')
+    expect(toLocalInput(at, tz)).toBe('2026-10-06T09:30')
+    expect(fromLocalInput('6/10 9:30', tz)).toBeNull()
+  })
+})
+
+describe('lote semanal', () => {
+  it('al retomar un lote sólo renderiza lo nuevo o lo que falló sin piezas; lo revisado no se toca', () => {
+    expect(needsRender({ status: 'DRAFT', slideCount: 0 })).toBe(true)
+    expect(needsRender({ status: 'FAILED', slideCount: 0 })).toBe(true)
+    expect(needsRender({ status: 'FAILED', slideCount: 3 })).toBe(false) // falló al publicar: se reintenta desde Calendario
+    for (const status of ['PENDING_REVIEW', 'APPROVED', 'PUBLISHED', 'REJECTED']) expect(needsRender({ status, slideCount: 1 })).toBe(false)
   })
 })
 

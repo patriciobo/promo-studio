@@ -84,7 +84,7 @@ async function main() {
   console.log('[worker] listo')
   const stop = async () => {
     await boss.stop()
-    await closeBrowser()
+    await closeBrowser(true)
     process.exit(0)
   }
   process.on('SIGTERM', stop)

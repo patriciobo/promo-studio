@@ -39,7 +39,7 @@ export async function draftManifest(ctx: RepoContext, textModel: string, languag
   const system = `You write promo.yaml manifests that describe an app for an Instagram marketing service. Answer only JSON matching this shape:
 {"name":string,"url":string,"tagline":string(<=120),"description":string,"category":string,"audience":{"countries":[ISO2],"age":[min,max],"interests":[string],"description":string},"languages":[string],"tone":string,"brand":{"colors":["#rrggbb" x2-5, first is the main brand color],"font":string,"logo":string},"features":[string],"screenshots":[string],"pillars":[string x3-5],"hashtags":[string x5-10],"avoid":[string],"cta":string,"links":[{"label":string,"url":string}]}
 User-facing texts in ${language}. Be concrete and faithful to the repo; do not invent features. Pillars are recurring content themes useful for the audience (education, product, community, news…). "avoid" lists claims that would break ad policies or the brand.`
-  const raw = await completeJson<Record<string, unknown>>({ appId: null, model: textModel, system, user: JSON.stringify(ctx), purpose: `asistente promo.yaml ${ctx.repo}`, maxTokens: 3000 })
+  const raw = await completeJson<Record<string, unknown>>({ appId: null, model: textModel, system, user: JSON.stringify(ctx), purpose: `asistente promo.yaml ${ctx.repo}`, maxTokens: 6000 })
   if (!raw.brand || typeof raw.brand !== 'object') raw.brand = {}
   const brand = raw.brand as Record<string, unknown>
   if (!Array.isArray(brand.colors) || brand.colors.length < 2) brand.colors = ctx.colors.slice(0, 3).length >= 2 ? ctx.colors.slice(0, 3) : ['#1c6a4e', '#f6f6f3', '#17191b']

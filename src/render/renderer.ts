@@ -9,7 +9,13 @@ import { env } from '@/lib/env'
 
 const run = promisify(execFile)
 
+// Un solo Chrome compartido por todas las tareas del proceso (el worker corre varias a la vez).
+// Se cierra solo cuando queda un rato sin páginas abiertas: cerrarlo al terminar una tarea rompía las otras.
 let browser: Promise<Browser> | null = null
+let openPages = 0
+let idleTimer: ReturnType<typeof setTimeout> | null = null
+const IDLE_MS = 60_000
+
 export function getBrowser() {
   browser ??= puppeteer.launch({
     executablePath: env.chromePath,
@@ -19,21 +25,44 @@ export function getBrowser() {
   return browser
 }
 
-export async function closeBrowser() {
-  if (browser) (await browser).close()
+async function shutdown() {
+  const b = browser
   browser = null
+  if (b) await (await b).close().catch(() => {})
+}
+
+/**
+ * Libera Chrome cuando ninguna tarea lo está usando. `force` (al apagar el worker) lo cierra igual.
+ */
+export async function closeBrowser(force = false) {
+  if (idleTimer) clearTimeout(idleTimer)
+  idleTimer = null
+  if (force) return shutdown()
+  if (openPages === 0) idleTimer = setTimeout(() => void (openPages === 0 && shutdown()), IDLE_MS)
 }
 
 /** HTML → JPEG (o PNG) del tamaño exacto. */
 export async function renderHtml(html: string, w: number, h: number, type: 'jpeg' | 'png' = 'jpeg'): Promise<Buffer> {
-  const page = await (await getBrowser()).newPage()
+  openPages++
+  if (idleTimer) clearTimeout(idleTimer)
+  idleTimer = null
+  let page
+  try {
+    page = await (await getBrowser()).newPage()
+  } catch (e) {
+    openPages--
+    browser = null // Chrome se cayó: el próximo pedido lo relanza
+    throw e
+  }
   try {
     await page.setViewport({ width: w, height: h, deviceScaleFactor: 1 })
     await page.setContent(html, { waitUntil: 'load', timeout: 30000 })
     await page.evaluate(() => document.fonts.ready)
     return Buffer.from(await page.screenshot({ type, quality: type === 'jpeg' ? 92 : undefined, clip: { x: 0, y: 0, width: w, height: h } }))
   } finally {
-    await page.close()
+    await page.close().catch(() => {})
+    openPages--
+    if (openPages === 0) void closeBrowser()
   }
 }
 

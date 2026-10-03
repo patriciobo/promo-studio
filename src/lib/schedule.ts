@@ -35,6 +35,18 @@ export function localParts(date: Date, timeZone: string) {
   return { date: `${p.year}-${p.month}-${p.day}`, minutes: +p.hour * 60 + +p.minute }
 }
 
+/** Instante → valor de un <input type="datetime-local"> ("AAAA-MM-DDTHH:MM") en la zona de la app. */
+export function toLocalInput(date: Date, timeZone: string) {
+  const { date: d, minutes } = localParts(date, timeZone)
+  return `${d}T${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
+}
+
+/** Valor de un <input type="datetime-local"> en la zona de la app → instante UTC (null si no es válido). */
+export function fromLocalInput(value: string, timeZone: string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value)
+  return m ? zonedTime(+m[1], +m[2], +m[3], +m[4], +m[5], timeZone) : null
+}
+
 /** Fecha y hora local de una zona horaria → instante UTC. */
 export function zonedTime(y: number, m: number, d: number, hh: number, mm: number, timeZone: string) {
   const guess = new Date(Date.UTC(y, m - 1, d, hh, mm))

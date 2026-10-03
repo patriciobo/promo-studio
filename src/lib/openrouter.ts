@@ -48,9 +48,10 @@ export async function completeJson<T = unknown>(opts: { appId: string | null; mo
     response_format: { type: 'json_object' },
     max_tokens: opts.maxTokens ?? 6000,
     usage: { include: true },
-  })) as { choices: { message: { content: string } }[]; usage?: { cost?: number; total_tokens?: number } }
+  })) as { choices: { message: { content: string }; finish_reason?: string }[]; usage?: { cost?: number; total_tokens?: number } }
   await record(opts.appId, 'text', opts.model, r.usage?.cost ?? 0, r.usage?.total_tokens, opts.purpose)
   const content = r.choices?.[0]?.message?.content ?? ''
+  if (r.choices?.[0]?.finish_reason === 'length') throw new OpenRouterError(200, `la respuesta de ${opts.model} se cortó por el límite de tokens (${opts.maxTokens ?? 6000}); probá con otro modelo de texto`)
   try {
     return JSON.parse(content.replace(/^```(?:json)?\s*|\s*```$/g, '')) as T
   } catch {

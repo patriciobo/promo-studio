@@ -25,7 +25,7 @@ export async function buildProfileKit(appId: string): Promise<ProfileKit> {
     appId,
     model: app.textModel,
     purpose: 'kit de perfil',
-    maxTokens: 1200,
+    maxTokens: 4000, // los modelos que razonan gastan parte en pensar: con poco margen el JSON llega cortado
     system: `You optimize Instagram business profiles for discovery. Write in ${m.languages[0]} with tone: ${m.tone}. Answer only JSON {"names":[3 strings],"bios":[3 strings],"category":string,"highlights":[4 short labels]}.
 names: the searchable Name field (max 30 chars): brand + main keyword (e.g. "Mi Tenis · Entrenamiento tenis"). bios: max 150 chars each, value proposition + who it is for + call to action, at most 2 emojis, no hashtags. highlights: 1-2 word labels like "Qué es", "Cómo usar", "Novedades", "Preguntas".`,
     user: JSON.stringify({ name: m.name, tagline: m.tagline, description: m.description, audience: m.audience, features: m.features, cta: m.cta }),

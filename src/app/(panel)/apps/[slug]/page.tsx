@@ -90,7 +90,7 @@ export default async function Calendar({ params }: PageProps<'/apps/[slug]'>) {
                       Revisar
                     </Link>
                   )}
-                  {p.status === 'FAILED' && (
+                  {p.status === 'FAILED' && p.assets.length > 0 && (
                     <form action={retryPost.bind(null, p.id)}>
                       <SubmitButton className="btn sm">Reintentar ahora</SubmitButton>
                     </form>

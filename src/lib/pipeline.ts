@@ -153,12 +153,29 @@ Answer only with JSON: {"posts":[{"slot":number,"pillar":string,"hook":string,"c
 export async function planBatch(appId: string, weekStart: Date) {
   const app = await db.app.findUniqueOrThrow({ where: { id: appId } })
   const m = manifestOf(app)
-  const existing = await db.batch.findUnique({ where: { appId_weekStart: { appId, weekStart } } })
-  if (existing && existing.status !== 'FAILED') return existing
+  const existing = await db.batch.findUnique({ where: { appId_weekStart: { appId, weekStart } }, include: { _count: { select: { posts: true } } } })
+  if (existing) {
+    // Nunca se borran posts de un lote: un lote fallido que ya tiene posts se retoma (se renderiza lo que falta),
+    // así no se pierde lo que ya revisaste o aprobaste.
+    if (existing._count.posts) return existing.status === 'READY' && !existing.error ? existing : db.batch.update({ where: { id: existing.id }, data: { status: 'GENERATING', error: null } })
+    // Sin posts: se vuelve a planificar si falló o quedó trabado planificando (p. ej. el worker se reinició).
+    if (existing.status !== 'FAILED' && existing.status !== 'PLANNING') return existing
+  }
   const batch = existing
     ? await db.batch.update({ where: { id: existing.id }, data: { status: 'PLANNING', error: null } })
     : await db.batch.create({ data: { appId, weekStart, status: 'PLANNING' } })
-  await db.post.deleteMany({ where: { batchId: batch.id } })
+  try {
+    return await planPosts(app, m, batch.id, weekStart)
+  } catch (e) {
+    await db.batch.update({ where: { id: batch.id }, data: { status: 'FAILED', error: `No se pudo planificar: ${(e as Error).message}` } })
+    await notify(`⚠️ ${app.name}: falló la planificación de la semana del ${weekStart.toISOString().slice(0, 10)}: ${(e as Error).message}`)
+    return db.batch.findUniqueOrThrow({ where: { id: batch.id } })
+  }
+}
+
+async function planPosts(app: App, m: Manifest, batchId: string, weekStart: Date) {
+  const appId = app.id
+  const batch = { id: batchId }
 
   const slots = weekSlots(weekStart, m.cadence, app.postTime, app.timezone)
   if (!slots.length) return db.batch.update({ where: { id: batch.id }, data: { status: 'READY', notes: 'Cadencia semanal en 0' } })
@@ -321,22 +338,33 @@ export async function renderPost(postId: string, opts: { regenerateImage?: boole
   }
 }
 
+/** Posts del lote que falta renderizar: los nuevos y los que fallaron al generarse. Lo revisado no se toca. */
+export const needsRender = (p: { status: string; slideCount: number }) => p.status === 'DRAFT' || (p.status === 'FAILED' && p.slideCount === 0)
+
+/**
+ * Renderiza los posts pendientes del lote, de a uno: si uno falla queda marcado con su error y los demás siguen.
+ * No relanza errores, para que la cola no reintente el lote entero.
+ */
 export async function generateBatch(batchId: string, image?: ImageChoice) {
-  const batch = await db.batch.findUniqueOrThrow({ where: { id: batchId }, include: { app: true, posts: true } })
+  const batch = await db.batch.findUniqueOrThrow({ where: { id: batchId }, include: { app: true, posts: { include: { _count: { select: { assets: { where: { kind: 'SLIDE' } } } } } } } })
   const reviewHours = batch.app.autoApproveHours
-  try {
-    for (const post of batch.posts) {
+  const todo = batch.posts.filter((p) => needsRender({ status: p.status, slideCount: p._count.assets }))
+  const failed: string[] = []
+  for (const post of todo) {
+    try {
       await renderPost(post.id, { image })
       const due = new Date(Math.min(Date.now() + reviewHours * 3600e3, (post.scheduledAt?.getTime() ?? Infinity) - 3600e3))
-      await db.post.update({ where: { id: post.id }, data: { status: 'PENDING_REVIEW', reviewDueAt: due } })
+      await db.post.update({ where: { id: post.id }, data: { status: 'PENDING_REVIEW', reviewDueAt: due, error: null } })
+    } catch (e) {
+      failed.push((e as Error).message)
+      await db.post.update({ where: { id: post.id }, data: { status: 'FAILED', error: `No se pudo generar: ${(e as Error).message}` } })
     }
-    await db.batch.update({ where: { id: batchId }, data: { status: 'READY' } })
-    await notify(`📸 ${batch.app.name}: ${batch.posts.length} publicaciones de la semana listas para revisar. Se aprueban solas en ${reviewHours} h.`)
-  } catch (e) {
-    await db.batch.update({ where: { id: batchId }, data: { status: 'FAILED', error: (e as Error).message } })
-    await notify(`⚠️ ${batch.app.name}: falló la generación del lote: ${(e as Error).message}`)
-    throw e
   }
+  const ok = todo.length - failed.length
+  const error = failed.length ? `${failed.length} de ${todo.length} publicaciones no se pudieron generar (${failed[0]}). Tocá "Generar semana" para reintentar sólo esas.` : null
+  await db.batch.update({ where: { id: batchId }, data: { status: failed.length && !ok ? 'FAILED' : 'READY', error } })
+  if (ok) await notify(`📸 ${batch.app.name}: ${ok} publicaciones de la semana listas para revisar. Se aprueban solas en ${reviewHours} h.`)
+  if (failed.length) await notify(`⚠️ ${batch.app.name}: ${error}`)
 }
 
 /** Sincronizar + planificar + generar la semana que empieza en `weekStart`. */
