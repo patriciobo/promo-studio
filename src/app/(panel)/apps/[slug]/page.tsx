@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { generateWeek, retryPost, syncNow } from '@/app/actions'
 import { AutoRefresh, SubmitButton } from '@/components/client'
+import { ImagePicker } from '@/components/ImagePicker'
 import { ModelSelect } from '@/components/ModelSelect'
 import { PostMeta, PostThumbs } from '@/components/PostPreview'
 import { db } from '@/lib/db'
@@ -19,6 +20,7 @@ export default async function Calendar({ params, searchParams }: PageProps<'/app
     take: 6,
     include: { posts: { orderBy: { scheduledAt: 'asc' }, include: { assets: true } } },
   })
+  const images = await db.appImage.findMany({ where: { appId: app.id, archived: false }, orderBy: { createdAt: 'desc' }, take: 24 })
   const nm = nextMonday().toISOString().slice(0, 10)
   const working = batches.some((b) => b.status === 'PLANNING' || b.status === 'GENERATING')
   const daily = (app.manifest as unknown as Manifest | null)?.daily
@@ -32,25 +34,28 @@ export default async function Calendar({ params, searchParams }: PageProps<'/app
         </p>
       )}
       {aviso === 'ya-generada' && <p className="notice warn">La semana del {String(semana)} ya está generada. Para rehacer una publicación, editala o regenerá su imagen desde Revisión.</p>}
-      <div className="card row between">
-        <div className="stack-sm">
-          <h2>Lote semanal</h2>
-          <p className="small muted">Se genera solo cada domingo a las 18:00. Podés adelantarlo o rehacer una semana que falló.</p>
-          {app.manifestError && <p className="notice bad small">El promo.yaml tiene errores: {app.manifestError}</p>}
-          {!app.imageModel && <p className="notice warn small">Sin modelo de imagen: las piezas se arman con el color de la marca. Elegí uno en Ajustes.</p>}
+      <div className="card stack">
+        <div className="row between">
+          <div className="stack-sm">
+            <h2>Lote semanal</h2>
+            <p className="small muted">Se genera solo cada domingo a las 18:00. Podés adelantarlo o rehacer una semana que falló.</p>
+            {app.manifestError && <p className="notice bad small">El promo.yaml tiene errores: {app.manifestError}</p>}
+            {!app.imageModel && <p className="notice warn small">Sin modelo de imagen: las piezas se arman con el color de la marca. Elegí uno en Ajustes.</p>}
+          </div>
+          <div className="row">
+            <form action={syncNow.bind(null, slug)}>
+              <SubmitButton className="btn" pendingText="Sincronizando…">
+                Sincronizar repo
+              </SubmitButton>
+            </form>
+            <form id="generar-semana" action={generateWeek.bind(null, slug)} className="row">
+              <input type="date" name="week" defaultValue={nm} style={{ width: 160 }} aria-label="Lunes de la semana" />
+              <ModelSelect app={app} />
+              <SubmitButton pendingText="Encolando…">Generar semana</SubmitButton>
+            </form>
+          </div>
         </div>
-        <div className="row">
-          <form action={syncNow.bind(null, slug)}>
-            <SubmitButton className="btn" pendingText="Sincronizando…">
-              Sincronizar repo
-            </SubmitButton>
-          </form>
-          <form action={generateWeek.bind(null, slug)} className="row">
-            <input type="date" name="week" defaultValue={nm} style={{ width: 160 }} aria-label="Lunes de la semana" />
-            <ModelSelect app={app} />
-            <SubmitButton pendingText="Encolando…">Generar semana</SubmitButton>
-          </form>
-        </div>
+        <ImagePicker images={images} slug={slug} form="generar-semana" hint="El plan reparte estas imágenes entre los posts de la semana." />
       </div>
       {daily && (
         <section className="stack">

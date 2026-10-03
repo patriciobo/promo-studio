@@ -24,6 +24,7 @@ export default async function AppLayout({ children, params }: LayoutProps<'/apps
           { href: base, label: 'Calendario' },
           { href: `${base}/crear`, label: 'Crear ahora' },
           { href: `${base}/revision`, label: 'Revisión', count: app._count.posts },
+          { href: `${base}/imagenes`, label: 'Imágenes' },
           { href: `${base}/rendimiento`, label: 'Rendimiento y anuncios' },
           { href: `${base}/manifiesto`, label: 'promo.yaml' },
           { href: `${base}/conexion`, label: 'Instagram' },

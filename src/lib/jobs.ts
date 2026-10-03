@@ -7,10 +7,11 @@ export const QUEUES = {
   insights: 'insights', // cada hora: métricas
   daily: 'daily', // cada 10 minutos: edición diaria de las apps que la tienen
   weekly: 'weekly', // domingo: lote de cada app
-  runWeekly: 'run-weekly', // { appId, weekStart, image? }
+  runWeekly: 'run-weekly', // { appId, weekStart, image?, imageIds? }
   renderPost: 'render-post', // { postId, regenerateImage?, image? }
   syncApp: 'sync-app', // { appId }
-  createPost: 'create-post', // { postId, topic, image? }: publicación a pedido
+  createPost: 'create-post', // { postId, topic, image?, imageIds? }: publicación a pedido
+  describeImage: 'describe-image', // { imageId }: descripción de una imagen subida
 } as const
 
 let boss: Promise<PgBoss> | null = null

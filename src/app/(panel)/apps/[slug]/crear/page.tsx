@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { PostType } from '@prisma/client'
 import { createPostNow, retryPost } from '@/app/actions'
 import { AutoRefresh, SubmitButton } from '@/components/client'
+import { ImagePicker } from '@/components/ImagePicker'
 import { ModelSelect } from '@/components/ModelSelect'
 import { PostMeta, PostThumbs } from '@/components/PostPreview'
 import { db } from '@/lib/db'
@@ -19,6 +20,7 @@ export default async function CreateNow({ params }: PageProps<'/apps/[slug]/crea
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
   const pillars = (app.manifest as unknown as Manifest | null)?.pillars ?? []
   const posts = await db.post.findMany({ where: { appId: app.id, batchId: null, dailyDate: null }, orderBy: { createdAt: 'desc' }, take: 10, include: { assets: true } })
+  const images = await db.appImage.findMany({ where: { appId: app.id, archived: false }, orderBy: { createdAt: 'desc' }, take: 24 })
   const busy = posts.some((p) => p.status === 'DRAFT' || p.status === 'PUBLISHING' || (p.status === 'APPROVED' && p.scheduledAt && p.scheduledAt <= new Date()))
   return (
     <div className="stack" style={{ gap: 24 }}>
@@ -26,7 +28,7 @@ export default async function CreateNow({ params }: PageProps<'/apps/[slug]/crea
       <section className="card stack">
         <div className="stack-sm">
           <h2>Crear una publicación ahora</h2>
-          <p className="small muted">Elegí el tipo y el tema. Se genera en un minuto o dos, la revisás y la publicás en el momento desde Revisión. No se aprueba sola.</p>
+          <p className="small muted">Elegí el tipo y el tema (o subí capturas y el post cuenta lo que muestran). Se genera en un minuto o dos, la revisás y la publicás en el momento desde Revisión. No se aprueba sola.</p>
         </div>
         {!app.manifest && <p className="notice bad small">Primero hace falta un promo.yaml válido: sincronizá la app.</p>}
         <form action={createPostNow.bind(null, slug)} className="stack">
@@ -39,8 +41,8 @@ export default async function CreateNow({ params }: PageProps<'/apps/[slug]/crea
             ))}
           </fieldset>
           <label>
-            Tema
-            <textarea name="topic" rows={3} maxLength={500} required placeholder="Por ejemplo: 3 errores comunes al cargar gastos y cómo la app los evita" />
+            Tema <span className="hint">opcional si elegís imágenes</span>
+            <textarea name="topic" rows={3} maxLength={500} placeholder="Por ejemplo: 3 errores comunes al cargar gastos y cómo la app los evita" />
           </label>
           {pillars.length > 0 && (
             <label>
@@ -55,6 +57,7 @@ export default async function CreateNow({ params }: PageProps<'/apps/[slug]/crea
               </select>
             </label>
           )}
+          <ImagePicker images={images} slug={slug} hint="Por ejemplo, las pantallas de un flujo en orden para un carrusel paso a paso." />
           <div className="row">
             <ModelSelect app={app} />
             <SubmitButton pendingText="Encolando…">{app.manifest ? 'Generar' : 'Generar (falta promo.yaml)'}</SubmitButton>

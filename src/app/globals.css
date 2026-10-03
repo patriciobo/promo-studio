@@ -178,3 +178,12 @@ details summary { cursor: pointer; font-weight: 560; }
 .spinner { display: inline-block; width: 11px; height: 11px; margin-right: 6px; vertical-align: -1px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
+
+.image-picker summary .hint { font-weight: 400; color: var(--muted); font-size: 13px; }
+.image-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+.image-pick { position: relative; display: block; cursor: pointer; }
+.image-pick input { position: absolute; top: 6px; left: 6px; }
+.image-pick img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: var(--r-sm); border: 2px solid var(--border); background: var(--surface-2); display: block; }
+.image-pick:has(input:checked) img { border-color: var(--primary); }
+.library-card img { width: 100%; aspect-ratio: 3 / 4; object-fit: contain; border-radius: var(--r-sm); background: var(--surface-2); }
+.library-card.archived { opacity: .55; }

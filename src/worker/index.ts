@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import type { ImageChoice } from '@/lib/models'
 import { getBoss, QUEUES } from '@/lib/jobs'
 import { autoApprove, collectInsights, publishDue } from '@/lib/publisher'
+import { describeImage } from '@/lib/images'
 import { createOnDemand, renderPost, runDaily, runWeekly, syncApp } from '@/lib/pipeline'
 import { nextMonday } from '@/lib/schedule'
 import { closeBrowser, renderHtml } from '@/render/renderer'
@@ -57,10 +58,11 @@ async function main() {
   })
 
   // `image`: modelo elegido junto al botón; el lote automático del domingo no lo trae y usa el de Ajustes.
-  await boss.work<{ appId: string; weekStart: string; image?: ImageChoice }>(QUEUES.runWeekly, async (jobs: Job<{ appId: string; weekStart: string; image?: ImageChoice }>[]) => {
+  type WeeklyJob = { appId: string; weekStart: string; image?: ImageChoice; imageIds?: string[] }
+  await boss.work<WeeklyJob>(QUEUES.runWeekly, async (jobs: Job<WeeklyJob>[]) => {
     for (const j of jobs) {
       console.log(`[lote] ${j.data.appId} semana ${j.data.weekStart.slice(0, 10)}`)
-      await runWeekly(j.data.appId, new Date(j.data.weekStart), j.data.image)
+      await runWeekly(j.data.appId, new Date(j.data.weekStart), j.data.image, j.data.imageIds)
       await closeBrowser()
     }
   })
@@ -69,12 +71,18 @@ async function main() {
     for (const j of jobs) await renderPost(j.data.postId, { regenerateImage: j.data.regenerateImage, image: j.data.image })
   })
 
-  await boss.work<{ postId: string; topic: string; image?: ImageChoice }>(QUEUES.createPost, async (jobs: Job<{ postId: string; topic: string; image?: ImageChoice }>[]) => {
+  type CreateJob = { postId: string; topic: string; image?: ImageChoice; imageIds?: string[] }
+  await boss.work<CreateJob>(QUEUES.createPost, async (jobs: Job<CreateJob>[]) => {
     for (const j of jobs) {
       console.log(`[a pedido] ${j.data.postId}: ${j.data.topic}`)
-      await createOnDemand(j.data.postId, j.data.topic, j.data.image)
+      await createOnDemand(j.data.postId, j.data.topic, j.data.image, j.data.imageIds)
       await closeBrowser()
     }
+  })
+
+  await boss.work<{ imageId: string }>(QUEUES.describeImage, async (jobs: Job<{ imageId: string }>[]) => {
+    // Si falla (sin crédito, modelo sin visión) no se reintenta: el planificador la describe cuando la use.
+    for (const j of jobs) await describeImage(j.data.imageId).catch((e) => console.error('[imagen]', e.message))
   })
 
   await boss.work<{ appId: string }>(QUEUES.syncApp, async (jobs: Job<{ appId: string }>[]) => {

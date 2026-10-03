@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import { requireUser } from '@/auth'
 import { db } from '@/lib/db'
 import { normalizeRepo } from '@/lib/github'
+import { addImages, imageFiles } from '@/lib/images'
 import { enqueue, QUEUES } from '@/lib/jobs'
 import { discoverAccounts, graph, adAccounts, token } from '@/lib/instagram'
 import { parseManifest } from '@/lib/manifest'
@@ -20,6 +21,14 @@ import { fromLocalInput, nextMonday } from '@/lib/schedule'
 import { setSecret, type SecretKey } from '@/lib/settings'
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').replace(/\r\n/g, '\n').trim()
+
+/** Imágenes en las que se basa un pedido: las subidas en el formulario (quedan en la biblioteca) y las elegidas de la biblioteca. */
+async function requestImages(app: { id: string; slug: string }, f: FormData) {
+  const uploaded = await addImages(app, imageFiles(f.getAll('images')), str(f, 'imageNote').slice(0, 500))
+  const picked = f.getAll('imageIds').map(String).filter(Boolean)
+  const known = picked.length ? await db.appImage.findMany({ where: { appId: app.id, id: { in: picked } }, select: { id: true } }) : []
+  return [...uploaded.map((i) => i.id), ...known.map((i) => i.id)]
+}
 
 // --- Apps -------------------------------------------------------------------
 
@@ -71,8 +80,9 @@ export async function generateWeek(slug: string, f: FormData) {
   if (existing?.status === 'READY' && !existing.error) redirect(`/apps/${slug}?aviso=ya-generada&semana=${day}`)
   // El lote aparece enseguida en el Calendario ("Planificando") aunque el worker tarde unos segundos en tomarlo.
   if (!existing) await db.batch.create({ data: { appId: app.id, weekStart, status: 'PLANNING' } })
+  const imageIds = await requestImages(app, f)
   // Un lote fallido de esa semana se retoma (planBatch lo detecta).
-  await enqueue(QUEUES.runWeekly, { appId: app.id, weekStart: weekStart.toISOString(), image: parseImageChoice(str(f, 'imageChoice')) }, { singletonKey: `${app.id}-${weekStart.toISOString()}` })
+  await enqueue(QUEUES.runWeekly, { appId: app.id, weekStart: weekStart.toISOString(), image: parseImageChoice(str(f, 'imageChoice')), imageIds }, { singletonKey: `${app.id}-${weekStart.toISOString()}` })
   revalidatePath(`/apps/${slug}`)
   redirect(`/apps/${slug}?aviso=generando&semana=${day}`)
 }
@@ -85,11 +95,37 @@ export async function createPostNow(slug: string, f: FormData) {
   await requireUser()
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
   const type = str(f, 'type') as PostType
-  const topic = str(f, 'topic').slice(0, 500)
-  if (!POST_TYPES.includes(type) || !topic || !app.manifest) return
+  if (!POST_TYPES.includes(type) || !app.manifest) return
+  const imageIds = await requestImages(app, f)
+  // Con imágenes el tema es opcional: el post cuenta lo que muestran.
+  const topic = str(f, 'topic').slice(0, 500) || (imageIds.length ? 'Lo que muestran las imágenes elegidas' : '')
+  if (!topic) return
   const post = await db.post.create({ data: { appId: app.id, type, status: 'DRAFT', hook: topic.slice(0, 200), pillar: str(f, 'pillar') || null } })
-  await enqueue(QUEUES.createPost, { postId: post.id, topic, image: parseImageChoice(str(f, 'imageChoice')) })
+  await enqueue(QUEUES.createPost, { postId: post.id, topic, image: parseImageChoice(str(f, 'imageChoice')), imageIds })
   revalidatePath(`/apps/${slug}`, 'layout')
+}
+
+// --- Imágenes -----------------------------------------------------------------
+
+export async function uploadImages(slug: string, f: FormData) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  const imgs = await addImages(app, imageFiles(f.getAll('images')), str(f, 'imageNote').slice(0, 500))
+  for (const i of imgs) await enqueue(QUEUES.describeImage, { imageId: i.id })
+  revalidatePath(`/apps/${slug}`, 'layout')
+}
+
+export async function updateImage(imageId: string, f: FormData) {
+  await requireUser()
+  const img = await db.appImage.update({ where: { id: imageId }, data: { note: str(f, 'note').slice(0, 500) || null, kind: str(f, 'kind') === 'PHOTO' ? 'PHOTO' : 'SCREENSHOT' }, include: { app: true } })
+  revalidatePath(`/apps/${img.app.slug}`, 'layout')
+}
+
+/** Archivada: el planificador deja de usarla, pero los posts que ya la usan se siguen viendo igual. */
+export async function setImageArchived(imageId: string, archived: boolean) {
+  await requireUser()
+  const img = await db.appImage.update({ where: { id: imageId }, data: { archived }, include: { app: true } })
+  revalidatePath(`/apps/${img.app.slug}`, 'layout')
 }
 
 /** Aprueba el post y lo publica ya (el worker lo toma en el momento). */

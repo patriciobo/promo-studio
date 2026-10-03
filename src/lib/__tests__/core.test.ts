@@ -9,7 +9,7 @@ import { adCandidates, engagement, median, relativeScore } from '../score'
 import { containerRequests, publish, type GraphClient } from '../instagram'
 import { explain, MetaError } from '../meta-errors'
 import { adRequests } from '../meta-ads'
-import { buildPlanPrompt, compactReport, dailySourceUrl, needsRender, postFromPlan, slideLayout } from '../pipeline'
+import { buildPlanPrompt, compactReport, dailySourceUrl, keepKnownImages, mockPlan, needsRender, postFromPlan, slideLayout } from '../pipeline'
 import { encodeImageChoice, IMAGE_MODELS, imagePrice, imagesPerMonth, parseImageChoice } from '../models'
 import { aspectFor } from '../openrouter'
 import { normalizeRepo } from '../github'
@@ -137,6 +137,32 @@ describe('planificación', () => {
     expect(p.system).toMatch(/flat vector illustration/)
     expect(p.system).toMatch(/own imagePrompt/)
   })
+  it('pasa las imágenes subidas al prompt y pide basarse en las elegidas', () => {
+    const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 2, reels: 0, stories: 0 }, '10:00', 'UTC')
+    const images = [
+      { id: 'a', kind: 'SCREENSHOT' as const, description: 'Pantalla para agendar un turno', note: 'paso 1', focus: true },
+      { id: 'b', kind: 'PHOTO' as const, description: 'Cancha de tenis', note: null, focus: false },
+    ]
+    const p = buildPlanPrompt(m, slots, { feed: [], texts: [], releases: [], recent: [], bestPillars: [], images })
+    const u = JSON.parse(p.user)
+    expect(u.appImages).toEqual([
+      { id: 'a', kind: 'SCREENSHOT', shows: 'Pantalla para agendar un turno', userNote: 'paso 1', focus: true },
+      { id: 'b', kind: 'PHOTO', shows: 'Cancha de tenis' },
+    ])
+    expect(u.instructions).toMatch(/focus:true/)
+    expect(p.system).toMatch(/imageId/)
+    const none = buildPlanPrompt(m, slots, { feed: [], texts: [], releases: [], recent: [], bestPillars: [] })
+    expect(JSON.parse(none.user).appImages).toBeUndefined()
+    expect(none.system).not.toMatch(/imageId/)
+  })
+  it('descarta imageId inventados y el modo demo reparte las imágenes elegidas', () => {
+    const plan = { posts: [{ slot: 0, pillar: 'x', hook: 'h', caption: 'c', hashtags: [], altText: '', imagePrompt: 'p', slides: [{ title: '1', imageId: 'a' }, { title: '2', imageId: 'inventada' }] }] }
+    const kept = keepKnownImages(plan, [{ id: 'a', kind: 'SCREENSHOT', description: null, note: null, focus: true }])
+    expect(kept.posts[0].slides.map((s) => s.imageId)).toEqual(['a', null])
+    const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 2, reels: 0, stories: 0 }, '10:00', 'UTC')
+    const mock = mockPlan(m, slots, [], ['a', 'b'])
+    expect(mock.posts.map((p) => p.slides.map((s) => (s as { imageId?: string }).imageId).find(Boolean))).toEqual(['a', 'b'])
+  })
   it('agrega hashtags que faltan y recorta diapositivas según el tipo', () => {
     const slot = { type: 'IMAGE' as const, day: 0, at: new Date() }
     const d = postFromPlan({ id: 'a' }, 'b', slot, { slot: 0, pillar: 'x', hook: 'h', caption: 'Texto #tenis', hashtags: ['tenis', 'padel'], altText: 'alt', imagePrompt: 'p', slides: [{ title: '1' }, { title: '2' }] })
@@ -240,6 +266,13 @@ describe('modelos de imagen', () => {
     expect([0, 1, 2].map((i) => slideLayout('CAROUSEL', 3, i, false, s))).toEqual(['cover', 'text-illustration', 'cta'])
     expect([0, 1, 2, 3].map((i) => slideLayout('REEL', 4, i, true, s))).toEqual(['cover', 'cover', 'cover', 'cta'])
     expect(slideLayout('STORY', 1, 0, true, s)).toBe('cover')
+  })
+  it('una captura subida va enmarcada y una foto reemplaza la ilustración', () => {
+    const s = { title: 't', imageId: 'img' }
+    expect([0, 1, 2, 3].map((i) => slideLayout('CAROUSEL', 4, i, false, s, 'SCREENSHOT'))).toEqual(['text-shot', 'text-shot', 'text-shot', 'cta'])
+    expect([0, 1, 2, 3].map((i) => slideLayout('CAROUSEL', 4, i, false, s, 'PHOTO'))).toEqual(['cover', 'text-illustration', 'text-illustration', 'cta'])
+    expect(slideLayout('REEL', 3, 1, false, s, 'PHOTO')).toBe('cover')
+    expect(slideLayout('STORY', 1, 0, false, s, 'SCREENSHOT')).toBe('text-shot')
   })
 })
 

@@ -32,18 +32,20 @@ export class OpenRouterError extends Error {
   }
 }
 
+const imagePart = (url: string) => ({ type: 'image_url', image_url: { url } })
+
 async function record(appId: string | null, kind: 'text' | 'image', model: string, cost: number, tokens: number | undefined, purpose: string) {
   await db.usageLedger.create({ data: { appId, kind, model, costUsd: cost, tokens, purpose } })
 }
 
-/** Pide una respuesta JSON al modelo de texto. */
-export async function completeJson<T = unknown>(opts: { appId: string | null; model: string; system: string; user: string; purpose: string; maxTokens?: number; onCost?: (usd: number) => void }): Promise<T> {
+/** Pide una respuesta JSON al modelo de texto. `images` (data URIs) se le muestran junto al pedido. */
+export async function completeJson<T = unknown>(opts: { appId: string | null; model: string; system: string; user: string; purpose: string; maxTokens?: number; images?: string[]; onCost?: (usd: number) => void }): Promise<T> {
   await assertBudget(opts.appId, 0.05)
   const r = (await call('/chat/completions', {
     model: opts.model,
     messages: [
       { role: 'system', content: opts.system },
-      { role: 'user', content: opts.user },
+      { role: 'user', content: opts.images?.length ? [{ type: 'text', text: opts.user }, ...opts.images.map(imagePart)] : opts.user },
     ],
     response_format: { type: 'json_object' },
     max_tokens: opts.maxTokens ?? 6000,
@@ -64,8 +66,6 @@ export type AspectRatio = '4:5' | '3:4' | '9:16' | '1:1'
 
 /** Aspecto a pedir: algunos modelos no aceptan 4:5 para el feed (la plantilla recorta con object-fit: cover). */
 export const aspectFor = (model: string, aspect: AspectRatio): AspectRatio => (aspect === '4:5' && imageModel(model)?.feedAspect === '3:4' ? '3:4' : aspect)
-
-const imagePart = (url: string) => ({ type: 'image_url', image_url: { url } })
 
 /**
  * Genera una imagen. Usa el endpoint de imágenes y, si el modelo no lo soporta,

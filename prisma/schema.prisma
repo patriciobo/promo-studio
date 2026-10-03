@@ -44,6 +44,7 @@ model App {
   usage    UsageLedger[]
   adDrafts AdDraft[]
   linkHits LinkHit[]
+  images   AppImage[]
 }
 
 model Batch {
@@ -54,6 +55,7 @@ model Batch {
   status    BatchStatus @default(PLANNING)
   error     String?
   notes     String?
+  imageIds  String[]    @default([]) // imágenes subidas en las que se basa la semana
   createdAt DateTime    @default(now())
   posts     Post[]
 
@@ -98,8 +100,8 @@ model Post {
   insights InsightSnapshot[]
   adDraft  AdDraft?
 
-  @@index([status, scheduledAt])
   @@unique([appId, dailyDate, type])
+  @@index([status, scheduledAt])
 }
 
 enum PostType {
@@ -140,42 +142,62 @@ enum AssetKind {
   VIDEO // reel o story en video
 }
 
+/// Imagen subida por el usuario (captura de la app o foto) para basar publicaciones en ella.
+model AppImage {
+  id          String       @id @default(cuid())
+  appId       String
+  app         App          @relation(fields: [appId], references: [id], onDelete: Cascade)
+  path        String // relativo a MEDIA_DIR
+  kind        AppImageKind @default(SCREENSHOT)
+  description String? // qué muestra, escrito por el modelo de texto al subirla
+  note        String? // lo que el usuario quiere contar con ella
+  archived    Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+
+  @@index([appId, archived])
+}
+
+enum AppImageKind {
+  SCREENSHOT // pantalla de la app: va enmarcada junto al texto
+  PHOTO // foto o imagen: puede ir de fondo
+}
+
 model InsightSnapshot {
-  id        String   @id @default(cuid())
-  postId    String
-  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  hoursAfter Int
-  reach     Int?
-  views     Int?
-  likes     Int?
-  comments  Int?
-  saves     Int?
-  shares    Int?
+  id            String   @id @default(cuid())
+  postId        String
+  post          Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  hoursAfter    Int
+  reach         Int?
+  views         Int?
+  likes         Int?
+  comments      Int?
+  saves         Int?
+  shares        Int?
   profileVisits Int?
-  raw       Json?
-  createdAt DateTime @default(now())
+  raw           Json?
+  createdAt     DateTime @default(now())
 
   @@unique([postId, hoursAfter])
 }
 
 model AdDraft {
-  id             String   @id @default(cuid())
-  postId         String   @unique
-  post           Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  appId          String
-  app            App      @relation(fields: [appId], references: [id], onDelete: Cascade)
-  objective      String
-  dailyBudget    Int // en centavos de la moneda de la cuenta publicitaria
-  days           Int
-  campaignId     String?
-  adSetId        String?
-  creativeId     String?
-  adId           String?
-  status         String   @default("PAUSED")
-  error          String?
-  metrics        Json?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id          String   @id @default(cuid())
+  postId      String   @unique
+  post        Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  appId       String
+  app         App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+  objective   String
+  dailyBudget Int // en centavos de la moneda de la cuenta publicitaria
+  days        Int
+  campaignId  String?
+  adSetId     String?
+  creativeId  String?
+  adId        String?
+  status      String   @default("PAUSED")
+  error       String?
+  metrics     Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model UsageLedger {
