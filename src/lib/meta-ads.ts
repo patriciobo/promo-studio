@@ -27,7 +27,8 @@ export function targetingSpec(t: Targeting, placements: string) {
   return {
     geo_locations: { countries: t.countries.length ? t.countries : ['AR'] },
     age_min: Math.max(18, t.ageMin),
-    age_max: Math.min(65, t.ageMax),
+    // Con Advantage+ Meta no acepta una edad máxima menor a 65 como límite (sólo como sugerencia): se manda 65.
+    age_max: t.advantage ? 65 : Math.min(65, t.ageMax),
     ...(t.interests.length ? { flexible_spec: [{ interests: t.interests.map(({ id, name }) => ({ id, name })) }] } : {}),
     targeting_automation: { advantage_audience: t.advantage ? 1 : 0 },
     publisher_platforms: fb ? ['instagram', 'facebook'] : ['instagram'],

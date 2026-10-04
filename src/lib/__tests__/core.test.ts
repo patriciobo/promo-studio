@@ -173,6 +173,11 @@ describe('anuncios', () => {
     expect(t).toMatchObject({ age_min: 18, age_max: 65, publisher_platforms: ['instagram'], targeting_automation: { advantage_audience: 1 } })
     expect(t.flexible_spec[0].interests).toEqual([{ id: '6003', name: 'Tenis' }])
   })
+  it('con Advantage+ la edad máxima va en 65 (Meta no acepta un límite menor)', () => {
+    const ages = (advantage: boolean) => JSON.parse(campaignRequests({ ...base, targeting: { ...base.targeting, ageMin: 20, ageMax: 50, advantage } }, 'page').adset('c').targeting)
+    expect(ages(true)).toMatchObject({ age_min: 20, age_max: 65 })
+    expect(ages(false)).toMatchObject({ age_min: 20, age_max: 50 })
+  })
   it('diario, tope duro, Facebook y WhatsApp', () => {
     const r = campaignRequests({ ...base, budgetType: 'DAILY', budget: 500, spendCap: 2000, placements: 'instagram_facebook', objective: 'WHATSAPP' }, 'page')
     expect(r.campaign.spend_cap).toBe(2000)

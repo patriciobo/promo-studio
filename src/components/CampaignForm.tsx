@@ -61,7 +61,7 @@ export function CampaignForm({
   const max = budgetType === 'DAILY' ? amount * days : amount
   const perDay = budgetType === 'DAILY' ? amount : amount / days
   const min = 'minDaily' in account ? (account.minDaily / 100) * (budgetType === 'DAILY' ? 1 : days) : 0
-  const targeting = (): Targeting => ({ countries: countries.toUpperCase().split(/[\s,]+/).filter(Boolean), ageMin, ageMax, interests, advantage })
+  const targeting = (): Targeting => ({ countries: countries.toUpperCase().split(/[\s,]+/).filter(Boolean), ageMin, ageMax: advantage ? 65 : ageMax, interests, advantage })
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
   const ads = picked.length + (newType ? 1 : 0)
 
@@ -200,11 +200,12 @@ export function CampaignForm({
             <input name="ageMin" type="number" min={18} max={65} value={ageMin} onChange={(e) => setAgeMin(Number(e.target.value))} />
           </label>
           <label>
-            Edad máxima
-            <input name="ageMax" type="number" min={18} max={65} value={ageMax} onChange={(e) => setAgeMax(Number(e.target.value))} />
+            Edad máxima {advantage && <span className="hint">con Advantage+ Meta usa hasta 65</span>}
+            <input name="ageMax" type="number" min={18} max={65} value={advantage ? 65 : ageMax} disabled={advantage} onChange={(e) => setAgeMax(Number(e.target.value))} />
           </label>
         </div>
         <input type="hidden" name="interests" value={JSON.stringify(interests)} />
+        {advantage && <input type="hidden" name="ageMax" value={65} />}
         <div className="stack-sm">
           <span className="small">Intereses</span>
           {interests.length > 0 && (
@@ -248,7 +249,7 @@ export function CampaignForm({
           )}
         </div>
         <label className="check">
-          <input type="checkbox" name="advantage" checked={advantage} onChange={(e) => setAdvantage(e.target.checked)} /> Público Advantage+ <span className="hint">Meta puede ampliar más allá de los intereses si rinde mejor (recomendado)</span>
+          <input type="checkbox" name="advantage" checked={advantage} onChange={(e) => setAdvantage(e.target.checked)} /> Público Advantage+ <span className="hint">Meta puede ampliar más allá de los intereses y la edad si rinde mejor (recomendado). Para una edad máxima estricta, desmarcalo.</span>
         </label>
         <div className="row">
           <label className="check">

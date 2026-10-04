@@ -62,7 +62,7 @@ export default async function Ads({ params }: PageProps<'/apps/[slug]/anuncios'>
                   {c.spendCap ? ` · tope ${money(c.spendCap, c.currency)}` : ''}
                 </p>
                 <p className="xs muted">
-                  {(t.countries ?? []).join(', ') || 'AR'} · {t.ageMin ?? 18}–{t.ageMax ?? 65} años{t.interests?.length ? ` · ${t.interests.map((i) => i.name).join(', ')}` : ''}
+                  {(t.countries ?? []).join(', ') || 'AR'} · {t.ageMin ?? 18}–{t.advantage ? 65 : (t.ageMax ?? 65)} años{t.interests?.length ? ` · ${t.interests.map((i) => i.name).join(', ')}` : ''}
                   {t.advantage ? ' · Advantage+' : ''} · {c.placements === 'instagram_facebook' ? 'Instagram y Facebook' : 'Instagram'}
                 </p>
               </div>
