@@ -9,7 +9,7 @@ import { fromLocalInput, localParts, toLocalInput, weekSlots, zonedTime } from '
 import { adCandidates, engagement, median, relativeScore } from '../score'
 import { containerRequests, publish, type GraphClient } from '../instagram'
 import { explain, MetaError } from '../meta-errors'
-import { adRequests } from '../meta-ads'
+import { adMessage, adOnlyCreative, boostCreative, budgetError, campaignLink, campaignRequests, plannedSpend } from '../meta-ads'
 import { buildPlanPrompt, compactReport, dailySourceUrl, keepKnownImages, mockPlan, needsRender, postFromPlan, slideLayout } from '../pipeline'
 import { encodeImageChoice, IMAGE_KINDS, IMAGE_MODELS, imagePrice, imagesPerMonth, parseImageChoice, parseImageKind, SUGGESTED } from '../models'
 import { aspectFor } from '../openrouter'
@@ -149,13 +149,61 @@ describe('errores de Meta', () => {
 })
 
 describe('anuncios', () => {
-  it('todo se crea en pausa, sólo en Instagram, con el post como creatividad', () => {
-    const r = adRequests({ name: 'n', pageId: 'p', igUserId: 'ig', mediaId: 'm', link: 'https://x.app', countries: ['AR'], ageMin: 16, ageMax: 70, dailyBudgetCents: 300, start: new Date(), end: new Date(), objective: 'OUTCOME_TRAFFIC' })
-    expect(r.campaign.status).toBe('PAUSED')
-    expect(r.adset('c').status).toBe('PAUSED')
-    expect(r.ad('a', 'c').status).toBe('PAUSED')
-    expect(JSON.parse(r.adset('c').targeting)).toMatchObject({ age_min: 18, age_max: 65, publisher_platforms: ['instagram'] })
-    expect(r.creative.source_instagram_media_id).toBe('m')
+  const base = {
+    name: 'n',
+    objective: 'TRAFFIC',
+    budgetType: 'LIFETIME',
+    budget: 3000,
+    spendCap: null,
+    startAt: new Date('2026-10-10T12:00:00Z'),
+    endAt: new Date('2026-10-17T12:00:00Z'),
+    placements: 'instagram',
+    cta: 'LEARN_MORE',
+    link: 'https://x.app?utm_campaign=c',
+    targeting: { countries: ['AR'], ageMin: 16, ageMax: 70, interests: [{ id: '6003', name: 'Tenis' }], advantage: true },
+  }
+  it('campaña y conjunto en pausa, con presupuesto total y público', () => {
+    const r = campaignRequests(base, 'page')
+    expect(r.campaign).toMatchObject({ status: 'PAUSED', objective: 'OUTCOME_TRAFFIC' })
+    expect(r.campaign).not.toHaveProperty('spend_cap')
+    const a = r.adset('c')
+    expect(a).toMatchObject({ status: 'PAUSED', lifetime_budget: 3000, optimization_goal: 'LINK_CLICKS', campaign_id: 'c' })
+    expect(a).not.toHaveProperty('daily_budget')
+    const t = JSON.parse(a.targeting)
+    expect(t).toMatchObject({ age_min: 18, age_max: 65, publisher_platforms: ['instagram'], targeting_automation: { advantage_audience: 1 } })
+    expect(t.flexible_spec[0].interests).toEqual([{ id: '6003', name: 'Tenis' }])
+  })
+  it('diario, tope duro, Facebook y WhatsApp', () => {
+    const r = campaignRequests({ ...base, budgetType: 'DAILY', budget: 500, spendCap: 2000, placements: 'instagram_facebook', objective: 'WHATSAPP' }, 'page')
+    expect(r.campaign.spend_cap).toBe(2000)
+    const a = r.adset('c')
+    expect(a).toMatchObject({ daily_budget: 500, destination_type: 'WHATSAPP', optimization_goal: 'CONVERSATIONS' })
+    expect(JSON.parse(a.promoted_object!)).toEqual({ page_id: 'page' })
+    expect(JSON.parse(a.targeting).publisher_platforms).toEqual(['instagram', 'facebook'])
+  })
+  it('gasto máximo y mínimo de Meta', () => {
+    expect(plannedSpend(base)).toBe(3000)
+    expect(plannedSpend({ ...base, budgetType: 'DAILY', budget: 500 })).toBe(3500)
+    expect(plannedSpend({ ...base, budgetType: 'DAILY', budget: 500, spendCap: 1000 })).toBe(1000)
+    expect(budgetError(base, 100, 'USD')).toBeNull()
+    expect(budgetError({ ...base, budget: 600 }, 100, 'USD')).toMatch(/7\.00 USD en total para 7 días/)
+    expect(budgetError({ ...base, budgetType: 'DAILY', budget: 50 }, 100, 'USD')).toMatch(/por día/)
+  })
+  it('promociona el post publicado o arma la pieza sólo para anuncios', () => {
+    expect(boostCreative(base, { pageId: 'p', igUserId: 'ig', mediaId: 'm' })).toMatchObject({ source_instagram_media_id: 'm', instagram_user_id: 'ig' })
+    expect(JSON.parse(boostCreative({ ...base, objective: 'ENGAGEMENT', link: null }, { pageId: 'p', igUserId: 'ig', mediaId: 'm' }).call_to_action ?? 'null')).toBeNull()
+    const o = { pageId: 'p', igUserId: 'ig', message: 'hola', headline: 'Título', link: 'https://x.app' }
+    const single = JSON.parse(adOnlyCreative(base, { ...o, images: ['h1'] }).object_story_spec)
+    expect(single).toMatchObject({ page_id: 'p', instagram_user_id: 'ig', link_data: { image_hash: 'h1', name: 'Título', message: 'hola' } })
+    const carousel = JSON.parse(adOnlyCreative(base, { ...o, images: ['h1', 'h2'] }).object_story_spec)
+    expect(carousel.link_data.child_attachments.map((c: { image_hash: string }) => c.image_hash)).toEqual(['h1', 'h2'])
+    const video = JSON.parse(adOnlyCreative(base, { ...o, images: ['thumb'], videoId: 'v' }).object_story_spec)
+    expect(video.video_data).toMatchObject({ video_id: 'v', image_hash: 'thumb' })
+  })
+  it('texto del anuncio sin hashtags y link con UTM', () => {
+    expect(adMessage('Hook\n\nCuerpo\n\n#tenis #padel')).toBe('Hook\n\nCuerpo')
+    expect(campaignLink('https://x.app', 'c1')).toBe('https://x.app?utm_source=instagram&utm_medium=paid&utm_campaign=c1')
+    expect(campaignLink('https://x.app?a=1', 'c1')).toContain('?a=1&utm_source')
   })
 })
 

@@ -1,5 +1,4 @@
-import { adAction, createAdAction } from '@/app/actions'
-import { ConfirmButton, SubmitButton } from '@/components/client'
+import Link from 'next/link'
 import { PostMeta } from '@/components/PostPreview'
 import { db } from '@/lib/db'
 import { mediaSrc } from '@/lib/media'
@@ -13,7 +12,7 @@ export default async function Performance({ params }: PageProps<'/apps/[slug]/re
     where: { appId: app.id, status: 'PUBLISHED' },
     orderBy: { publishedAt: 'desc' },
     take: 60,
-    include: { insights: { orderBy: { hoursAfter: 'desc' }, take: 1 }, assets: { where: { kind: 'SLIDE', position: 0 }, take: 1 }, adDraft: true },
+    include: { insights: { orderBy: { hoursAfter: 'desc' }, take: 1 }, assets: { where: { kind: 'SLIDE', position: 0 }, take: 1 }, ads: { include: { campaign: { select: { id: true, name: true, status: true } } } } },
   })
   const candidates = new Set(adCandidates(posts.filter((p) => p.type !== 'STORY')).map((p) => p.id))
   const byPillar = new Map<string, { n: number; score: number }>()
@@ -25,7 +24,6 @@ export default async function Performance({ params }: PageProps<'/apps/[slug]/re
     }
   }
   const ranking = (m: Map<string, { n: number; score: number }>) => [...m.entries()].map(([k, v]) => ({ k, n: v.n, avg: v.score / v.n })).sort((a, b) => b.avg - a.avg)
-  const drafts = posts.filter((p) => p.adDraft)
 
   return (
     <div className="stack" style={{ gap: 24 }}>
@@ -60,59 +58,6 @@ export default async function Performance({ params }: PageProps<'/apps/[slug]/re
         ))}
       </div>
 
-      {drafts.length > 0 && (
-        <section className="card stack">
-          <h2>Anuncios</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>Post</th>
-                <th>Presupuesto</th>
-                <th>Estado</th>
-                <th>Resultados</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {drafts.map((p) => {
-                const d = p.adDraft!
-                const m = (d.metrics ?? {}) as Record<string, string>
-                return (
-                  <tr key={d.id}>
-                    <td className="small">{p.hook}</td>
-                    <td className="num small">
-                      {(d.dailyBudget / 100).toFixed(2)}/día × {d.days} días
-                    </td>
-                    <td>
-                      <span className={`badge ${d.status === 'ACTIVE' ? 'ok' : 'warn'}`}>{d.status === 'ACTIVE' ? 'Activo' : 'En pausa'}</span>
-                      {d.error && <p className="xs" style={{ color: 'var(--danger)' }}>{d.error}</p>}
-                    </td>
-                    <td className="num small">{m.spend ? `Gasto ${m.spend} · ${m.clicks ?? 0} clics · CPC ${Number(m.cpc ?? 0).toFixed(2)}` : '—'}</td>
-                    <td>
-                      <div className="row">
-                        {d.adId && d.status !== 'ACTIVE' && (
-                          <ConfirmButton action={adAction.bind(null, d.id, 'activate')} label="Activar" confirm={`Empieza a gastar ${(d.dailyBudget / 100).toFixed(2)} por día durante ${d.days} días.`} className="btn sm primary" />
-                        )}
-                        {d.status === 'ACTIVE' && (
-                          <form action={adAction.bind(null, d.id, 'pause')}>
-                            <SubmitButton className="btn sm">Pausar</SubmitButton>
-                          </form>
-                        )}
-                        {d.adId && (
-                          <form action={adAction.bind(null, d.id, 'refresh')}>
-                            <SubmitButton className="btn sm ghost">Actualizar</SubmitButton>
-                          </form>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </section>
-      )}
-
       <section className="stack">
         <h2>Publicaciones</h2>
         {!posts.length && <div className="card empty">Todavía no hay publicaciones con métricas.</div>}
@@ -133,15 +78,19 @@ export default async function Performance({ params }: PageProps<'/apps/[slug]/re
               </div>
               <div className="stack-sm" style={{ alignItems: 'flex-end' }}>
                 <span className={`badge ${candidates.has(p.id) ? 'ok' : ''}`}>{p.score != null ? `Potencial ${p.score.toFixed(2)}` : 'Sin puntaje'}</span>
-                {candidates.has(p.id) && !p.adDraft && p.type !== 'STORY' && (
-                  <form action={createAdAction.bind(null, p.id)} className="row">
-                    <input name="dailyBudget" type="number" min={1} step={1} defaultValue={3} style={{ width: 70 }} aria-label="Presupuesto diario" />
-                    <input name="days" type="number" min={1} max={30} defaultValue={5} style={{ width: 60 }} aria-label="Días" />
-                    <SubmitButton className="btn sm primary" pendingText="Creando…">
-                      Crear anuncio en pausa
-                    </SubmitButton>
-                  </form>
-                )}
+                {p.ads.map((a) => (
+                  <Link key={a.campaign.id} href={`/apps/${slug}/anuncios#${a.campaign.id}`} className="xs" style={{ textDecoration: 'underline' }}>
+                    En campaña: {a.campaign.name}
+                  </Link>
+                ))}
+                {p.type !== 'STORY' &&
+                  (p.igMediaId ? (
+                    <Link href={`/apps/${slug}/anuncios/nueva?posts=${p.id}`} className={`btn sm${candidates.has(p.id) ? ' primary' : ''}`}>
+                      Impulsar
+                    </Link>
+                  ) : (
+                    <span className="xs muted">Publicada en simulación: no se puede impulsar</span>
+                  ))}
               </div>
             </article>
           )

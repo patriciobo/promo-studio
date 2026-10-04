@@ -19,7 +19,7 @@ export default async function CreateNow({ params }: PageProps<'/apps/[slug]/crea
   const { slug } = await params
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
   const pillars = (app.manifest as unknown as Manifest | null)?.pillars ?? []
-  const posts = await db.post.findMany({ where: { appId: app.id, batchId: null, dailyDate: null }, orderBy: { createdAt: 'desc' }, take: 10, include: { assets: true } })
+  const posts = await db.post.findMany({ where: { appId: app.id, batchId: null, dailyDate: null, adOnly: false }, orderBy: { createdAt: 'desc' }, take: 10, include: { assets: true } })
   const images = await db.appImage.findMany({ where: { appId: app.id, archived: false }, orderBy: { createdAt: 'desc' }, take: 24 })
   const busy = posts.some((p) => p.status === 'DRAFT' || p.status === 'PUBLISHING' || (p.status === 'APPROVED' && p.scheduledAt && p.scheduledAt <= new Date()))
   return (

@@ -8,10 +8,10 @@ import { db } from '@/lib/db'
 import { normalizeRepo } from '@/lib/github'
 import { addImages, imageFiles, inOrder } from '@/lib/images'
 import { enqueue, QUEUES } from '@/lib/jobs'
-import { discoverAccounts, graph, adAccounts, token } from '@/lib/instagram'
+import { actId, adAccounts, discoverAccounts, graph, token, type AdAccount } from '@/lib/instagram'
 import { parseManifest, type Manifest } from '@/lib/manifest'
 import { parseImageChoice, parseImageKind } from '@/lib/models'
-import { activateAd, createPausedAd, pauseAd, refreshAdMetrics } from '@/lib/meta-ads'
+import { activateCampaign, campaignLink, deleteCampaign, estimateAudience, friendly, pauseCampaign, searchInterests, syncCampaign, type Objective, type Targeting } from '@/lib/meta-ads'
 import { explain } from '@/lib/meta-errors'
 import { draftManifest, logoFromRepo, proposeManifestPR, repoContext } from '@/lib/onboarding/manifest-wizard'
 import { healthCheck, type Check } from '@/lib/onboarding/meta-health'
@@ -54,6 +54,7 @@ export async function updateSettings(slug: string, f: FormData) {
       imageQuality: str(f, 'imageQuality') || null,
       imageKind: parseImageKind(str(f, 'imageKind')) ?? null,
       monthlyBudgetUsd: Number(str(f, 'monthlyBudgetUsd') || 7),
+      adMonthlyBudget: str(f, 'adMonthlyBudget') ? Number(str(f, 'adMonthlyBudget')) : null,
       timezone: str(f, 'timezone'),
       postTime: str(f, 'postTime') || '10:00',
       autoApproveHours: Number(str(f, 'autoApproveHours') || 48),
@@ -149,7 +150,8 @@ export async function setImageArchived(imageId: string, archived: boolean) {
 export async function publishNow(postId: string) {
   await requireUser()
   const post = await db.post.findUniqueOrThrow({ where: { id: postId }, include: { app: true, _count: { select: { assets: true } } } })
-  if (!post._count.assets || !['PENDING_REVIEW', 'APPROVED'].includes(post.status)) return
+  // Las piezas sólo para anuncios nunca van al feed.
+  if (!post._count.assets || post.adOnly || !['PENDING_REVIEW', 'APPROVED'].includes(post.status)) return
   await db.post.update({ where: { id: postId }, data: { status: 'APPROVED', scheduledAt: new Date(), reviewDueAt: null, attempts: 0, error: null } })
   await enqueue(QUEUES.tick, {})
   revalidatePath(`/apps/${post.app.slug}`, 'layout')
@@ -202,14 +204,14 @@ export async function retryPost(postId: string) {
 
 // --- Conexión con Meta -------------------------------------------------------
 
-export type DiscoverResult = { ok: true; accounts: Awaited<ReturnType<typeof discoverAccounts>>; ads: Awaited<ReturnType<typeof adAccounts>> } | { ok: false; title: string; cause: string; fix: string }
+export type DiscoverResult = { ok: true; accounts: Awaited<ReturnType<typeof discoverAccounts>>; ads: AdAccount[]; adErrors: string[] } | { ok: false; title: string; cause: string; fix: string }
 
 export async function discover(): Promise<DiscoverResult> {
   await requireUser()
   try {
     const g = graph(await token())
-    const [accounts, ads] = await Promise.all([discoverAccounts(g), adAccounts(g).catch(() => [])])
-    return { ok: true, accounts, ads }
+    const [accounts, ads] = await Promise.all([discoverAccounts(g), adAccounts(g)])
+    return { ok: true, accounts, ads: ads.accounts, adErrors: ads.errors }
   } catch (e) {
     const x = explain(e)
     return { ok: false, ...x }
@@ -219,7 +221,7 @@ export async function discover(): Promise<DiscoverResult> {
 export async function saveConnection(slug: string, f: FormData) {
   await requireUser()
   const [pageId, igUserId, igUsername] = str(f, 'account').split('|')
-  await db.app.update({ where: { slug }, data: { pageId: pageId || null, igUserId: igUserId || null, igUsername: igUsername || null, adAccountId: str(f, 'adAccountId') || null } })
+  await db.app.update({ where: { slug }, data: { pageId: pageId || null, igUserId: igUserId || null, igUsername: igUsername || null, adAccountId: (str(f, 'adAccountManual') || str(f, 'adAccountId')).replace(/\s/g, '') ? actId((str(f, 'adAccountManual') || str(f, 'adAccountId')).replace(/\s/g, '')) : null } })
   revalidatePath(`/apps/${slug}/conexion`)
 }
 
@@ -283,28 +285,117 @@ export async function profileKitAction(slug: string): Promise<{ kit?: ProfileKit
 
 // --- Anuncios -----------------------------------------------------------------
 
-export async function createAdAction(postId: string, f: FormData) {
-  await requireUser()
-  const post = await db.post.findUniqueOrThrow({ where: { id: postId }, include: { app: true } })
-  try {
-    await createPausedAd(postId, { dailyBudget: Number(str(f, 'dailyBudget') || 3), days: Number(str(f, 'days') || 5) })
-  } catch (e) {
-    await db.adDraft.updateMany({ where: { postId }, data: { error: `${explain(e).title}: ${explain(e).fix}` } })
+const AD_POST_TYPES: PostType[] = ['IMAGE', 'CAROUSEL', 'REEL']
+const OBJECTIVE_IDS: Objective[] = ['TRAFFIC', 'AWARENESS', 'ENGAGEMENT', 'WHATSAPP']
+
+/** Monto del formulario (unidades de la moneda, admite coma) → centavos. */
+const cents = (v: string) => Math.round(Number(v.replace(',', '.')) * 100)
+
+function targetingFrom(f: FormData): Targeting {
+  const interests = (() => {
+    try {
+      return (JSON.parse(str(f, 'interests') || '[]') as { id: string; name: string }[]).filter((i) => i.id && i.name).slice(0, 25)
+    } catch {
+      return []
+    }
+  })()
+  return {
+    countries: str(f, 'countries').toUpperCase().split(/[\s,]+/).filter((c) => /^[A-Z]{2}$/.test(c)),
+    ageMin: Math.max(18, Number(str(f, 'ageMin') || 18)),
+    ageMax: Math.min(65, Number(str(f, 'ageMax') || 65)),
+    interests,
+    advantage: f.get('advantage') === 'on',
   }
-  revalidatePath(`/apps/${post.app.slug}/rendimiento`)
 }
 
-export async function adAction(draftId: string, action: 'activate' | 'pause' | 'refresh') {
+/**
+ * Nueva campaña con publicaciones ya publicadas, piezas sólo para anuncios y/o una pieza nueva que se genera ahora.
+ * Queda como borrador; si no hay que esperar ninguna pieza, se crea en Meta (en pausa) en segundo plano.
+ */
+export async function createCampaign(slug: string, _prev: { error?: string } | null, f: FormData): Promise<{ error?: string }> {
   await requireUser()
-  const d = await db.adDraft.findUniqueOrThrow({ where: { id: draftId }, include: { app: true } })
-  try {
-    if (action === 'activate') await activateAd(draftId)
-    else if (action === 'pause') await pauseAd(draftId)
-    else await refreshAdMetrics(draftId)
-  } catch (e) {
-    await db.adDraft.update({ where: { id: draftId }, data: { error: `${explain(e).title}: ${explain(e).fix}` } })
+  const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  const objective = (OBJECTIVE_IDS as string[]).includes(str(f, 'objective')) ? str(f, 'objective') : 'TRAFFIC'
+  const startAt = fromLocalInput(str(f, 'startAt'), app.timezone) ?? new Date(Date.now() + 3600e3)
+  const endAt = fromLocalInput(str(f, 'endAt'), app.timezone) ?? new Date(startAt.getTime() + 7 * 864e5)
+  const budget = cents(str(f, 'budget'))
+  if (!(budget > 0)) return { error: 'Poné un presupuesto mayor a 0.' }
+  if (endAt <= startAt) return { error: 'La fecha de fin tiene que ser posterior al inicio.' }
+  const picked = f.getAll('postIds').map(String).filter(Boolean)
+  const posts = picked.length ? await db.post.findMany({ where: { appId: app.id, id: { in: picked }, type: { in: AD_POST_TYPES } }, select: { id: true } }) : []
+  // Pieza nueva sólo para la campaña: se genera como cualquier post a pedido, pero nunca se publica en el feed.
+  const newType = str(f, 'newPostType') as PostType
+  const topic = str(f, 'newPostTopic').slice(0, 500)
+  let fresh: string | null = null
+  if (AD_POST_TYPES.includes(newType) && topic && app.manifest) {
+    const post = await db.post.create({ data: { appId: app.id, type: newType, status: 'DRAFT', hook: topic.slice(0, 200), adOnly: true } })
+    await enqueue(QUEUES.createPost, { postId: post.id, topic: `${topic}. Es un anuncio pago: una sola idea clara y un llamado a la acción concreto.`, image: parseImageChoice(str(f, 'imageChoice'), str(f, 'imageKind')), imageIds: [] })
+    fresh = post.id
   }
-  revalidatePath(`/apps/${d.app.slug}/rendimiento`)
+  const ids = [...posts.map((p) => p.id), ...(fresh ? [fresh] : [])]
+  if (!ids.length) return { error: 'Elegí al menos una publicación o describí la pieza nueva.' }
+  const spendCap = str(f, 'spendCap') ? cents(str(f, 'spendCap')) : null
+  const campaign = await db.adCampaign.create({
+    data: {
+      appId: app.id,
+      name: (str(f, 'name') || `${app.name} · ${startAt.toISOString().slice(0, 10)}`).slice(0, 120),
+      objective,
+      budgetType: str(f, 'budgetType') === 'DAILY' ? 'DAILY' : 'LIFETIME',
+      budget,
+      spendCap: spendCap && spendCap > 0 ? spendCap : null,
+      startAt,
+      endAt,
+      targeting: targetingFrom(f) as object,
+      placements: str(f, 'placements') === 'instagram_facebook' ? 'instagram_facebook' : 'instagram',
+      cta: str(f, 'cta') || 'LEARN_MORE',
+      link: str(f, 'link') || null,
+      ads: { create: ids.map((postId) => ({ postId })) },
+    },
+  })
+  // El link con UTM usa el id de la campaña, que recién ahora existe.
+  if (campaign.link || objective === 'TRAFFIC') {
+    const base = campaign.link ?? (app.manifest as unknown as Manifest | null)?.url
+    if (base) await db.adCampaign.update({ where: { id: campaign.id }, data: { link: campaignLink(base, campaign.id) } })
+  }
+  if (!fresh) await enqueue(QUEUES.pushCampaign, { campaignId: campaign.id })
+  redirect(`/apps/${slug}/anuncios#${campaign.id}`)
+}
+
+export async function campaignAction(campaignId: string, action: 'push' | 'activate' | 'pause' | 'sync' | 'delete') {
+  await requireUser()
+  const c = await db.adCampaign.findUniqueOrThrow({ where: { id: campaignId }, include: { app: true } })
+  try {
+    if (action === 'push') {
+      await db.adCampaign.update({ where: { id: c.id }, data: { error: null } })
+      await enqueue(QUEUES.pushCampaign, { campaignId })
+    } else if (action === 'activate') await activateCampaign(campaignId)
+    else if (action === 'pause') await pauseCampaign(campaignId)
+    else if (action === 'sync') await syncCampaign(campaignId)
+    else await deleteCampaign(campaignId)
+  } catch (e) {
+    if (action !== 'delete') await db.adCampaign.update({ where: { id: c.id }, data: { error: friendly(e) } })
+  }
+  revalidatePath(`/apps/${c.app.slug}`, 'layout')
+}
+
+export async function interestsAction(slug: string, q: string) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  try {
+    return { ok: true as const, items: await searchInterests(app, q) }
+  } catch (e) {
+    return { ok: false as const, error: friendly(e) }
+  }
+}
+
+export async function estimateAction(slug: string, t: Targeting, placements: string, objective: string) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  try {
+    return { ok: true as const, ...(await estimateAudience(app, t, placements, objective)) }
+  } catch (e) {
+    return { ok: false as const, error: friendly(e) }
+  }
 }
 
 // --- Claves -------------------------------------------------------------------

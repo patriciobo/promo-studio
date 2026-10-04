@@ -1,7 +1,7 @@
 // Control de salud de la conexión de una app con Meta: cada paso en verde o en rojo, con el arreglo.
 import { db } from '../db'
 import { env } from '../env'
-import { adAccounts, discoverAccounts, graph, publishingQuota, token, tokenScopes } from '../instagram'
+import { actId, adAccounts, discoverAccounts, graph, publishingQuota, token, tokenScopes } from '../instagram'
 import { explain } from '../meta-errors'
 
 export interface Check {
@@ -82,14 +82,20 @@ export async function healthCheck(appId: string, opts: { createTestContainer?: b
   }
 
   try {
-    const ads = await adAccounts(g)
-    const acc = ads.find((a) => a.id === app.adAccountId || a.id === `act_${app.adAccountId}`)
+    const { accounts, errors } = await adAccounts(g)
+    const acc = app.adAccountId ? accounts.find((a) => a.id === actId(app.adAccountId!)) : undefined
+    // El usuario de sistema sólo puede crear anuncios en cuentas que le asignaron (no alcanza con que sea del Business).
+    const assigned = acc?.via === 'asignada'
     add({
       id: 'ads',
       label: 'Cuenta publicitaria',
-      ok: !!acc?.active,
-      detail: acc ? `${acc.name} (${acc.currency}) ${acc.active ? 'activa' : 'inactiva'}` : app.adAccountId ? 'El token no llega a la cuenta guardada.' : 'Sin cuenta publicitaria elegida (opcional hasta usar anuncios).',
-      fix: acc?.active ? undefined : 'Paso A.2 y B.5: cuenta publicitaria con medio de pago y asignada al usuario de sistema. Para anuncios, además B.6.',
+      ok: !!acc?.active && assigned,
+      detail: acc
+        ? `${acc.name} (${acc.currency}) ${acc.active ? 'activa' : 'inactiva'}${assigned ? '' : ` · visible por ${acc.via}, pero no asignada al usuario de sistema`}`
+        : app.adAccountId
+          ? `El token no llega a ${app.adAccountId}.${errors.length ? ` ${errors[0]}` : ''}`
+          : 'Sin cuenta publicitaria elegida (opcional hasta usar anuncios).',
+      fix: acc?.active && assigned ? undefined : 'Business Manager → Usuarios del sistema → Asignar activos → Cuentas publicitarias: dar "Administrar campañas". La cuenta necesita medio de pago (A.2, B.5, B.6).',
     })
   } catch (e) {
     const x = explain(e)

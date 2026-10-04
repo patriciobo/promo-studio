@@ -31,6 +31,7 @@ model App {
   imageQuality     String? // low | medium | high, para modelos que cobran según la calidad
   imageKind        String? // illustration | photo (null = illustration)
   monthlyBudgetUsd Float     @default(7)
+  adMonthlyBudget  Float? // tope mensual de anuncios en la moneda de la cuenta publicitaria (null = sin tope)
   // Publicación
   timezone         String    @default("America/Argentina/Buenos_Aires")
   postTime         String    @default("10:00")
@@ -43,7 +44,7 @@ model App {
   batches  Batch[]
   posts    Post[]
   usage    UsageLedger[]
-  adDrafts AdDraft[]
+  campaigns AdCampaign[]
   linkHits LinkHit[]
   images   AppImage[]
 }
@@ -94,12 +95,13 @@ model Post {
   score       Float?
   dailyDate   String? // AAAA-MM-DD si es de la edición diaria
   textCostUsd Float? // su parte del costo del modelo de texto (las imágenes suman Asset.costUsd)
+  adOnly      Boolean    @default(false) // pieza sólo para anuncios: nunca se publica en el feed
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
   assets   Asset[]
   insights InsightSnapshot[]
-  adDraft  AdDraft?
+  ads      Ad[]
 
   @@unique([appId, dailyDate, type])
   @@index([status, scheduledAt])
@@ -186,24 +188,53 @@ model InsightSnapshot {
   @@unique([postId, hoursAfter])
 }
 
-model AdDraft {
-  id          String   @id @default(cuid())
-  postId      String   @unique
-  post        Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  appId       String
-  app         App      @relation(fields: [appId], references: [id], onDelete: Cascade)
-  objective   String
-  dailyBudget Int // en centavos de la moneda de la cuenta publicitaria
-  days        Int
-  campaignId  String?
-  adSetId     String?
-  creativeId  String?
-  adId        String?
-  status      String   @default("PAUSED")
-  error       String?
-  metrics     Json?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+/** Campaña de Meta: 1 campaña → 1 conjunto (presupuesto, fechas, público) → 1 anuncio por publicación. */
+model AdCampaign {
+  id              String    @id @default(cuid())
+  appId           String
+  app             App       @relation(fields: [appId], references: [id], onDelete: Cascade)
+  name            String
+  objective       String // TRAFFIC | AWARENESS | ENGAGEMENT | WHATSAPP
+  budgetType      String    @default("LIFETIME") // LIFETIME (total, como Business Suite) | DAILY
+  budget          Int // centavos de la moneda de la cuenta publicitaria
+  currency        String?
+  spendCap        Int? // tope duro de la campaña, en centavos
+  startAt         DateTime
+  endAt           DateTime
+  targeting       Json // { countries, ageMin, ageMax, interests: [{ id, name }], advantage }
+  placements      String    @default("instagram") // instagram | instagram_facebook
+  cta             String    @default("LEARN_MORE")
+  link            String?
+  status          String    @default("DRAFT") // DRAFT (sin crear en Meta) | PAUSED | ACTIVE | COMPLETED
+  effectiveStatus String?
+  campaignId      String?
+  adSetId         String?
+  simulated       Boolean   @default(false) // creada con la app en simulación: no llamó a Meta
+  error           String?
+  metrics         Json?
+  syncedAt        DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  ads             Ad[]
+
+  @@index([status])
+}
+
+model Ad {
+  id              String     @id @default(cuid())
+  campaignId      String
+  campaign        AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  postId          String
+  post            Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  creativeId      String?
+  adId            String?
+  effectiveStatus String?
+  issues          String? // motivo de rechazo o problema de entrega informado por Meta
+  error           String?
+  metrics         Json?
+  createdAt       DateTime   @default(now())
+
+  @@unique([campaignId, postId])
 }
 
 model UsageLedger {

@@ -167,7 +167,39 @@ export async function discoverAccounts(g: GraphClient): Promise<DiscoveredAccoun
   return r.data.map((p) => ({ pageId: p.id, pageName: p.name, igUserId: p.instagram_business_account?.id, igUsername: p.instagram_business_account?.username, followers: p.instagram_business_account?.followers_count }))
 }
 
-export async function adAccounts(g: GraphClient) {
-  const r = await g.get<{ data: { id: string; name: string; account_status: number; currency: string }[] }>('me/adaccounts', { fields: 'id,name,account_status,currency', limit: 50 })
-  return r.data.map((a) => ({ ...a, active: a.account_status === 1 }))
+type RawAdAccount = { id: string; name: string; account_status: number; currency: string; business?: { name: string } }
+export type AdAccount = RawAdAccount & { active: boolean; via: string }
+
+/**
+ * Cuentas publicitarias a las que llega el token: las asignadas al usuario (me/adaccounts) y las del Business
+ * (propias y de clientes). Un usuario de sistema sólo ve en me/adaccounts las que le asignaron como activo,
+ * así que mirar el Business muestra también las que existen pero falta asignar.
+ * `errors`: qué consulta falló y por qué, para mostrarlo en vez de una lista vacía.
+ */
+export async function adAccounts(g: GraphClient): Promise<{ accounts: AdAccount[]; errors: string[] }> {
+  const fields = 'id,name,account_status,currency,business{name}'
+  const found = new Map<string, AdAccount>()
+  const errors: string[] = []
+  const add = (rows: RawAdAccount[], via: string) => rows.forEach((a) => found.has(a.id) || found.set(a.id, { ...a, active: a.account_status === 1, via }))
+  try {
+    add((await g.get<{ data: RawAdAccount[] }>('me/adaccounts', { fields, limit: 100 })).data ?? [], 'asignada')
+  } catch (e) {
+    errors.push(`me/adaccounts: ${(e as Error).message}`)
+  }
+  try {
+    const biz = (await g.get<{ data: { id: string; name: string }[] }>('me/businesses', { fields: 'id,name', limit: 50 })).data ?? []
+    for (const b of biz)
+      for (const edge of ['owned_ad_accounts', 'client_ad_accounts']) {
+        try {
+          add((await g.get<{ data: RawAdAccount[] }>(`${b.id}/${edge}`, { fields, limit: 100 })).data ?? [], `Business ${b.name}`)
+        } catch (e) {
+          errors.push(`${b.name} (${edge}): ${(e as Error).message}`)
+        }
+      }
+  } catch (e) {
+    errors.push(`me/businesses: ${(e as Error).message}`)
+  }
+  return { accounts: [...found.values()], errors }
 }
+
+export const actId = (id: string) => (id.startsWith('act_') ? id : `act_${id}`)

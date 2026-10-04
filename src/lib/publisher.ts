@@ -23,7 +23,7 @@ export function publishInput(post: Post & { assets: Asset[] }, igUserId: string)
 }
 
 export async function publishDue(now = new Date(), log: (s: string) => void = console.log) {
-  const due = await db.post.findMany({ where: { status: 'APPROVED', scheduledAt: { lte: now } }, include: { app: true, assets: true }, orderBy: { scheduledAt: 'asc' }, take: 10 })
+  const due = await db.post.findMany({ where: { status: 'APPROVED', scheduledAt: { lte: now }, adOnly: false }, include: { app: true, assets: true }, orderBy: { scheduledAt: 'asc' }, take: 10 })
   let realToken: string | null = null
   for (const post of due) {
     const app = post.app

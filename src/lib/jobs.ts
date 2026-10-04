@@ -12,6 +12,8 @@ export const QUEUES = {
   syncApp: 'sync-app', // { appId }
   createPost: 'create-post', // { postId, topic, image?, imageIds? }: publicación a pedido
   describeImage: 'describe-image', // { imageId }: descripción de una imagen subida
+  pushCampaign: 'push-campaign', // { campaignId }: crear (o completar) la campaña en Meta, en pausa
+  syncAds: 'sync-ads', // cada 3 horas: estado y resultados de las campañas
 } as const
 
 let boss: Promise<PgBoss> | null = null

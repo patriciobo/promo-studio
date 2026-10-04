@@ -5,6 +5,7 @@ import type { ImageChoice } from '@/lib/models'
 import { getBoss, QUEUES } from '@/lib/jobs'
 import { autoApprove, collectInsights, publishDue } from '@/lib/publisher'
 import { describeImage } from '@/lib/images'
+import { pushCampaign, syncActiveCampaigns } from '@/lib/meta-ads'
 import { createOnDemand, renderPost, runDaily, runWeekly, syncApp } from '@/lib/pipeline'
 import { nextMonday } from '@/lib/schedule'
 import { closeBrowser, renderHtml } from '@/render/renderer'
@@ -29,11 +30,22 @@ async function main() {
   await boss.schedule(QUEUES.daily, '*/10 * * * *', {}, { tz: TZ })
   // Domingo 18:00: se arma el lote de la semana siguiente de cada app.
   await boss.schedule(QUEUES.weekly, '0 18 * * 0', {}, { tz: TZ })
+  await boss.schedule(QUEUES.syncAds, '40 */3 * * *', {}, { tz: TZ })
 
   await boss.work(QUEUES.tick, async () => {
     const approved = await autoApprove()
     const published = await publishDue()
     if (approved || published) console.log(`[tick] aprobados ${approved}, publicados ${published}`)
+  })
+
+  await boss.work(QUEUES.syncAds, async () => {
+    const n = await syncActiveCampaigns().catch((e) => (console.error('[anuncios]', e.message), 0))
+    if (n) console.log(`[anuncios] ${n} campañas actualizadas`)
+  })
+
+  // Sin reintentos: el error queda en la campaña y se reintenta desde la web (completa lo que faltó).
+  await boss.work<{ campaignId: string }>(QUEUES.pushCampaign, async (jobs: Job<{ campaignId: string }>[]) => {
+    for (const j of jobs) await pushCampaign(j.data.campaignId).catch((e) => console.error('[anuncios]', e.message))
   })
 
   await boss.work(QUEUES.insights, async () => {

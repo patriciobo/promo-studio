@@ -48,6 +48,10 @@ export default async function Settings({ params }: PageProps<'/apps/[slug]/ajust
           Presupuesto mensual (USD) <span className="hint">Este mes: {usd(spent)}. Al llegar al tope se deja de generar; lo aprobado se publica igual.</span>
           <input name="monthlyBudgetUsd" type="number" min={0} step={0.5} defaultValue={app.monthlyBudgetUsd} />
         </label>
+        <label>
+          Tope mensual de anuncios <span className="hint">En la moneda de la cuenta publicitaria. No deja activar campañas que lo superen sumando el máximo de cada una. Vacío = sin tope.</span>
+          <input name="adMonthlyBudget" type="number" min={0} step={1} defaultValue={app.adMonthlyBudget ?? ''} />
+        </label>
       </section>
       <section className="card stack">
         <h2>Publicación</h2>

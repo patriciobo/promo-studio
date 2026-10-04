@@ -114,12 +114,25 @@ export function ConnectionPanel({ slug, current }: { slug: string; current: { ig
             Cuenta publicitaria <span className="hint">opcional hasta usar anuncios</span>
             <select name="adAccountId" defaultValue={current.adAccountId ?? ''}>
               <option value="">Sin cuenta publicitaria</option>
+              {current.adAccountId && !found.ads.some((a) => a.id === current.adAccountId) && <option value={current.adAccountId}>{current.adAccountId} (guardada, el token no la ve)</option>}
               {found.ads.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.name} ({a.currency}) {a.active ? '' : '· inactiva'}
+                  {a.name} ({a.currency}){a.active ? '' : ' · inactiva'}
+                  {a.via === 'asignada' ? '' : ` · ${a.via}, falta asignarla al usuario de sistema`}
                 </option>
               ))}
             </select>
+          </label>
+          {found.ads.length === 0 && (
+            <p className="notice warn small">
+              El token no ve ninguna cuenta publicitaria. En Business Manager → Usuarios del sistema → tu usuario → Asignar activos → Cuentas publicitarias, dale &quot;Administrar campañas&quot;. Si el token
+              se generó antes de asignarla, no hace falta regenerarlo.
+              {found.adErrors.length > 0 && <span className="xs"> Meta respondió: {found.adErrors.join(' · ')}</span>}
+            </p>
+          )}
+          <label>
+            O escribí el id <span className="hint">p. ej. act_1234567890 (está en Administrador de anuncios, arriba a la izquierda)</span>
+            <input name="adAccountManual" placeholder="act_…" pattern="(act_)?[0-9]+" />
           </label>
           <div>
             <button className="btn primary">Guardar conexión</button>
