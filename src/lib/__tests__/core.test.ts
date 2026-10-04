@@ -180,6 +180,7 @@ describe('anuncios', () => {
     expect(a).toMatchObject({ daily_budget: 500, destination_type: 'WHATSAPP', optimization_goal: 'CONVERSATIONS' })
     expect(JSON.parse(a.promoted_object!)).toEqual({ page_id: 'page' })
     expect(JSON.parse(a.targeting).publisher_platforms).toEqual(['instagram', 'facebook'])
+    expect(JSON.parse(a.targeting).instagram_positions).not.toContain('explore')
   })
   it('gasto máximo y mínimo de Meta', () => {
     expect(plannedSpend(base)).toBe(3000)

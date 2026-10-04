@@ -31,7 +31,8 @@ export function targetingSpec(t: Targeting, placements: string) {
     ...(t.interests.length ? { flexible_spec: [{ interests: t.interests.map(({ id, name }) => ({ id, name })) }] } : {}),
     targeting_automation: { advantage_audience: t.advantage ? 1 : 0 },
     publisher_platforms: fb ? ['instagram', 'facebook'] : ['instagram'],
-    instagram_positions: ['stream', 'story', 'reels', 'explore'],
+    // 'explore' ya no es una ubicación válida en la API de Marketing (Meta la rechaza).
+    instagram_positions: ['stream', 'story', 'reels'],
     ...(fb ? { facebook_positions: ['feed', 'story', 'facebook_reels'] } : {}),
   }
 }
