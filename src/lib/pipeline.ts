@@ -8,10 +8,10 @@ import { buildReel, renderHtml } from '@/render/renderer'
 import { db } from './db'
 import { getFile, getRawBytes, latestReleases } from './github'
 import { imagesForPlan, slideImages, type PromptImage } from './images'
-import { DEFAULT_IMAGE_STYLE, FeedSchema, parseManifest, type Feed, type Manifest } from './manifest'
+import { DEFAULT_IMAGE_STYLE, DEFAULT_PHOTO_STYLE, FeedSchema, parseManifest, type Feed, type Manifest } from './manifest'
 import { bufferDataUri, dataUri, mediaPath, saveMedia } from './media'
 import { notify } from './notify'
-import type { ImageChoice } from './models'
+import { parseImageKind, type ImageChoice, type ImageKind } from './models'
 import { completeJson, generateImage } from './openrouter'
 import { localParts, weekSlots, zonedTime, type Slot } from './schedule'
 import { existsSync } from 'node:fs'
@@ -131,15 +131,22 @@ const SLIDE_RULES: Record<PostType, string> = {
   STORY: '1 slide: a short title (max 50 chars) and body (max 90 chars), conversational, inviting a reply or a link tap.',
 }
 
-export function buildPlanPrompt(m: Manifest, slots: Slot[], ctx: { feed: Feed['items']; texts: string[]; releases: { name: string; body: string }[]; recent: { pillar: string | null; hook: string | null }[]; bestPillars: string[]; topic?: string; daily?: { date: string; report: string }; images?: PromptImage[] }) {
+/** Estilo visual de la app para el tipo de imagen: el del promo.yaml o el predeterminado. */
+export const styleFor = (m: Manifest, kind: ImageKind) => (kind === 'photo' ? (m.brand.photoStyle ?? DEFAULT_PHOTO_STYLE) : (m.brand.imageStyle ?? DEFAULT_IMAGE_STYLE))
+
+/** Tipo de imagen de una generación: el elegido junto al botón o el de Ajustes. */
+const kindOf = (app: Pick<App, 'imageKind'>, image?: ImageChoice): ImageKind => image?.kind ?? parseImageKind(app.imageKind) ?? 'illustration'
+
+export function buildPlanPrompt(m: Manifest, slots: Slot[], ctx: { feed: Feed['items']; texts: string[]; releases: { name: string; body: string }[]; recent: { pillar: string | null; hook: string | null }[]; bestPillars: string[]; topic?: string; daily?: { date: string; report: string }; images?: PromptImage[]; kind?: ImageKind }) {
   const images = ctx.images ?? []
+  const photo = ctx.kind === 'photo'
   const focus = images.filter((i) => i.focus)
   const system = `You are the social media manager of the app "${m.name}". You write Instagram content that promotes the app with real value for its audience, never clickbait.
 Write ALL user-facing text in ${m.languages[0]} with this tone: ${m.tone}.
 Never mention: ${m.avoid.join('; ') || 'nothing in particular'}.
-Image prompts are in English and describe an illustration in this style: ${m.brand.imageStyle ?? DEFAULT_IMAGE_STYLE}. Show people using the app or the problem it solves, with simplified UI shapes but WITHOUT any readable text, letters, numbers or logos; fit the brand colors ${m.brand.colors.join(', ')} and leave calm space for overlaid text.
-Every slide (or reel scene) also gets its own imagePrompt: the same characters and style, illustrating that slide's idea.${images.length ? `
-appImages are real images of the app uploaded by the user (SCREENSHOT = a screen of the app, PHOTO = a photo). A slide can show one instead of an illustration: set its "imageId" and write that slide's text about what the image really shows (never invent features that are not visible). Use each image at most once per post and never on the last call-to-action slide.` : ''}
+Image prompts are in English and describe ${photo ? 'a realistic photo' : 'an illustration'} in this style: ${styleFor(m, ctx.kind ?? 'illustration')}. Show people using the app or the problem it solves, ${photo ? 'with screens angled or out of focus' : 'with simplified UI shapes'} but WITHOUT any readable text, letters, numbers or logos; fit the brand colors ${m.brand.colors.join(', ')} and leave calm space for overlaid text.
+Every slide (or reel scene) also gets its own imagePrompt: the same ${photo ? 'people, setting' : 'characters'} and style, showing that slide's idea.${images.length ? `
+appImages are real images of the app uploaded by the user (SCREENSHOT = a screen of the app, PHOTO = a photo). A slide can show one instead of a generated image: set its "imageId" and write that slide's text about what the image really shows (never invent features that are not visible). Use each image at most once per post and never on the last call-to-action slide.` : ''}
 Captions: first line is a hook, 2-5 short lines of value, then the CTA "${m.cta}", then 3-5 specific hashtags (from: ${m.hashtags.join(' ') || 'choose relevant ones'}).
 altText describes the image for accessibility and includes keywords people would search.
 Answer only with JSON: {"posts":[{"slot":number,"pillar":string,"hook":string,"caption":string,"hashtags":string[],"altText":string,"imagePrompt":string,"sourceId":string|null,"slides":[{"eyebrow"?:string,"title":string,"body"?:string,"items"?:string[],"imagePrompt":string${images.length ? ',"imageId"?:string|null' : ''}}]}]}`
@@ -168,7 +175,7 @@ Answer only with JSON: {"posts":[{"slot":number,"pillar":string,"hook":string,"c
 }
 
 /** `imageIds`: imágenes subidas en las que se basa la semana (quedan en el lote por si hay que retomarlo). */
-export async function planBatch(appId: string, weekStart: Date, imageIds: string[] = []) {
+export async function planBatch(appId: string, weekStart: Date, imageIds: string[] = [], kind?: ImageKind) {
   const app = await db.app.findUniqueOrThrow({ where: { id: appId } })
   const m = manifestOf(app)
   const existing = await db.batch.findUnique({ where: { appId_weekStart: { appId, weekStart } }, include: { _count: { select: { posts: true } } } })
@@ -184,7 +191,7 @@ export async function planBatch(appId: string, weekStart: Date, imageIds: string
     ? await db.batch.update({ where: { id: existing.id }, data: { status: 'PLANNING', error: null, imageIds: focus } })
     : await db.batch.create({ data: { appId, weekStart, status: 'PLANNING', imageIds: focus } })
   try {
-    return await planPosts(app, m, batch.id, weekStart, focus)
+    return await planPosts(app, m, batch.id, weekStart, focus, kind ?? kindOf(app))
   } catch (e) {
     await db.batch.update({ where: { id: batch.id }, data: { status: 'FAILED', error: `No se pudo planificar: ${(e as Error).message}` } })
     await notify(`⚠️ ${app.name}: falló la planificación de la semana del ${weekStart.toISOString().slice(0, 10)}: ${(e as Error).message}`)
@@ -192,7 +199,7 @@ export async function planBatch(appId: string, weekStart: Date, imageIds: string
   }
 }
 
-async function planPosts(app: App, m: Manifest, batchId: string, weekStart: Date, imageIds: string[]) {
+async function planPosts(app: App, m: Manifest, batchId: string, weekStart: Date, imageIds: string[], kind: ImageKind) {
   const appId = app.id
   const batch = { id: batchId }
 
@@ -210,7 +217,7 @@ async function planPosts(app: App, m: Manifest, batchId: string, weekStart: Date
     .sort((a, b) => (b._avg.score ?? 0) - (a._avg.score ?? 0))
     .slice(0, 3)
     .map((s) => s.pillar!)
-  const { system, user } = buildPlanPrompt(m, slots, { ...src, releases: releases.filter((r) => Date.now() - Date.parse(r.date) < 30 * 864e5), recent, bestPillars, images: images.prompt })
+  const { system, user } = buildPlanPrompt(m, slots, { ...src, releases: releases.filter((r) => Date.now() - Date.parse(r.date) < 30 * 864e5), recent, bestPillars, images: images.prompt, kind })
   let textCost = 0
   const raw = process.env.OPENROUTER_MOCK === '1' ? mockPlan(m, slots, src.feed, imageIds) : await completeJson({ appId, model: app.textModel, system, user, images: images.shown, purpose: `plan ${weekStart.toISOString().slice(0, 10)}`, onCost: (c) => (textCost = c) })
   const plan = keepKnownImages(PlanSchema.parse(raw), images.prompt)
@@ -306,8 +313,9 @@ async function background(app: App, post: Post, position: number, scene: string 
   const { model, quality } = opts.image
   if (!model || !scene || process.env.OPENROUTER_MOCK === '1') return undefined
   const m = manifestOf(app)
-  const prompt = `${scene}. Style: ${m.brand.imageStyle ?? DEFAULT_IMAGE_STYLE}. Color palette ${m.brand.colors.join(', ')}. Absolutely no text, letters, numbers, logos or watermarks.`
-  const img = await generateImage({ appId: app.id, model, quality, prompt, aspectRatio: vertical(post.type) ? '9:16' : '4:5', references: opts.references, purpose: `ilustración ${post.type} ${position + 1}` })
+  const kind = kindOf(app, opts.image)
+  const prompt = `${scene}. ${kind === 'photo' ? 'Photorealistic photo. ' : ''}Style: ${styleFor(m, kind)}. Color palette ${m.brand.colors.join(', ')}. Absolutely no text, letters, numbers, logos or watermarks.`
+  const img = await generateImage({ appId: app.id, model, quality, prompt, aspectRatio: vertical(post.type) ? '9:16' : '4:5', references: opts.references, kind, purpose: `${kind === 'photo' ? 'foto' : 'ilustración'} ${post.type} ${position + 1}` })
   const rel = await saveMedia(`apps/${app.slug}/posts/${post.id}/bg-${position}-${Date.now()}.jpg`, img.data)
   await db.asset.create({ data: { postId: post.id, kind: 'BACKGROUND', position, path: rel, prompt, model, costUsd: img.cost } })
   return bufferDataUri(img.data, img.mime)
@@ -410,7 +418,7 @@ export async function runWeekly(appId: string, weekStart: Date, image?: ImageCho
   if (app.paused) return null
   const s = await syncApp(appId)
   if (!s.ok && !app.manifest) throw new Error(`${app.name}: ${'error' in s ? s.error : 'manifiesto inválido'}`)
-  const batch = await planBatch(appId, weekStart, imageIds)
+  const batch = await planBatch(appId, weekStart, imageIds, image?.kind)
   if (batch.status === 'GENERATING') await generateBatch(batch.id, image)
   return batch
 }
@@ -436,7 +444,7 @@ export async function createOnDemand(postId: string, topic: string, image?: Imag
       db.post.findMany({ where: { appId: app.id, id: { not: postId } }, orderBy: { createdAt: 'desc' }, take: 30, select: { pillar: true, hook: true } }),
       imagesForPlan(app.id, imageIds),
     ])
-    const { system, user } = buildPlanPrompt(m, [slot], { feed: [], texts: src.texts, releases: [], recent, bestPillars: [], topic: fullTopic, images: images.prompt })
+    const { system, user } = buildPlanPrompt(m, [slot], { feed: [], texts: src.texts, releases: [], recent, bestPillars: [], topic: fullTopic, images: images.prompt, kind: kindOf(app, image) })
     let textCost = 0
     const raw =
       process.env.OPENROUTER_MOCK === '1'
@@ -510,7 +518,7 @@ export async function runDaily(appId: string, now = new Date()) {
 
   try {
     const m = manifestOf(app)
-    const { system, user } = buildPlanPrompt(m, slots, { feed: [], texts: [], releases: [], recent: [], bestPillars: [], daily: { date, report } })
+    const { system, user } = buildPlanPrompt(m, slots, { feed: [], texts: [], releases: [], recent: [], bestPillars: [], daily: { date, report }, kind: kindOf(app) })
     let textCost = 0
     const raw =
       process.env.OPENROUTER_MOCK === '1'

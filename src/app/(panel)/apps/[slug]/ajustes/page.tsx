@@ -37,7 +37,7 @@ export default async function Settings({ params }: PageProps<'/apps/[slug]/ajust
         <div className="stack-sm">
           <strong>Modelo de imagen para la generación automática</strong>
           <span className="hint">Lo usa el lote semanal de cada domingo y es el que aparece preseleccionado junto a los botones de generar (Calendario, Crear ahora, Revisión), donde lo podés cambiar para esa vez. Genera una ilustración por diapositiva o escena; el texto lo pone la plantilla.</span>
-          <ImageModelPicker current={app.imageModel} quality={app.imageQuality} imagesPerMonth={imagesPerMonth(cadence, (app.manifest as unknown as Manifest | null)?.daily)} budget={app.monthlyBudgetUsd} available={images} />
+          <ImageModelPicker current={app.imageModel} quality={app.imageQuality} kind={app.imageKind} imagesPerMonth={imagesPerMonth(cadence, (app.manifest as unknown as Manifest | null)?.daily)} budget={app.monthlyBudgetUsd} available={images} />
         </div>
         <div className="stack-sm">
           <strong>Modelo de texto</strong>

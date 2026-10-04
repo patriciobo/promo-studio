@@ -29,6 +29,7 @@ model App {
   textModel        String    @default("google/gemini-3.5-flash")
   imageModel       String?
   imageQuality     String? // low | medium | high, para modelos que cobran según la calidad
+  imageKind        String? // illustration | photo (null = illustration)
   monthlyBudgetUsd Float     @default(7)
   // Publicación
   timezone         String    @default("America/Argentina/Buenos_Aires")

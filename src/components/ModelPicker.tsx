@@ -1,22 +1,27 @@
 'use client'
 // Selector de modelos de OpenRouter: catálogo curado por uso, con precio y gasto mensual estimado.
 import { useState } from 'react'
-import { IMAGE_MODELS, imagePrice, PRICES_CHECKED, TEXT_MODELS, TIERS, type ImageQuality } from '@/lib/models'
+import { IMAGE_KINDS, IMAGE_MODELS, imagePrice, parseImageKind, PRICES_CHECKED, SUGGESTED, TEXT_MODELS, TIERS, type Fit, type ImageKind, type ImageQuality } from '@/lib/models'
 import type { ModelInfo } from '@/lib/openrouter'
 
 const OTHER = '__other'
 const money = (n: number) => `US$ ${n < 0.1 ? n.toFixed(3) : n.toFixed(2)}`
 const QUALITY_LABEL: Record<ImageQuality, string> = { low: 'Baja', medium: 'Media', high: 'Alta' }
+const FIT_BADGE: Record<Fit, string> = { ideal: 'ok', bien: '', flojo: 'warn' }
+const KIND_PLURAL: Record<ImageKind, string> = { illustration: 'ilustraciones', photo: 'fotos' }
 
 export function ImageModelPicker({
   current,
   quality,
+  kind: initialKind,
   imagesPerMonth,
   budget,
   available,
 }: {
   current: string | null
   quality: string | null
+  /** Tipo de imagen guardado en la app (null = ilustración). */
+  kind: string | null
   imagesPerMonth: number
   budget?: number
   /** Todos los modelos de imagen de OpenRouter (vacío si no se pudo consultar). */
@@ -27,12 +32,42 @@ export function ImageModelPicker({
   const [other, setOther] = useState(curated ? '' : (current ?? ''))
   const selected = IMAGE_MODELS.find((m) => m.id === choice)
   const [q, setQ] = useState<ImageQuality>((quality as ImageQuality) ?? selected?.defaultQuality ?? 'medium')
+  const [kind, setKind] = useState<ImageKind>(parseImageKind(initialKind) ?? 'illustration')
+  const suggested = IMAGE_MODELS.find((m) => m.id === SUGGESTED[kind])!
   const live = new Set(available.map((m) => m.id))
   const value = choice === OTHER ? other : choice
+  const pick = (id: string) => {
+    setChoice(id)
+    const d = IMAGE_MODELS.find((m) => m.id === id)?.defaultQuality
+    if (d) setQ(d)
+  }
   return (
     <div className="stack">
       <input type="hidden" name="imageModel" value={value} />
       <input type="hidden" name="imageQuality" value={selected?.qualities ? q : ''} />
+      <fieldset className="stack-sm" style={{ border: 0, padding: 0, margin: 0 }}>
+        <legend>
+          <strong>Tipo de imagen</strong> <span className="hint">se puede cambiar en cada generación</span>
+        </legend>
+        <div className="row">
+          {IMAGE_KINDS.map((k) => (
+            <label key={k.id} className="check" title={k.hint}>
+              <input type="radio" name="imageKind" value={k.id} checked={kind === k.id} onChange={() => setKind(k.id)} /> {k.label}
+            </label>
+          ))}
+        </div>
+        <span className="xs muted">{IMAGE_KINDS.find((k) => k.id === kind)!.hint}</span>
+        {selected && selected.fit[kind] !== 'ideal' && (
+          <p className="notice warn small row between">
+            <span>
+              {selected.name} sale {selected.fit[kind]} para {KIND_PLURAL[kind]}. Sugerido: {suggested.name}.
+            </span>
+            <button type="button" className="btn sm" onClick={() => pick(suggested.id)}>
+              Usar {suggested.name}
+            </button>
+          </p>
+        )}
+      </fieldset>
       {TIERS.map((t) => (
         <fieldset key={t.id} className="stack-sm" style={{ border: 0, padding: 0, margin: 0 }}>
           <legend>
@@ -45,13 +80,20 @@ export function ImageModelPicker({
               const missing = live.size > 0 && !live.has(m.id)
               return (
                 <label key={m.id} className={`model-card${missing ? ' off' : ''}`}>
-                  <input type="radio" name="imageModelChoice" value={m.id} checked={choice === m.id} disabled={missing} onChange={() => (setChoice(m.id), m.defaultQuality && setQ(m.defaultQuality))} />
+                  <input type="radio" name="imageModelChoice" value={m.id} checked={choice === m.id} disabled={missing} onChange={() => pick(m.id)} />
                   <span className="row between">
                     <strong>{m.name}</strong>
-                    {m.recommended && <span className="badge ok">Recomendado</span>}
+                    {m.id === suggested.id && <span className="badge ok">Sugerido para {KIND_PLURAL[kind]}</span>}
                     {missing && <span className="badge bad">No disponible</span>}
                   </span>
                   <span className="small">{m.level}</span>
+                  <span className="row" style={{ gap: 4 }}>
+                    {IMAGE_KINDS.map((k) => (
+                      <span key={k.id} className={`badge ${FIT_BADGE[m.fit[k.id]]}`}>
+                        {k.label}: {m.fit[k.id]}
+                      </span>
+                    ))}
+                  </span>
                   <span className="xs muted">{m.uses}</span>
                   <span className="xs muted">{m.popularity}</span>
                   <span className="small">
@@ -97,7 +139,7 @@ export function ImageModelPicker({
         )}
       </fieldset>
       <p className="xs muted">
-        Estimado para ~{imagesPerMonth} ilustraciones por mes (una por diapositiva o escena, según la cadencia del promo.yaml). Precios aproximados verificados el {PRICES_CHECKED}; el gasto real queda en Configuración.
+        Estimado para ~{imagesPerMonth} imágenes por mes (una por diapositiva o escena, según la cadencia del promo.yaml). Precios aproximados verificados el {PRICES_CHECKED}; el gasto real queda en Configuración.
       </p>
     </div>
   )

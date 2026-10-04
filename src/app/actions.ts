@@ -10,7 +10,7 @@ import { addImages, imageFiles } from '@/lib/images'
 import { enqueue, QUEUES } from '@/lib/jobs'
 import { discoverAccounts, graph, adAccounts, token } from '@/lib/instagram'
 import { parseManifest } from '@/lib/manifest'
-import { parseImageChoice } from '@/lib/models'
+import { parseImageChoice, parseImageKind } from '@/lib/models'
 import { activateAd, createPausedAd, pauseAd, refreshAdMetrics } from '@/lib/meta-ads'
 import { explain } from '@/lib/meta-errors'
 import { draftManifest, logoFromRepo, proposeManifestPR, repoContext } from '@/lib/onboarding/manifest-wizard'
@@ -36,7 +36,7 @@ export async function createApp(f: FormData) {
   await requireUser()
   const repo = normalizeRepo(str(f, 'repo'))
   const slug = (str(f, 'slug') || repo.split('/')[1]).toLowerCase().replace(/[^a-z0-9-]+/g, '-')
-  const app = await db.app.create({ data: { slug, repo, name: str(f, 'name') || repo.split('/')[1], branch: str(f, 'branch') || 'main', imageModel: str(f, 'imageModel') || null, imageQuality: str(f, 'imageQuality') || null } })
+  const app = await db.app.create({ data: { slug, repo, name: str(f, 'name') || repo.split('/')[1], branch: str(f, 'branch') || 'main', imageModel: str(f, 'imageModel') || null, imageQuality: str(f, 'imageQuality') || null, imageKind: parseImageKind(str(f, 'imageKind')) ?? null } })
   await syncApp(app.id).catch(() => null)
   redirect(`/apps/${app.slug}/manifiesto`)
 }
@@ -52,6 +52,7 @@ export async function updateSettings(slug: string, f: FormData) {
       textModel: str(f, 'textModel'),
       imageModel: str(f, 'imageModel') || null,
       imageQuality: str(f, 'imageQuality') || null,
+      imageKind: parseImageKind(str(f, 'imageKind')) ?? null,
       monthlyBudgetUsd: Number(str(f, 'monthlyBudgetUsd') || 7),
       timezone: str(f, 'timezone'),
       postTime: str(f, 'postTime') || '10:00',
@@ -82,7 +83,7 @@ export async function generateWeek(slug: string, f: FormData) {
   if (!existing) await db.batch.create({ data: { appId: app.id, weekStart, status: 'PLANNING' } })
   const imageIds = await requestImages(app, f)
   // Un lote fallido de esa semana se retoma (planBatch lo detecta).
-  await enqueue(QUEUES.runWeekly, { appId: app.id, weekStart: weekStart.toISOString(), image: parseImageChoice(str(f, 'imageChoice')), imageIds }, { singletonKey: `${app.id}-${weekStart.toISOString()}` })
+  await enqueue(QUEUES.runWeekly, { appId: app.id, weekStart: weekStart.toISOString(), image: parseImageChoice(str(f, 'imageChoice'), str(f, 'imageKind')), imageIds }, { singletonKey: `${app.id}-${weekStart.toISOString()}` })
   revalidatePath(`/apps/${slug}`)
   redirect(`/apps/${slug}?aviso=generando&semana=${day}`)
 }
@@ -101,7 +102,7 @@ export async function createPostNow(slug: string, f: FormData) {
   const topic = str(f, 'topic').slice(0, 500) || (imageIds.length ? 'Lo que muestran las imágenes elegidas' : '')
   if (!topic) return
   const post = await db.post.create({ data: { appId: app.id, type, status: 'DRAFT', hook: topic.slice(0, 200), pillar: str(f, 'pillar') || null } })
-  await enqueue(QUEUES.createPost, { postId: post.id, topic, image: parseImageChoice(str(f, 'imageChoice')), imageIds })
+  await enqueue(QUEUES.createPost, { postId: post.id, topic, image: parseImageChoice(str(f, 'imageChoice'), str(f, 'imageKind')), imageIds })
   revalidatePath(`/apps/${slug}`, 'layout')
 }
 
@@ -144,7 +145,7 @@ export async function savePost(postId: string, f: FormData) {
   await requireUser()
   const slides = JSON.parse(str(f, 'slides') || '[]')
   const post = await db.post.update({ where: { id: postId }, data: { caption: str(f, 'caption'), altText: str(f, 'altText'), slides, imagePrompt: str(f, 'imagePrompt') || undefined }, include: { app: true } })
-  await enqueue(QUEUES.renderPost, { postId, regenerateImage: f.get('regenerateImage') === 'on', image: parseImageChoice(str(f, 'imageChoice')) })
+  await enqueue(QUEUES.renderPost, { postId, regenerateImage: f.get('regenerateImage') === 'on', image: parseImageChoice(str(f, 'imageChoice'), str(f, 'imageKind')) })
   revalidatePath(`/apps/${post.app.slug}/revision`)
 }
 

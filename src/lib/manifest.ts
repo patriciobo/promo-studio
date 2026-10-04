@@ -7,6 +7,10 @@ import { z } from 'zod'
 export const DEFAULT_IMAGE_STYLE =
   'flat vector illustration, clean shapes, soft gradients, friendly characters using a phone or laptop, simplified app UI without readable text, not a photo, not photorealistic'
 
+/** Estilo de las fotos realistas si el promo.yaml no define brand.photoStyle. */
+export const DEFAULT_PHOTO_STYLE =
+  'photorealistic lifestyle photography, natural light, shallow depth of field, real people in everyday settings, candid, phone or laptop screens angled or out of focus, not an illustration'
+
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'color en formato #rrggbb')
 
 export const ManifestSchema = z.object({
@@ -30,6 +34,7 @@ export const ManifestSchema = z.object({
     font: z.string().default('Inter'),
     logo: z.string().optional(), // ruta en el repo o URL
     imageStyle: z.string().max(400).optional(), // estilo de las ilustraciones (en inglés)
+    photoStyle: z.string().max(400).optional(), // estilo de las fotos realistas (en inglés)
   }),
   features: z.array(z.string()).min(1),
   screenshots: z.array(z.string()).default([]),

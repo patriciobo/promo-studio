@@ -10,7 +10,7 @@ import { containerRequests, publish, type GraphClient } from '../instagram'
 import { explain, MetaError } from '../meta-errors'
 import { adRequests } from '../meta-ads'
 import { buildPlanPrompt, compactReport, dailySourceUrl, keepKnownImages, mockPlan, needsRender, postFromPlan, slideLayout } from '../pipeline'
-import { encodeImageChoice, IMAGE_MODELS, imagePrice, imagesPerMonth, parseImageChoice } from '../models'
+import { encodeImageChoice, IMAGE_KINDS, IMAGE_MODELS, imagePrice, imagesPerMonth, parseImageChoice, parseImageKind, SUGGESTED } from '../models'
 import { aspectFor } from '../openrouter'
 import { normalizeRepo } from '../github'
 import { brandFrom } from '@/templates/brand'
@@ -137,6 +137,13 @@ describe('planificación', () => {
     expect(p.system).toMatch(/flat vector illustration/)
     expect(p.system).toMatch(/own imagePrompt/)
   })
+  it('con tipo foto pide fotos realistas en vez de ilustraciones', () => {
+    const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 1, reels: 0, stories: 0 }, '10:00', 'UTC')
+    const p = buildPlanPrompt(m, slots, { feed: [], texts: [], releases: [], recent: [], bestPillars: [], kind: 'photo' })
+    expect(p.system).toMatch(/realistic photo/)
+    expect(p.system).toMatch(/photorealistic lifestyle photography/)
+    expect(p.system).not.toMatch(/illustration in this style/)
+  })
   it('pasa las imágenes subidas al prompt y pide basarse en las elegidas', () => {
     const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 2, reels: 0, stories: 0 }, '10:00', 'UTC')
     const images = [
@@ -238,7 +245,7 @@ describe('modelos de imagen', () => {
     expect(new Set(IMAGE_MODELS.map((m) => m.tier))).toEqual(new Set(['pruebas', 'costo-calidad', 'mejor-calidad']))
     for (const m of IMAGE_MODELS) expect(m.level && m.uses && m.popularity && m.priceUsd > 0).toBeTruthy()
   })
-  it('estima las ilustraciones por mes según la cadencia (una por diapositiva o escena)', () => {
+  it('estima las imágenes por mes según la cadencia (una por diapositiva o escena)', () => {
     // carrusel 5 + imagen 1 + reel 4 + 2 stories = 12 por semana
     expect(imagesPerMonth({ feed: 3, reels: 1, stories: 2 })).toBe(52)
     expect(imagesPerMonth({ feed: 0, reels: 0, stories: 0 })).toBe(0)
@@ -253,6 +260,17 @@ describe('modelos de imagen', () => {
     expect(parseImageChoice(encodeImageChoice({ model: 'recraft/recraft-v4.1-flash', quality: null }))).toEqual({ model: 'recraft/recraft-v4.1-flash', quality: null })
     expect(parseImageChoice('none')).toEqual({ model: null, quality: null })
     expect(parseImageChoice('')).toBeUndefined()
+    expect(parseImageChoice(encodeImageChoice({ model: 'google/gemini-3.1-flash-image', quality: null }), 'photo')).toEqual({ model: 'google/gemini-3.1-flash-image', quality: null, kind: 'photo' })
+  })
+  it('valida el tipo de imagen', () => {
+    expect(parseImageKind('photo')).toBe('photo')
+    expect(parseImageKind('illustration')).toBe('illustration')
+    expect(parseImageKind('video')).toBeUndefined()
+    expect(parseImageKind(null)).toBeUndefined()
+  })
+  it('cada modelo dice para qué tipo sirve y el sugerido existe y es ideal', () => {
+    for (const m of IMAGE_MODELS) for (const k of IMAGE_KINDS) expect(['ideal', 'bien', 'flojo']).toContain(m.fit[k.id])
+    for (const k of IMAGE_KINDS) expect(IMAGE_MODELS.find((m) => m.id === SUGGESTED[k.id])?.fit[k.id]).toBe('ideal')
   })
   it('pide 3:4 para el feed a los modelos que no aceptan 4:5', () => {
     expect(aspectFor('recraft/recraft-v4.1-flash', '4:5')).toBe('3:4')

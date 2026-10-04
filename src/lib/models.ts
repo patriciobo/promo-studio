@@ -7,6 +7,20 @@ export const PRICES_CHECKED = '2026-10-02'
 
 export type Tier = 'pruebas' | 'costo-calidad' | 'mejor-calidad'
 export type ImageQuality = 'low' | 'medium' | 'high'
+export type ImageKind = 'illustration' | 'photo'
+/** Qué tan bien le sale cada tipo de imagen a un modelo. */
+export type Fit = 'ideal' | 'bien' | 'flojo'
+
+export const IMAGE_KINDS: { id: ImageKind; label: string; hint: string }[] = [
+  { id: 'illustration', label: 'Ilustración', hint: 'Vector o dibujo con los colores de la marca.' },
+  { id: 'photo', label: 'Foto realista', hint: 'Personas y escenas creíbles, como fotos de stock propias. Mismo precio que una ilustración.' },
+]
+
+/** Modelo sugerido para cada tipo de imagen. */
+export const SUGGESTED: Record<ImageKind, string> = {
+  illustration: 'openai/gpt-image-2.5-sunburst',
+  photo: 'google/gemini-3.1-flash-image',
+}
 
 export const TIERS: { id: Tier; label: string; hint: string }[] = [
   { id: 'pruebas', label: 'Pruebas rápidas', hint: 'Centavos por imagen: para probar el circuito o regenerar mucho.' },
@@ -35,7 +49,8 @@ export interface ImageModel {
   references: boolean
   /** Por dónde se pide: endpoint de imágenes o chat con salida de imagen. */
   api: 'images' | 'chat'
-  recommended?: boolean
+  /** Para qué tipo de imagen conviene. */
+  fit: Record<ImageKind, Fit>
 }
 
 export const IMAGE_MODELS: ImageModel[] = [
@@ -50,6 +65,7 @@ export const IMAGE_MODELS: ImageModel[] = [
     feedAspect: '3:4',
     references: false,
     api: 'images',
+    fit: { illustration: 'ideal', photo: 'flojo' },
   },
   {
     id: 'openai/gpt-image-2.5-flare',
@@ -64,6 +80,7 @@ export const IMAGE_MODELS: ImageModel[] = [
     feedAspect: '3:4',
     references: true,
     api: 'images',
+    fit: { illustration: 'bien', photo: 'bien' },
   },
   {
     id: 'bytedance-seed/seedream-5-0-lite',
@@ -76,6 +93,7 @@ export const IMAGE_MODELS: ImageModel[] = [
     feedAspect: '4:5',
     references: true,
     api: 'images',
+    fit: { illustration: 'bien', photo: 'bien' },
   },
   {
     id: 'recraft/recraft-v4.1',
@@ -88,6 +106,7 @@ export const IMAGE_MODELS: ImageModel[] = [
     feedAspect: '3:4',
     references: false,
     api: 'images',
+    fit: { illustration: 'ideal', photo: 'flojo' },
   },
   {
     id: 'google/gemini-3.1-flash-image',
@@ -100,7 +119,7 @@ export const IMAGE_MODELS: ImageModel[] = [
     feedAspect: '4:5',
     references: true,
     api: 'chat',
-    recommended: true,
+    fit: { illustration: 'ideal', photo: 'ideal' },
   },
   {
     id: 'openai/gpt-image-2.5-sunburst',
@@ -115,7 +134,7 @@ export const IMAGE_MODELS: ImageModel[] = [
     feedAspect: '3:4',
     references: true,
     api: 'images',
-    recommended: true,
+    fit: { illustration: 'ideal', photo: 'ideal' },
   },
 ]
 
@@ -153,18 +172,22 @@ export function imagesPerMonth(c: Cadence, daily?: { types: ('CAROUSEL' | 'IMAGE
   return Math.round(week * 4.33 + perDay * 30)
 }
 
-/** Modelo de imagen elegido para una generación puntual. `model: null` = sin imagen IA. */
+export const parseImageKind = (v: string | null | undefined): ImageKind | undefined => (v === 'illustration' || v === 'photo' ? v : undefined)
+
+/** Modelo de imagen elegido para una generación puntual. `model: null` = sin imagen IA. `kind`: si no viene, el de Ajustes. */
 export interface ImageChoice {
   model: string | null
   quality: string | null
+  kind?: ImageKind
 }
 
 /** Valor del selector junto a cada botón: "proveedor/modelo|calidad" o "none". Vacío = el predeterminado de la app. */
 export const encodeImageChoice = (c: ImageChoice) => (c.model ? `${c.model}|${c.quality ?? ''}` : 'none')
 
-export function parseImageChoice(v: string | null | undefined): ImageChoice | undefined {
+export function parseImageChoice(v: string | null | undefined, kind?: string | null): ImageChoice | undefined {
   if (!v) return undefined
+  const k = parseImageKind(kind)
   if (v === 'none') return { model: null, quality: null }
   const [model, quality] = v.split('|')
-  return { model, quality: quality || null }
+  return { model, quality: quality || null, ...(k ? { kind: k } : {}) }
 }

@@ -1,7 +1,7 @@
 // OpenRouter: texto (planificación) e imágenes (fondos). Cada llamada registra su costo real.
 import { assertBudget } from './budget'
 import { db } from './db'
-import { imageModel } from './models'
+import { imageModel, type ImageKind } from './models'
 import { getSecret } from './settings'
 
 const API = 'https://openrouter.ai/api/v1'
@@ -72,7 +72,7 @@ export const aspectFor = (model: string, aspect: AspectRatio): AspectRatio => (a
  * el de chat con salida de imagen (modelos tipo Gemini Image).
  * `references` (data URIs) sirve para mantener el estilo entre las piezas de un post.
  */
-export async function generateImage(opts: { appId: string; model: string; prompt: string; aspectRatio: AspectRatio; purpose: string; quality?: string | null; references?: string[] }): Promise<{ data: Buffer; mime: string; cost: number }> {
+export async function generateImage(opts: { appId: string; model: string; prompt: string; aspectRatio: AspectRatio; purpose: string; quality?: string | null; references?: string[]; kind?: ImageKind }): Promise<{ data: Buffer; mime: string; cost: number }> {
   await assertBudget(opts.appId, 0.1)
   const info = imageModel(opts.model)
   const refs = info?.references ? (opts.references ?? []).slice(0, 4) : []
@@ -98,7 +98,7 @@ export async function generateImage(opts: { appId: string; model: string; prompt
       if (!(e instanceof OpenRouterError) || ![400, 404, 405].includes(e.status)) throw e
     }
   }
-  const text = `${opts.prompt}\n\nAspect ratio ${aspect}. No text, no letters, no logos.${refs.length ? ' Keep exactly the same illustration style, palette and characters as the reference images.' : ''}`
+  const text = `${opts.prompt}\n\nAspect ratio ${aspect}. No text, no letters, no logos.${refs.length ? ` Keep exactly the same ${opts.kind === 'photo' ? 'photographic look, lighting and people' : 'illustration style, palette and characters'} as the reference images.` : ''}`
   const r = (await call('/chat/completions', {
     model: opts.model,
     modalities: ['image', 'text'],

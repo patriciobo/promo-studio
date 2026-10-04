@@ -38,7 +38,7 @@ export default async function NewApp() {
         <div className="stack-sm">
           <strong>Modelo de imagen de OpenRouter</strong>
           <span className="hint">Lo podés cambiar después en Ajustes. El estimado mensual usa la cadencia por defecto (3 posts y 2 stories por semana).</span>
-          <ImageModelPicker current={null} quality={null} imagesPerMonth={imagesPerMonth({ feed: 3, reels: 1, stories: 2 })} available={images} />
+          <ImageModelPicker current={null} quality={null} kind={null} imagesPerMonth={imagesPerMonth({ feed: 3, reels: 1, stories: 2 })} available={images} />
         </div>
         <div>
           <SubmitButton pendingText="Conectando…">Conectar y seguir</SubmitButton>
