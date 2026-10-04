@@ -13,6 +13,47 @@ export const DEFAULT_PHOTO_STYLE =
 
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'color en formato #rrggbb')
 
+/** Acción de Playwright para llegar a una pantalla (la ejecuta .promo/capture.mjs en el repo). */
+const CaptureAction = z.union([
+  z.object({ click: z.string() }),
+  z.object({ fill: z.string(), value: z.string() }),
+  z.object({ waitFor: z.string() }),
+  z.object({ scroll: z.number().int() }),
+])
+
+/** Cómo levantar la app en local y entrar con el usuario demo para sacar las capturas de los flujos. */
+const CaptureSchema = z.object({
+  start: z.string().optional(),
+  url: z.url(),
+  seed: z.string().optional(),
+  device: z.enum(['mobile', 'desktop']).default('mobile'),
+  mask: z.array(z.string()).default([]),
+  maskColor: z.string().optional(), // color de los recuadros que tapan `mask` (por defecto gris claro)
+  login: z.object({ path: z.string().startsWith('/'), steps: z.array(CaptureAction).min(1) }).optional(),
+})
+
+/** Flujo de uso de la app: pasos con la pantalla que muestra cada uno, para posts paso a paso. */
+const FlowSchema = z.object({
+  id: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'id en kebab-case, p. ej. agendar-turno'),
+  name: z.string().min(3).max(80),
+  description: z.string().max(300).optional(),
+  pillar: z.string().optional(),
+  steps: z
+    .array(
+      z.object({
+        path: z.string().startsWith('/'),
+        actions: z.array(CaptureAction).default([]),
+        shows: z.string().min(3).max(200), // qué muestra la pantalla, en el idioma de la app
+      }),
+    )
+    .min(1)
+    .max(8),
+})
+export type Flow = z.infer<typeof FlowSchema>
+
+/** Dónde deja capture.mjs la captura del paso `n` (desde 0) de un flujo. */
+export const flowScreenPath = (flowId: string, n: number) => `.promo/screens/${flowId}/${n + 1}.png`
+
 export const ManifestSchema = z.object({
   name: z.string().min(1),
   url: z.url(),
@@ -74,6 +115,12 @@ export const ManifestSchema = z.object({
       types: z.array(z.enum(['CAROUSEL', 'IMAGE', 'STORY'])).min(1).default(['CAROUSEL', 'STORY']),
     })
     .optional(),
+  capture: CaptureSchema.optional(),
+  flows: z
+    .array(FlowSchema)
+    .max(15)
+    .default([])
+    .refine((fs) => new Set(fs.map((f) => f.id)).size === fs.length, 'hay ids de flujo repetidos'),
 })
 
 export type Manifest = z.infer<typeof ManifestSchema>

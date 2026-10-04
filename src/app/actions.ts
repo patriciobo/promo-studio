@@ -6,10 +6,10 @@ import { redirect } from 'next/navigation'
 import { requireUser } from '@/auth'
 import { db } from '@/lib/db'
 import { normalizeRepo } from '@/lib/github'
-import { addImages, imageFiles } from '@/lib/images'
+import { addImages, imageFiles, inOrder } from '@/lib/images'
 import { enqueue, QUEUES } from '@/lib/jobs'
 import { discoverAccounts, graph, adAccounts, token } from '@/lib/instagram'
-import { parseManifest } from '@/lib/manifest'
+import { parseManifest, type Manifest } from '@/lib/manifest'
 import { parseImageChoice, parseImageKind } from '@/lib/models'
 import { activateAd, createPausedAd, pauseAd, refreshAdMetrics } from '@/lib/meta-ads'
 import { explain } from '@/lib/meta-errors'
@@ -27,7 +27,7 @@ async function requestImages(app: { id: string; slug: string }, f: FormData) {
   const uploaded = await addImages(app, imageFiles(f.getAll('images')), str(f, 'imageNote').slice(0, 500))
   const picked = f.getAll('imageIds').map(String).filter(Boolean)
   const known = picked.length ? await db.appImage.findMany({ where: { appId: app.id, id: { in: picked } }, select: { id: true } }) : []
-  return [...uploaded.map((i) => i.id), ...known.map((i) => i.id)]
+  return [...uploaded.map((i) => i.id), ...inOrder(picked, known).map((i) => i.id)]
 }
 
 // --- Apps -------------------------------------------------------------------
@@ -104,6 +104,22 @@ export async function createPostNow(slug: string, f: FormData) {
   const post = await db.post.create({ data: { appId: app.id, type, status: 'DRAFT', hook: topic.slice(0, 200), pillar: str(f, 'pillar') || null } })
   await enqueue(QUEUES.createPost, { postId: post.id, topic, image: parseImageChoice(str(f, 'imageChoice'), str(f, 'imageKind')), imageIds })
   revalidatePath(`/apps/${slug}`, 'layout')
+}
+
+/** Post paso a paso sobre un flujo del promo.yaml, con sus capturas en orden. */
+export async function createFlowPost(slug: string, flowId: string, f: FormData) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  const flow = (app.manifest as unknown as Manifest | null)?.flows.find((x) => x.id === flowId)
+  const type = str(f, 'type') as PostType
+  if (!flow || !['CAROUSEL', 'REEL'].includes(type)) return
+  const shots = await db.appImage.findMany({ where: { appId: app.id, flowId, archived: false }, orderBy: { step: 'asc' }, select: { id: true } })
+  if (!shots.length) return
+  const topic = `Cómo ${flow.name.charAt(0).toLowerCase()}${flow.name.slice(1)}${flow.description ? `: ${flow.description}` : ''}. Paso a paso, una captura por paso en este orden.`
+  const extra = str(f, 'topic').slice(0, 300)
+  const post = await db.post.create({ data: { appId: app.id, type, status: 'DRAFT', hook: flow.name.slice(0, 200), pillar: flow.pillar ?? null } })
+  await enqueue(QUEUES.createPost, { postId: post.id, topic: extra ? `${topic} ${extra}` : topic, image: parseImageChoice(str(f, 'imageChoice'), str(f, 'imageKind')), imageIds: shots.map((x) => x.id) })
+  redirect(`/apps/${slug}/crear`)
 }
 
 // --- Imágenes -----------------------------------------------------------------

@@ -3,6 +3,8 @@
 import type { App, AppImage, AppImageKind } from '@prisma/client'
 import { existsSync } from 'node:fs'
 import { db } from './db'
+import { getRawBytes, treeShas } from './github'
+import { flowScreenPath, type Manifest } from './manifest'
 import { dataUri, mediaPath, saveMedia } from './media'
 import { completeJson } from './openrouter'
 
@@ -44,6 +46,9 @@ export async function describeImage(imageId: string) {
   return db.appImage.update({ where: { id: imageId }, data: { kind, description: (r.description ?? '').slice(0, 400) || null } })
 }
 
+/** Filas en el orden de `ids` (los pasos de un flujo tienen que llegar en orden). */
+export const inOrder = <T extends { id: string }>(ids: string[], rows: T[]) => ids.flatMap((id) => rows.filter((r) => r.id === id))
+
 export type PromptImage = { id: string; kind: AppImageKind; description: string | null; note: string | null; focus: boolean }
 
 /**
@@ -51,7 +56,7 @@ export type PromptImage = { id: string; kind: AppImageKind; description: string 
  * Las que todavía no tienen descripción se describen ahora.
  */
 export async function imagesForPlan(appId: string, focusIds: string[] = []) {
-  const focus = focusIds.length ? await db.appImage.findMany({ where: { appId, id: { in: focusIds } } }) : []
+  const focus = focusIds.length ? inOrder(focusIds, await db.appImage.findMany({ where: { appId, id: { in: focusIds } } })) : []
   const library = await db.appImage.findMany({ where: { appId, archived: false, id: { notIn: focusIds } }, orderBy: { createdAt: 'desc' }, take: LIBRARY_IN_PROMPT })
   const all = [...focus, ...library].filter((i) => existsSync(mediaPath(i.path)))
   const described = await Promise.all(all.map((i) => (i.description ? i : describeImage(i.id).catch(() => i))))
@@ -66,4 +71,41 @@ export async function slideImages(appId: string, ids: string[]) {
   const out = new Map<string, { kind: AppImageKind; src: string }>()
   for (const i of imgs) if (existsSync(mediaPath(i.path))) out.set(i.id, { kind: i.kind, src: await dataUri(i.path) })
   return out
+}
+
+/**
+ * Importa las capturas de los flujos del promo.yaml (`.promo/screens/<flujo>/<n>.png`, las saca capture.mjs en el repo)
+ * a la biblioteca, ya descritas con el `shows` de cada paso: no gasta en modelos. Sólo baja las que cambiaron;
+ * las de pasos o flujos que ya no están quedan archivadas.
+ */
+export async function importFlowScreens(app: Pick<App, 'id' | 'slug' | 'repo' | 'branch'>, m: Manifest) {
+  const shas = m.flows.length ? await treeShas(app.repo, app.branch, '.promo/screens/') : new Map<string, string>()
+  const existing = await db.appImage.findMany({ where: { appId: app.id, flowId: { not: null } } })
+  const keep = new Set<string>()
+  let imported = 0
+  for (const flow of m.flows) {
+    for (const [n, step] of flow.steps.entries()) {
+      const src = flowScreenPath(flow.id, n)
+      const sha = shas.get(src)
+      if (!sha) continue
+      const description = `${flow.name}, paso ${n + 1}/${flow.steps.length}: ${step.shows}`.slice(0, 400)
+      const note = flow.description ?? null
+      const prev = existing.find((i) => i.flowId === flow.id && i.step === n)
+      let path = prev?.path ?? ''
+      if (!prev || prev.sha !== sha || !existsSync(mediaPath(prev.path))) {
+        const bytes = await getRawBytes(app.repo, src, app.branch)
+        if (!bytes) continue
+        path = await saveMedia(`apps/${app.slug}/flows/${flow.id}/${n + 1}.png`, bytes)
+        imported++
+      }
+      // Si la archivaste a mano y no cambió, queda archivada.
+      const data = { path, sha, description, note, kind: 'SCREENSHOT' as const, archived: prev?.sha === sha ? prev.archived : false }
+      const img = prev ? await db.appImage.update({ where: { id: prev.id }, data }) : await db.appImage.create({ data: { ...data, appId: app.id, flowId: flow.id, step: n } })
+      keep.add(img.id)
+    }
+  }
+  const gone = existing.filter((i) => !keep.has(i.id) && !i.archived).map((i) => i.id)
+  // Sin sha: si el paso vuelve, se reimporta y se reactiva (a diferencia de una archivada a mano).
+  if (gone.length) await db.appImage.updateMany({ where: { id: { in: gone } }, data: { archived: true, sha: null } })
+  return { imported, archived: gone.length }
 }

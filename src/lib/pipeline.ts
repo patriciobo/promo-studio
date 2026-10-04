@@ -7,7 +7,7 @@ import { coverSlide, ctaSlide, SIZES, textSlide, type SlideData } from '@/templa
 import { buildReel, renderHtml } from '@/render/renderer'
 import { db } from './db'
 import { getFile, getRawBytes, latestReleases } from './github'
-import { imagesForPlan, slideImages, type PromptImage } from './images'
+import { imagesForPlan, importFlowScreens, slideImages, type PromptImage } from './images'
 import { DEFAULT_IMAGE_STYLE, DEFAULT_PHOTO_STYLE, FeedSchema, parseManifest, type Feed, type Manifest } from './manifest'
 import { bufferDataUri, dataUri, mediaPath, saveMedia } from './media'
 import { notify } from './notify'
@@ -35,8 +35,10 @@ export async function syncApp(appId: string) {
     return r
   }
   if (r.hash !== app.manifestHash) await cacheBrandFiles(app, r.manifest)
+  // En cada sincronización: las capturas pueden cambiar sin tocar el promo.yaml.
+  const flows = await importFlowScreens(app, r.manifest).catch((e) => (console.error('[flujos]', e.message), { imported: 0, archived: 0 }))
   await db.app.update({ where: { id: appId }, data: { manifest: r.manifest as Prisma.InputJsonValue, manifestHash: r.hash, manifestError: null, name: r.manifest.name, syncedAt: new Date() } })
-  return r
+  return { ...r, flows }
 }
 
 /** Copia logo y capturas del repo (o URL) a la carpeta de media de la app. */

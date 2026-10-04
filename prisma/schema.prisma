@@ -154,7 +154,12 @@ model AppImage {
   note        String? // lo que el usuario quiere contar con ella
   archived    Boolean      @default(false)
   createdAt   DateTime     @default(now())
+  // Capturas de un flujo del promo.yaml (importadas de .promo/screens del repo)
+  flowId      String?
+  step        Int? // desde 0
+  sha         String? // sha del archivo en el repo: sólo se vuelve a bajar si cambió
 
+  @@unique([appId, flowId, step])
   @@index([appId, archived])
 }
 

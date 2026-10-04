@@ -3,7 +3,8 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('@/lib/db', () => ({ db: {} }))
 vi.mock('../db', () => ({ db: {} }))
 
-import { parseManifest } from '../manifest'
+import { flowScreenPath, parseManifest } from '../manifest'
+import { inOrder } from '../images'
 import { fromLocalInput, localParts, toLocalInput, weekSlots, zonedTime } from '../schedule'
 import { adCandidates, engagement, median, relativeScore } from '../score'
 import { containerRequests, publish, type GraphClient } from '../instagram'
@@ -48,6 +49,38 @@ describe('manifest', () => {
   })
   it('rechaza YAML roto', () => {
     expect(parseManifest('name: [').ok).toBe(false)
+  })
+  const FLOWS = `
+capture:
+  url: http://localhost:3000
+  login: { path: /login, steps: [{ fill: "input[name=email]", value: "$PROMO_USER" }, { click: "button[type=submit]" }, { waitFor: /inicio }] }
+flows:
+  - id: armar-plan
+    name: Armar el plan semanal
+    steps:
+      - { path: /plan, shows: Plan de la semana vacío }
+      - { path: /plan, actions: [{ click: "text=Generar" }], shows: Plan con los ejercicios de cada día }
+`
+  it('acepta flujos y cómo capturarlos', () => {
+    const r = parseManifest(YAML + FLOWS)
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.manifest.capture?.device).toBe('mobile')
+      expect(r.manifest.flows[0].steps[0].actions).toEqual([])
+      expect(r.manifest.flows[0].steps[1].actions).toEqual([{ click: 'text=Generar' }])
+    }
+    expect(parseManifest(YAML).ok && (parseManifest(YAML) as { manifest: { flows: unknown[] } }).manifest.flows).toEqual([])
+  })
+  it('rechaza flujos con ids repetidos, ids no kebab o sin pasos', () => {
+    const dup = FLOWS.replace('flows:', 'flows:\n  - { id: armar-plan, name: Otro flujo, steps: [{ path: /x, shows: Algo visible }] }')
+    expect(parseManifest(YAML + dup).ok).toBe(false)
+    expect(parseManifest(YAML + FLOWS.replace('id: armar-plan', 'id: Armar Plan')).ok).toBe(false)
+    expect(parseManifest(YAML + 'flows: [{ id: x, name: Vacío, steps: [] }]').ok).toBe(false)
+  })
+  it('ubica las capturas de cada paso y conserva el orden elegido', () => {
+    expect(flowScreenPath('armar-plan', 0)).toBe('.promo/screens/armar-plan/1.png')
+    expect(inOrder(['c', 'a', 'b'], [{ id: 'a' }, { id: 'b' }, { id: 'c' }]).map((r) => r.id)).toEqual(['c', 'a', 'b'])
+    expect(inOrder(['x', 'a'], [{ id: 'a' }]).map((r) => r.id)).toEqual(['a'])
   })
 })
 

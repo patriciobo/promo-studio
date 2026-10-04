@@ -187,3 +187,7 @@ details summary { cursor: pointer; font-weight: 560; }
 .image-pick:has(input:checked) img { border-color: var(--primary); }
 .library-card img { width: 100%; aspect-ratio: 3 / 4; object-fit: contain; border-radius: var(--r-sm); background: var(--surface-2); }
 .library-card.archived { opacity: .55; }
+.flow-steps { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+.flow-step { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.flow-step img, .flow-step-missing { width: 100%; aspect-ratio: 9 / 19.5; object-fit: cover; object-position: top; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.flow-step-missing { display: flex; align-items: center; justify-content: center; padding: 8px; text-align: center; word-break: break-word; }

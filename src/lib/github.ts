@@ -1,4 +1,5 @@
 // Acceso a los repositorios de las apps por la API de GitHub (token fine-grained).
+import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { getSecret } from './settings'
@@ -87,6 +88,17 @@ export async function listTree(repo: string, ref: string): Promise<string[]> {
   }
   const r = (await gh(`/repos/${repo}/git/trees/${ref}?recursive=1`)) as { tree: { path: string; type: string }[] }
   return r.tree.filter((t) => t.type === 'blob').map((t) => t.path)
+}
+
+/** Archivos bajo `prefix` con su sha (cambia cuando cambia el contenido). Repo local: sha256 del archivo. */
+export async function treeShas(repo: string, ref: string, prefix: string): Promise<Map<string, string>> {
+  const dir = local(repo)
+  if (dir) {
+    const paths = existsSync(join(dir, prefix)) ? (await listTree(repo, ref)).filter((p) => p.startsWith(prefix)) : []
+    return new Map(paths.map((p) => [p, createHash('sha256').update(readFileSync(join(dir, p))).digest('hex')]))
+  }
+  const r = (await gh(`/repos/${repo}/git/trees/${ref}?recursive=1`)) as { tree: { path: string; type: string; sha: string }[] }
+  return new Map(r.tree.filter((t) => t.type === 'blob' && t.path.startsWith(prefix)).map((t) => [t.path, t.sha]))
 }
 
 export async function latestReleases(repo: string, n = 3) {
