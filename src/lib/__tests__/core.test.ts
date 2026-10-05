@@ -9,6 +9,7 @@ import { fromLocalInput, localParts, toLocalInput, weekSlots, zonedTime } from '
 import { adCandidates, engagement, median, relativeScore } from '../score'
 import { containerRequests, publish, type GraphClient } from '../instagram'
 import { explain, MetaError } from '../meta-errors'
+import { buildSuggestPrompt, mockSuggestion, SuggestionSchema } from '../ad-suggest'
 import { adMessage, adOnlyCreative, boostCreative, budgetError, campaignLink, campaignRequests, plannedSpend } from '../meta-ads'
 import { buildPlanPrompt, compactReport, dailySourceUrl, keepKnownImages, mockPlan, needsRender, postFromPlan, slideLayout } from '../pipeline'
 import { encodeImageChoice, IMAGE_KINDS, IMAGE_MODELS, imagePrice, imagesPerMonth, parseImageChoice, parseImageKind, SUGGESTED } from '../models'
@@ -173,6 +174,37 @@ describe('anuncios', () => {
     const t = JSON.parse(a.targeting)
     expect(t).toMatchObject({ age_min: 18, age_max: 65, publisher_platforms: ['instagram'], targeting_automation: { advantage_audience: 1 } })
     expect(t.flexible_spec[0].interests).toEqual([{ id: '6003', name: 'Tenis' }])
+  })
+  it('segmentación detallada en grupos, género, estudios y ciudades', () => {
+    const t = JSON.parse(
+      campaignRequests(
+        {
+          ...base,
+          targeting: {
+            ...base.targeting,
+            interests: [{ id: 'old', name: 'Viejo' }],
+            groups: [
+              [{ type: 'work_positions', id: 'w1', name: 'Gerente' }, { type: 'interests', id: 'i1', name: 'Tenis' }],
+              [{ type: 'behaviors', id: 'b1', name: 'Viajeros' }],
+            ],
+            genders: [2],
+            education: [3, 9],
+            places: [{ key: 'c1', name: 'Rosario', type: 'city', radius: 25 }, { key: 'r1', name: 'Córdoba', type: 'region' }],
+          },
+        },
+        'page',
+      ).adset('c').targeting,
+    )
+    expect(t.flexible_spec).toEqual([
+      { interests: [{ id: 'old', name: 'Viejo' }, { id: 'i1', name: 'Tenis' }], work_positions: [{ id: 'w1', name: 'Gerente' }] },
+      { behaviors: [{ id: 'b1', name: 'Viajeros' }] },
+    ])
+    expect(t).toMatchObject({ genders: [2], education_statuses: [3, 9] })
+    expect(t.geo_locations).toEqual({ regions: [{ key: 'r1' }], cities: [{ key: 'c1', radius: 25, distance_unit: 'kilometer' }] })
+    const plain = JSON.parse(campaignRequests({ ...base, targeting: { ...base.targeting, interests: [], genders: [1, 2] } }, 'page').adset('c').targeting)
+    expect(plain).not.toHaveProperty('genders')
+    expect(plain).not.toHaveProperty('flexible_spec')
+    expect(plain.geo_locations).toEqual({ countries: ['AR'] })
   })
   it('con Advantage+ la edad máxima va en 65 (Meta no acepta un límite menor)', () => {
     const ages = (advantage: boolean) => JSON.parse(campaignRequests({ ...base, targeting: { ...base.targeting, ageMin: 20, ageMax: 50, advantage } }, 'page').adset('c').targeting)
@@ -405,5 +437,21 @@ describe('login', () => {
     for (let i = 0; i < 5; i++) recordFail('1.2.3.4', 0)
     expect(isLocked('1.2.3.4', 1000)).toBe(true)
     expect(isLocked('1.2.3.4', 16 * 60e3)).toBe(false)
+  })
+})
+
+describe('sugerencias de campaña', () => {
+  const m = (parseManifest(YAML) as unknown as { manifest: never }).manifest as Parameters<typeof mockSuggestion>[0]
+  it('el prompt lleva la app, las piezas, el mínimo de la cuenta y los tipos de segmentación', () => {
+    const ctx = { m, posts: [{ type: 'CAROUSEL', hook: 'Saque potente', caption: 'x', score: 1.4, insights: [] }], campaigns: [], account: { currency: 'ARS', minDaily: 150000, name: 'c', active: true } } as never
+    const p = buildSuggestPrompt(m, ctx, { postIds: ['a'], objective: 'TRAFFIC' })
+    expect(p.system).toMatch(/ARS, minimum 1500\.00 per day/)
+    expect(p.system).toMatch(/work_positions \(Cargos\)/)
+    expect(p.system).toMatch(/WHATSAPP not available/)
+    expect(JSON.parse(p.user).adsToRun[0].hook).toBe('Saque potente')
+  })
+  it('la respuesta se valida con el esquema', () => {
+    expect(SuggestionSchema.parse(mockSuggestion(m)).groups[0].length).toBeGreaterThan(0)
+    expect(() => SuggestionSchema.parse({ ...mockSuggestion(m), groups: [[{ type: 'zodiac', term: 'Aries' }]] })).toThrow()
   })
 })

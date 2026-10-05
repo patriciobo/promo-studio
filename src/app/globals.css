@@ -199,3 +199,8 @@ details summary { cursor: pointer; font-weight: 560; }
 .campaign-ads { display: grid; gap: 10px; }
 .campaign-ad { display: flex; gap: 12px; align-items: flex-start; }
 .campaign-ad img, .campaign-ad .campaign-post-empty { width: 64px; flex: none; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); }
+.audience-group { padding: 12px; border: 1px dashed var(--border-strong); border-radius: 10px; }
+.suggest-list { display: grid; grid-template-columns: 120px 1fr; gap: 8px 14px; margin: 0; font-size: 14px; }
+.suggest-list dt { color: var(--fg-2); font-weight: 560; }
+.suggest-list dd { margin: 0; }
+@media (max-width: 640px) { .suggest-list { grid-template-columns: 1fr; } .suggest-list dt { margin-top: 6px; } }

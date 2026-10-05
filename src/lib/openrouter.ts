@@ -133,3 +133,16 @@ export async function textModels(): Promise<ModelInfo[]> {
     .sort((a, b) => a.cost - b.cost)
     .map((m) => ({ id: m.id, name: m.name, price: `US$ ${(m.cost * 1e6).toFixed(2)}/M tokens` }))
 }
+
+// Precios por token de los modelos de texto (cambian poco): se piden una vez por hora.
+let priceCache: { at: number; prices: Map<string, { prompt: number; completion: number }> } | null = null
+
+/** US$ por token de entrada y de salida de un modelo de texto (null si OpenRouter no lo lista). */
+export async function textModelPrice(model: string) {
+  if (!priceCache || Date.now() - priceCache.at > 3600e3) {
+    const res = await fetch(`${API}/models`)
+    const j = (await res.json()) as { data: { id: string; pricing?: { prompt?: string; completion?: string } }[] }
+    priceCache = { at: Date.now(), prices: new Map(j.data.map((m) => [m.id, { prompt: Number(m.pricing?.prompt ?? 0), completion: Number(m.pricing?.completion ?? 0) }])) }
+  }
+  return priceCache.prices.get(model) ?? null
+}

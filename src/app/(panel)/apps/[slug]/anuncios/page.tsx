@@ -3,7 +3,7 @@ import { campaignAction } from '@/app/actions'
 import { AutoRefresh, ConfirmButton, SubmitButton } from '@/components/client'
 import { db } from '@/lib/db'
 import { mediaSrc } from '@/lib/media'
-import { campaignDays, committedThisMonth, OBJECTIVES, plannedSpend, type Targeting } from '@/lib/meta-ads'
+import { campaignDays, committedThisMonth, detailGroups, EDUCATION, OBJECTIVES, plannedSpend, type Targeting } from '@/lib/meta-ads'
 import { fmtDate, TYPE } from '@/lib/view'
 
 const STATUS: Record<string, { label: string; tone: string }> = {
@@ -15,6 +15,17 @@ const STATUS: Record<string, { label: string; tone: string }> = {
 const money = (cents: number, cur: string | null) => `${(cents / 100).toFixed(2)} ${cur ?? ''}`.trim()
 const results = (m: Record<string, unknown> | null) =>
   m && m.spend ? `Gasto ${m.spend} · alcance ${m.reach ?? 0} · ${m.clicks ?? 0} clics · CTR ${Number(m.ctr ?? 0).toFixed(2)}% · CPC ${Number(m.cpc ?? 0).toFixed(2)}` : 'Sin resultados todavía'
+
+/** Resumen del público: lugar, edad, género, estudios y grupos de segmentación (Y entre grupos). */
+function audience(t: Partial<Targeting>) {
+  const where = t.places?.length ? t.places.map((p) => (p.type === 'city' && p.radius ? `${p.name} +${p.radius} km` : p.name)).join(', ') : (t.countries ?? []).join(', ') || 'AR'
+  const gender = t.genders?.length === 1 ? (t.genders[0] === 2 ? ' · mujeres' : ' · hombres') : ''
+  const edu = t.education?.length ? ` · ${t.education.map((id) => EDUCATION.find((e) => e.id === id)?.label ?? id).join(', ')}` : ''
+  const groups = detailGroups({ groups: t.groups, interests: t.interests ?? [] })
+    .map((g) => g.map((d) => d.name).join(' o '))
+    .join(' · y ')
+  return `${where} · ${t.ageMin ?? 18}–${t.advantage ? 65 : (t.ageMax ?? 65)} años${gender}${edu}${groups ? ` · ${groups}` : ''}`
+}
 
 export default async function Ads({ params }: PageProps<'/apps/[slug]/anuncios'>) {
   const { slug } = await params
@@ -62,7 +73,7 @@ export default async function Ads({ params }: PageProps<'/apps/[slug]/anuncios'>
                   {c.spendCap ? ` · tope ${money(c.spendCap, c.currency)}` : ''}
                 </p>
                 <p className="xs muted">
-                  {(t.countries ?? []).join(', ') || 'AR'} · {t.ageMin ?? 18}–{t.advantage ? 65 : (t.ageMax ?? 65)} años{t.interests?.length ? ` · ${t.interests.map((i) => i.name).join(', ')}` : ''}
+                  {audience(t)}
                   {t.advantage ? ' · Advantage+' : ''} · {c.placements === 'instagram_facebook' ? 'Instagram y Facebook' : 'Instagram'}
                 </p>
               </div>

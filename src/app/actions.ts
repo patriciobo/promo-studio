@@ -11,7 +11,8 @@ import { enqueue, QUEUES } from '@/lib/jobs'
 import { actId, adAccounts, discoverAccounts, graph, token, type AdAccount } from '@/lib/instagram'
 import { parseManifest, type Manifest } from '@/lib/manifest'
 import { parseImageChoice, parseImageKind } from '@/lib/models'
-import { activateCampaign, campaignLink, deleteCampaign, estimateAudience, friendly, pauseCampaign, searchInterests, syncCampaign, type Objective, type Targeting } from '@/lib/meta-ads'
+import { estimateSuggestion, suggestCampaign, type SuggestInput } from '@/lib/ad-suggest'
+import { activateCampaign, campaignLink, deleteCampaign, estimateAudience, friendly, pauseCampaign, searchPlaces, searchTargeting, syncCampaign, DETAIL_TYPES, EDUCATION, type Detail, type DetailType, type GeoPlace, type Objective, type Targeting } from '@/lib/meta-ads'
 import { explain } from '@/lib/meta-errors'
 import { draftManifest, logoFromRepo, proposeManifestPR, repoContext } from '@/lib/onboarding/manifest-wizard'
 import { healthCheck, type Check } from '@/lib/onboarding/meta-health'
@@ -291,19 +292,37 @@ const OBJECTIVE_IDS: Objective[] = ['TRAFFIC', 'AWARENESS', 'ENGAGEMENT', 'WHATS
 /** Monto del formulario (unidades de la moneda, admite coma) → centavos. */
 const cents = (v: string) => Math.round(Number(v.replace(',', '.')) * 100)
 
+const json = <T>(v: string, fallback: T): T => {
+  try {
+    return JSON.parse(v) as T
+  } catch {
+    return fallback
+  }
+}
+
 function targetingFrom(f: FormData): Targeting {
-  const interests = (() => {
-    try {
-      return (JSON.parse(str(f, 'interests') || '[]') as { id: string; name: string }[]).filter((i) => i.id && i.name).slice(0, 25)
-    } catch {
-      return []
-    }
-  })()
+  const types = DETAIL_TYPES.map((d) => d.id) as string[]
+  const groups = json<Detail[][]>(str(f, 'groups') || '[]', [])
+    .map((g) => g.filter((d) => d.id && d.name && types.includes(d.type)).slice(0, 50))
+    .filter((g) => g.length)
+    .slice(0, 5)
+  const places = json<GeoPlace[]>(str(f, 'places') || '[]', [])
+    .filter((p) => p.key && p.name && (p.type === 'city' || p.type === 'region'))
+    .map((p) => ({ ...p, radius: p.type === 'city' ? Math.min(80, Math.max(0, Number(p.radius ?? 17))) : undefined }))
+    .slice(0, 50)
+  const gender = str(f, 'gender')
   return {
     countries: str(f, 'countries').toUpperCase().split(/[\s,]+/).filter((c) => /^[A-Z]{2}$/.test(c)),
+    places,
     ageMin: Math.max(18, Number(str(f, 'ageMin') || 18)),
     ageMax: Math.min(65, Number(str(f, 'ageMax') || 65)),
-    interests,
+    genders: gender === '1' || gender === '2' ? [Number(gender)] : [],
+    education: f
+      .getAll('education')
+      .map(Number)
+      .filter((n) => EDUCATION.some((e) => e.id === n)),
+    groups,
+    interests: [],
     advantage: f.get('advantage') === 'on',
   }
 }
@@ -378,11 +397,42 @@ export async function campaignAction(campaignId: string, action: 'push' | 'activ
   revalidatePath(`/apps/${c.app.slug}`, 'layout')
 }
 
-export async function interestsAction(slug: string, q: string) {
+export async function targetingSearchAction(slug: string, type: DetailType, q: string) {
   await requireUser()
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
   try {
-    return { ok: true as const, items: await searchInterests(app, q) }
+    return { ok: true as const, items: await searchTargeting(app, type, q) }
+  } catch (e) {
+    return { ok: false as const, error: friendly(e) }
+  }
+}
+
+export async function placesAction(slug: string, q: string) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  try {
+    return { ok: true as const, items: await searchPlaces(app, q) }
+  } catch (e) {
+    return { ok: false as const, error: friendly(e) }
+  }
+}
+
+/** Costo estimado de pedir sugerencias al modelo de texto (se muestra antes de generarlas). */
+export async function suggestEstimateAction(slug: string, input: SuggestInput) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  try {
+    return { ok: true as const, ...(await estimateSuggestion(app, input)) }
+  } catch (e) {
+    return { ok: false as const, error: (e as Error).message }
+  }
+}
+
+export async function suggestAction(slug: string, input: SuggestInput) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  try {
+    return { ok: true as const, suggestion: await suggestCampaign(app, { ...input, postIds: input.postIds.slice(0, 10), newPostTopic: input.newPostTopic?.slice(0, 500) }) }
   } catch (e) {
     return { ok: false as const, error: friendly(e) }
   }

@@ -6,10 +6,10 @@ import { db } from './db'
 import { actId, dryGraph, graph, token, type GraphClient } from './instagram'
 import { mediaPath, mediaUrl } from './media'
 import { explain, MetaError } from './meta-errors'
-import { OBJECTIVES, type Targeting } from './meta-ads-options'
+import { DETAIL_TYPES, detailGroups, OBJECTIVES, type DetailType, type Targeting } from './meta-ads-options'
 import { manifestOf } from './pipeline'
 
-export { CTAS, OBJECTIVES, type Objective, type Targeting } from './meta-ads-options'
+export { CTAS, DETAIL_TYPES, EDUCATION, OBJECTIVES, detailGroups, type Detail, type DetailType, type GeoPlace, type Objective, type Targeting } from './meta-ads-options'
 
 type CampaignSpec = Pick<AdCampaign, 'name' | 'objective' | 'budgetType' | 'budget' | 'spendCap' | 'startAt' | 'endAt' | 'placements' | 'cta' | 'link'> & { targeting: Targeting }
 
@@ -24,12 +24,26 @@ export function plannedSpend(c: Pick<AdCampaign, 'budgetType' | 'budget' | 'spen
 
 export function targetingSpec(t: Targeting, placements: string) {
   const fb = placements === 'instagram_facebook'
+  const places = t.places ?? []
+  // flexible_spec: cada grupo es un objeto (O entre sus opciones) y todos los grupos se cumplen (Y).
+  const flexible = detailGroups(t).map((g) => {
+    const byType: Record<string, { id: string; name: string }[]> = {}
+    for (const d of g) (byType[d.type] ??= []).push({ id: d.id, name: d.name })
+    return byType
+  })
   return {
-    geo_locations: { countries: t.countries.length ? t.countries : ['AR'] },
+    geo_locations: places.length
+      ? {
+          ...(places.some((p) => p.type === 'region') ? { regions: places.filter((p) => p.type === 'region').map((p) => ({ key: p.key })) } : {}),
+          ...(places.some((p) => p.type === 'city') ? { cities: places.filter((p) => p.type === 'city').map((p) => ({ key: p.key, radius: p.radius ?? 17, distance_unit: 'kilometer' })) } : {}),
+        }
+      : { countries: t.countries.length ? t.countries : ['AR'] },
     age_min: Math.max(18, t.ageMin),
     // Con Advantage+ Meta no acepta una edad máxima menor a 65 como límite (sólo como sugerencia): se manda 65.
     age_max: t.advantage ? 65 : Math.min(65, t.ageMax),
-    ...(t.interests.length ? { flexible_spec: [{ interests: t.interests.map(({ id, name }) => ({ id, name })) }] } : {}),
+    ...(t.genders?.length === 1 ? { genders: t.genders } : {}),
+    ...(t.education?.length ? { education_statuses: t.education } : {}),
+    ...(flexible.length ? { flexible_spec: flexible } : {}),
     targeting_automation: { advantage_audience: t.advantage ? 1 : 0 },
     publisher_platforms: fb ? ['instagram', 'facebook'] : ['instagram'],
     // 'explore' ya no es una ubicación válida en la API de Marketing (Meta la rechaza).
@@ -293,13 +307,46 @@ export async function syncActiveCampaigns(now = new Date()) {
   return list.length
 }
 
-/** Intereses de Meta para segmentar (los ids son los que pide la API). */
-export async function searchInterests(app: App, q: string) {
+const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+// Las categorías para explorar (comportamientos, sectores…) cambian poco: se piden una vez por hora.
+const browseCache = new Map<string, { at: number; items: { id: string; name: string; size: number; path: string }[] }>()
+
+/** Opciones de segmentación detallada de un tipo (los ids son los que pide la API). */
+export async function searchTargeting(app: App, type: DetailType, q: string) {
+  const t = DETAIL_TYPES.find((d) => d.id === type)
+  if (!t || (t.mode === 'search' && q.trim().length < 2)) return []
+  const { g, sim } = await context(app)
+  if (sim) return [{ id: `sim-${type}`, name: `${q || t.label} (simulación)`, size: 0, path: '' }]
+  type Row = { id: string; name: string; audience_size_lower_bound?: number; path?: string[]; type?: string }
+  if (t.mode === 'search') {
+    const r = await g.get<{ data: Row[] }>('search', { type: t.api, q, limit: 15, locale: 'es_LA' })
+    return r.data.map((i) => ({ id: i.id, name: i.name, size: i.audience_size_lower_bound ?? 0, path: '' }))
+  }
+  let hit = browseCache.get(t.api)
+  if (!hit || Date.now() - hit.at > 3600e3) {
+    const r = await g.get<{ data: Row[] }>('search', { type: 'adTargetingCategory', class: t.api, locale: 'es_LA', limit: 1000 })
+    hit = { at: Date.now(), items: r.data.map((i) => ({ id: i.id, name: i.name, size: i.audience_size_lower_bound ?? 0, path: (i.path ?? []).slice(0, -1).join(' › ') })) }
+    browseCache.set(t.api, hit)
+  }
+  const words = fold(q).split(/\s+/).filter(Boolean)
+  return hit.items.filter((i) => words.every((w) => fold(`${i.path} ${i.name}`).includes(w))).slice(0, 40)
+}
+
+/** Ciudades y provincias para segmentar por ubicación. */
+export async function searchPlaces(app: App, q: string) {
   if (q.trim().length < 2) return []
   const { g, sim } = await context(app)
-  if (sim) return [{ id: 'sim-1', name: `${q} (simulación)`, size: 0 }]
-  const r = await g.get<{ data: { id: string; name: string; audience_size_lower_bound?: number }[] }>('search', { type: 'adinterest', q, limit: 10, locale: 'es_LA' })
-  return r.data.map((i) => ({ id: i.id, name: i.name, size: i.audience_size_lower_bound ?? 0 }))
+  if (sim) return [{ key: 'sim-city', name: `${q} (simulación)`, type: 'city' as const, detail: '' }]
+  const r = await g.get<{ data: { key: string; name: string; type: string; region?: string; country_name?: string }[] }>('search', {
+    type: 'adgeolocation',
+    q,
+    location_types: JSON.stringify(['city', 'region']),
+    limit: 15,
+    locale: 'es_LA',
+  })
+  return r.data
+    .filter((p) => p.type === 'city' || p.type === 'region')
+    .map((p) => ({ key: p.key, name: p.name, type: p.type as 'city' | 'region', detail: [p.type === 'city' ? p.region : null, p.country_name].filter(Boolean).join(', ') }))
 }
 
 /** Tamaño estimado del público (personas activas por mes) para la segmentación y el objetivo. */

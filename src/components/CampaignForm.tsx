@@ -1,8 +1,11 @@
 'use client'
 // Armado de una campaña como en Business Suite: publicaciones, objetivo, presupuesto total o diario, fechas y público.
-import { useActionState, useState, useTransition } from 'react'
-import { createCampaign, estimateAction, interestsAction } from '@/app/actions'
-import { CTAS, OBJECTIVES, type Targeting } from '@/lib/meta-ads-options'
+import { useActionState, useState } from 'react'
+import { createCampaign } from '@/app/actions'
+import type { ResolvedSuggestion } from '@/lib/ad-suggest'
+import { AudienceFields, type AudienceInit } from './AudienceFields'
+import { SuggestPanel } from './SuggestPanel'
+import { CTAS, OBJECTIVES } from '@/lib/meta-ads-options'
 
 export interface CampaignPost {
   id: string
@@ -43,17 +46,35 @@ export function CampaignForm({
   const [budget, setBudget] = useState('30')
   const [start, setStart] = useState(() => local(new Date(Date.now() + 3600e3)))
   const [end, setEnd] = useState(() => local(new Date(Date.now() + 3600e3 + 7 * DAY)))
-  const [countries, setCountries] = useState(defaults.countries.join(', '))
-  const [ageMin, setAgeMin] = useState(defaults.ageMin)
-  const [ageMax, setAgeMax] = useState(defaults.ageMax)
-  const [advantage, setAdvantage] = useState(true)
-  const [placements, setPlacements] = useState('instagram')
-  const [interests, setInterests] = useState<{ id: string; name: string }[]>([])
-  const [q, setQ] = useState('')
-  const [found, setFound] = useState<{ id: string; name: string; size: number }[] | string | null>(null)
-  const [estimate, setEstimate] = useState<string | null>(null)
   const [newType, setNewType] = useState('')
-  const [pending, start_] = useTransition()
+  const [topic, setTopic] = useState('')
+  const [cta, setCta] = useState('LEARN_MORE')
+  const [name, setName] = useState(defaults.name)
+  // El público se vuelve a montar con otra `key` cuando se aplica una sugerencia.
+  const [audience, setAudience] = useState<{ v: number; init: AudienceInit }>({ v: 0, init: { countries: defaults.countries, ageMin: defaults.ageMin, ageMax: defaults.ageMax } })
+
+  const apply = (s: ResolvedSuggestion) => {
+    setObjective(s.objective === 'WHATSAPP' && !defaults.whatsapp ? 'TRAFFIC' : s.objective)
+    setCta(s.cta)
+    setBudgetType(s.budgetType)
+    setBudget(String(s.budget))
+    setEnd(local(new Date(new Date(start).getTime() + s.days * DAY)))
+    setName(s.name || defaults.name)
+    setAudience((a) => ({
+      v: a.v + 1,
+      init: {
+        countries: s.countries.length ? s.countries : defaults.countries,
+        places: s.resolvedPlaces,
+        ageMin: s.ageMin,
+        ageMax: s.ageMax,
+        gender: s.gender === 'female' ? '2' : s.gender === 'male' ? '1' : '',
+        education: s.education,
+        groups: s.resolvedGroups,
+        advantage: s.advantage,
+        placements: s.placements,
+      },
+    }))
+  }
 
   const currency = 'currency' in account ? account.currency : ''
   const days = Math.max(1, Math.round((new Date(end).getTime() - new Date(start).getTime()) / DAY))
@@ -61,7 +82,6 @@ export function CampaignForm({
   const max = budgetType === 'DAILY' ? amount * days : amount
   const perDay = budgetType === 'DAILY' ? amount : amount / days
   const min = 'minDaily' in account ? (account.minDaily / 100) * (budgetType === 'DAILY' ? 1 : days) : 0
-  const targeting = (): Targeting => ({ countries: countries.toUpperCase().split(/[\s,]+/).filter(Boolean), ageMin, ageMax: advantage ? 65 : ageMax, interests, advantage })
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
   const ads = picked.length + (newType ? 1 : 0)
 
@@ -113,7 +133,7 @@ export function CampaignForm({
               <>
                 <label>
                   De qué trata <span className="hint">la oferta o idea del anuncio; se genera como un post a pedido y la revisás en Revisión</span>
-                  <textarea name="newPostTopic" rows={3} maxLength={500} required />
+                  <textarea name="newPostTopic" rows={3} maxLength={500} required value={topic} onChange={(e) => setTopic(e.target.value)} />
                 </label>
                 <div className="row">{modelSelect}</div>
                 <p className="xs muted">La campaña queda en borrador hasta que la pieza esté lista; después la creás en Meta con un botón.</p>
@@ -122,6 +142,8 @@ export function CampaignForm({
           </div>
         </details>
       </section>
+
+      <SuggestPanel slug={slug} input={{ postIds: picked, newPostTopic: newType ? topic : undefined, objective }} currency={currency} onApply={apply} />
 
       <section className="card stack">
         <h2>2. Objetivo</h2>
@@ -138,7 +160,7 @@ export function CampaignForm({
           <div className="form-grid">
             <label>
               Botón
-              <select name="cta" defaultValue="LEARN_MORE">
+              <select name="cta" value={cta} onChange={(e) => setCta(e.target.value)}>
                 {CTAS.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.label}
@@ -190,97 +212,13 @@ export function CampaignForm({
 
       <section className="card stack">
         <h2>4. Público</h2>
-        <div className="form-grid">
-          <label>
-            Países <span className="hint">códigos de 2 letras</span>
-            <input name="countries" value={countries} onChange={(e) => setCountries(e.target.value)} placeholder="AR, UY" />
-          </label>
-          <label>
-            Edad mínima
-            <input name="ageMin" type="number" min={18} max={65} value={ageMin} onChange={(e) => setAgeMin(Number(e.target.value))} />
-          </label>
-          <label>
-            Edad máxima {advantage && <span className="hint">con Advantage+ Meta usa hasta 65</span>}
-            <input name="ageMax" type="number" min={18} max={65} value={advantage ? 65 : ageMax} disabled={advantage} onChange={(e) => setAgeMax(Number(e.target.value))} />
-          </label>
-        </div>
-        <input type="hidden" name="interests" value={JSON.stringify(interests)} />
-        {advantage && <input type="hidden" name="ageMax" value={65} />}
-        <div className="stack-sm">
-          <span className="small">Intereses</span>
-          {interests.length > 0 && (
-            <div className="row" style={{ gap: 6 }}>
-              {interests.map((i) => (
-                <button key={i.id} type="button" className="badge info" onClick={() => setInterests(interests.filter((x) => x.id !== i.id))} title="Quitar">
-                  {i.name} ×
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="row">
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar, p. ej. tenis" style={{ maxWidth: 260 }} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), (e.currentTarget.nextElementSibling as HTMLButtonElement)?.click())} />
-            <button
-              type="button"
-              className="btn sm"
-              disabled={pending || q.trim().length < 2}
-              onClick={() =>
-                start_(async () => {
-                  const r = await interestsAction(slug, q)
-                  setFound(r.ok ? r.items : r.error)
-                })
-              }
-            >
-              Buscar
-            </button>
-          </div>
-          {typeof found === 'string' && <p className="xs" style={{ color: 'var(--danger)' }}>{found}</p>}
-          {Array.isArray(found) && (
-            <div className="row" style={{ gap: 6 }}>
-              {found.length === 0 && <span className="xs muted">Sin resultados.</span>}
-              {found
-                .filter((i) => !interests.some((x) => x.id === i.id))
-                .map((i) => (
-                  <button key={i.id} type="button" className="badge" onClick={() => setInterests([...interests, { id: i.id, name: i.name }])}>
-                    + {i.name}
-                    {i.size ? ` · ${(i.size / 1e6).toFixed(1)} M` : ''}
-                  </button>
-                ))}
-            </div>
-          )}
-        </div>
-        <label className="check">
-          <input type="checkbox" name="advantage" checked={advantage} onChange={(e) => setAdvantage(e.target.checked)} /> Público Advantage+ <span className="hint">Meta puede ampliar más allá de los intereses y la edad si rinde mejor (recomendado). Para una edad máxima estricta, desmarcalo.</span>
-        </label>
-        <div className="row">
-          <label className="check">
-            <input type="radio" name="placements" value="instagram" checked={placements === 'instagram'} onChange={() => setPlacements('instagram')} /> Sólo Instagram
-          </label>
-          <label className="check">
-            <input type="radio" name="placements" value="instagram_facebook" checked={placements === 'instagram_facebook'} onChange={() => setPlacements('instagram_facebook')} /> Instagram y Facebook
-          </label>
-        </div>
-        <div className="row">
-          <button
-            type="button"
-            className="btn sm"
-            disabled={pending}
-            onClick={() =>
-              start_(async () => {
-                const r = await estimateAction(slug, targeting(), placements, objective)
-                setEstimate(r.ok ? (r.upper ? `Público estimado: ${r.lower.toLocaleString('es-AR')} a ${r.upper.toLocaleString('es-AR')} personas` : 'Meta no devolvió una estimación (simulación o público muy chico).') : r.error)
-              })
-            }
-          >
-            Estimar público
-          </button>
-          {estimate && <span className="small muted">{estimate}</span>}
-        </div>
+        <AudienceFields key={audience.v} slug={slug} objective={objective} initial={audience.init} />
       </section>
 
       <section className="card stack">
         <label>
           Nombre de la campaña
-          <input name="name" defaultValue={defaults.name} maxLength={120} />
+          <input name="name" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} />
         </label>
         {state?.error && <p className="notice bad small">{state.error}</p>}
         <div className="row">
