@@ -143,6 +143,7 @@ describe('errores de Meta', () => {
   it('traduce token vencido, descarga fallida y límites', () => {
     expect(explain(new MetaError(190, undefined, 'Error validating access token', 'me')).title).toMatch(/Token/)
     expect(explain(new MetaError(9004, 2207052, 'Media download has failed', 'x/media')).retry).toBe(true)
+    expect(explain(new MetaError(100, 1885183, 'La publicación con contenido publicitario se creó con una app que se encuentra en modo de desarrollo.', 'act_1/adcreatives')).fix).toMatch(/privacidad/)
     expect(explain(new MetaError(4, undefined, 'Application request limit reached', 'x')).retry).toBe(true)
     expect(explain(new MetaError(100, undefined, 'The instagram account is not authorized for this ad account', 'act/adcreatives')).fix).toMatch(/B.6/)
   })

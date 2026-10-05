@@ -21,6 +21,15 @@ export interface Explained {
 
 const RULES: { match: (e: MetaError) => boolean; x: Explained }[] = [
   {
+    match: (e) => /modo de desarrollo|development mode/i.test(e.metaMessage),
+    x: {
+      title: 'La app de Meta está en modo desarrollo',
+      cause: 'Meta no deja crear anuncios con publicaciones o creatividades hechas por una app en desarrollo.',
+      fix: 'En developers.facebook.com → tu app → Configuración básica: cargá la URL de privacidad (PUBLIC_URL/privacidad), categoría e ícono, y pasá el interruptor a "Activo" (Live). Después tocá "Completar en Meta".',
+      retry: false,
+    },
+  },
+  {
     match: (e) => e.code === 190,
     x: { title: 'Token inválido o vencido', cause: 'El token fue revocado, cambió la contraseña o se borró el usuario de sistema.', fix: 'Generá un token nuevo del usuario de sistema (paso A.5) y cargalo en Configuración.', retry: false },
   },

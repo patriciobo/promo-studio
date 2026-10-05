@@ -1,8 +1,8 @@
-// Protege la interfaz: todo pide login salvo la media pública, las páginas de links y el propio login.
+// Protege la interfaz: todo pide login salvo la media pública, las páginas de links, la política de privacidad y el propio login.
 import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 
-const PUBLIC = [/^\/media\//, /^\/l\//, /^\/login/, /^\/api\/auth/, /^\/_next/, /^\/favicon/]
+const PUBLIC = [/^\/media\//, /^\/l\//, /^\/privacidad/, /^\/login/, /^\/api\/auth/, /^\/_next/, /^\/favicon/]
 
 export default auth((req) => {
   if (process.env.NODE_ENV !== 'production' && process.env.AUTH_BYPASS === '1') return NextResponse.next()
