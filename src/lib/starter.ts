@@ -113,3 +113,7 @@ export const starterStart = (timeZone: string, now = new Date()) => localDay(new
 
 /** Cuántos días dura el kit (para avisar dónde termina). */
 export const STARTER_DAYS = STARTER_TOPICS.length - 2
+
+/** El kit se puede volver a generar si falló o si no quedó nada en pie (todo rechazado o fallido). */
+export const starterRedoable = (b: { status: string; posts: { status: string }[] }) =>
+  b.posts.length ? b.posts.every((p) => p.status === 'REJECTED' || p.status === 'FAILED') : b.status === 'FAILED'

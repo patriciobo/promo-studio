@@ -10,7 +10,7 @@ import { StyleReminder } from './StyleReminder'
 
 const TYPE = { IMAGE: 'Imagen', CAROUSEL: 'Carrusel', REEL: 'Reel', STORY: 'Historia' } as const
 
-export async function StarterKit({ app }: { app: NonNullable<Awaited<ReturnType<typeof db.app.findUnique>>> }) {
+export async function StarterKit({ app, redo = false }: { app: NonNullable<Awaited<ReturnType<typeof db.app.findUnique>>>; redo?: boolean }) {
   const start = starterStart(app.timezone)
   const slots = starterSlots(new Date(`${start}T00:00:00Z`), app.postTime, app.timezone)
   const fmt = new Intl.DateTimeFormat('es-AR', { timeZone: app.timezone, weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -19,7 +19,8 @@ export async function StarterKit({ app }: { app: NonNullable<Awaited<ReturnType<
   return (
     <section className="card stack">
       <div className="stack-sm">
-        <h2>Kit de publicaciones iniciales</h2>
+        <h2>{redo ? 'Generar otro kit inicial' : 'Kit de publicaciones iniciales'}</h2>
+        {redo && <p className="notice small">El kit anterior quedó rechazado o falló entero. Al generar el nuevo se vuelve a leer el repo (con lo que hayas cambiado) y se borra el anterior con sus piezas.</p>}
         <p className="small">
           Antes del ritmo semanal: 9 publicaciones que presentan el negocio. Llenan las 3 primeras filas del perfil, así quien llega entiende en segundos qué es, para quién y cómo empezar, y le muestran a Instagram de qué
           trata la cuenta (mismo tema en todas y las palabras que la gente busca en el texto) para que sepa a quién recomendarla.
@@ -55,7 +56,7 @@ export async function StarterKit({ app }: { app: NonNullable<Awaited<ReturnType<
         </label>
         <StyleReminder app={app} />
         <div className="row" style={{ flexWrap: 'wrap' }}>
-          <SubmitButton pendingText="Encolando…">Generar kit inicial</SubmitButton>
+          <SubmitButton pendingText="Encolando…">{redo ? 'Generar otro kit inicial' : 'Generar kit inicial'}</SubmitButton>
           <span className="xs muted">~{images} imágenes{model ? `, ~${usd(images * imagePrice(model, app.imageQuality))} con el modelo de Ajustes` : ''}. Quedan en revisión como cualquier semana.</span>
         </div>
       </form>

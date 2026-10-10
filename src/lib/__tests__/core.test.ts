@@ -22,7 +22,7 @@ import { TEMPLATES } from '@/templates/styles'
 import { buildStylePrompt, cleanSuggestions } from '../style-suggest'
 import { allItems, parseSampleItems } from '../style-samples'
 import { digits, parseReply } from '../whatsapp'
-import { localDay, starterSlots, STARTER_TOPICS } from '../starter'
+import { localDay, starterRedoable, starterSlots, STARTER_TOPICS } from '../starter'
 
 const YAML = `
 name: Mi Tenis
@@ -563,6 +563,12 @@ describe('kit inicial', () => {
     expect(STARTER_TOPICS.slice(0, 3).every((t) => t.pin)).toBe(true)
     expect(slots.map((s) => s.type)).toEqual(STARTER_TOPICS.map((t) => t.type))
     expect(slots[0].day).toBe(2) // miércoles
+  })
+  it('se puede rehacer si falló o si todo quedó rechazado o fallido', () => {
+    expect(starterRedoable({ status: 'FAILED', posts: [] })).toBe(true)
+    expect(starterRedoable({ status: 'PLANNING', posts: [] })).toBe(false)
+    expect(starterRedoable({ status: 'READY', posts: [{ status: 'REJECTED' }, { status: 'FAILED' }] })).toBe(true)
+    expect(starterRedoable({ status: 'READY', posts: [{ status: 'REJECTED' }, { status: 'APPROVED' }] })).toBe(false)
   })
   it('el plan sigue el tema de cada post y no inventa datos', () => {
     const { user } = buildPlanPrompt(m, slots, { ...ctx, starter: STARTER_TOPICS.map((t) => ({ theme: t.label, goal: t.brief, pin: t.pin })) })

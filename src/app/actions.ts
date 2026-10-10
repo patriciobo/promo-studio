@@ -30,6 +30,7 @@ import { saveBrandToRepo, YAML_FIELDS, type YamlField } from '@/lib/brand/save'
 import { mediaPath, saveMedia } from '@/lib/media'
 import { TEXT_MODELS } from '@/lib/models'
 import { digits, sendForReview } from '@/lib/whatsapp'
+import { starterRedoable } from '@/lib/starter'
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').replace(/\r\n/g, '\n').trim()
 
@@ -159,16 +160,41 @@ export async function generateWeek(slug: string, f: FormData) {
   redirect(`/apps/${slug}?aviso=generando&semana=${day}`)
 }
 
-/** Kit de publicaciones iniciales: uno por app. Si falló sin llegar a armar posts, se puede volver a pedir. */
+/** Borra publicaciones con sus piezas en disco. Sólo para lo que nunca se publicó ni tiene anuncios. */
+async function removePosts(ids: string[]) {
+  if (!ids.length) return 0
+  const posts = await db.post.findMany({ where: { id: { in: ids }, status: { in: ['REJECTED', 'FAILED', 'DRAFT'] }, ads: { none: {} } }, include: { assets: { select: { path: true } } } })
+  await db.post.deleteMany({ where: { id: { in: posts.map((p) => p.id) } } })
+  for (const a of posts.flatMap((p) => p.assets)) await rm(mediaPath(a.path), { force: true }).catch(() => {})
+  return posts.length
+}
+
+/** Borra publicaciones rechazadas: una (`postId`) o todas las de un lote (`batchId`). */
+export async function deleteRejected(slug: string, target: { postId?: string; batchId?: string }) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  const where = { appId: app.id, status: 'REJECTED' as const, ...(target.postId ? { id: target.postId } : { batchId: target.batchId ?? '-' }) }
+  const ids = (await db.post.findMany({ where, select: { id: true } })).map((p) => p.id)
+  await removePosts(ids)
+  // Un lote que quedó vacío no sirve para nada (y un kit vacío se puede volver a pedir).
+  if (target.batchId && !(await db.post.count({ where: { batchId: target.batchId } }))) await db.batch.deleteMany({ where: { id: target.batchId, appId: app.id } })
+  revalidatePath(`/apps/${slug}`, 'layout')
+}
+
+/** Kit de publicaciones iniciales: uno por app. Se puede volver a pedir si falló o si todo lo que armó se rechazó o falló. */
 export async function generateStarter(slug: string, f: FormData) {
   await requireUser()
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
   const start = str(f, 'start')
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return
   const weekStart = new Date(`${start}T00:00:00Z`)
-  const old = await db.batch.findFirst({ where: { appId: app.id, kind: 'STARTER' }, include: { _count: { select: { posts: true } } } })
-  if (old && (old.status !== 'FAILED' || old._count.posts)) redirect(`/apps/${slug}?aviso=kit-ya-generado`)
-  if (old) await db.batch.delete({ where: { id: old.id } })
+  const old = await db.batch.findFirst({ where: { appId: app.id, kind: 'STARTER' }, include: { posts: { select: { id: true, status: true } } } })
+  if (old && !starterRedoable(old)) redirect(`/apps/${slug}?aviso=kit-ya-generado`)
+  // El kit anterior (todo rechazado o fallido) se reemplaza: se borran sus publicaciones y sus piezas.
+  if (old) {
+    await removePosts(old.posts.map((p) => p.id))
+    await db.batch.delete({ where: { id: old.id } })
+  }
   const brief = str(f, 'brief').slice(0, 1000) || null
   await db.batch.create({ data: { appId: app.id, weekStart, status: 'PLANNING', brief, kind: 'STARTER' } })
   const imageIds = await requestImages(app, f)

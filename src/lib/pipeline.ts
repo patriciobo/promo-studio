@@ -251,7 +251,7 @@ async function withoutStarterDays(app: App, slots: Slot[]) {
   if (!slots.length) return slots
   const from = slots[0].at
   const to = slots[slots.length - 1].at
-  const taken = await db.post.findMany({ where: { appId: app.id, batch: { kind: 'STARTER' }, scheduledAt: { gte: new Date(from.getTime() - 864e5), lte: new Date(to.getTime() + 864e5) } }, select: { scheduledAt: true } })
+  const taken = await db.post.findMany({ where: { appId: app.id, batch: { kind: 'STARTER' }, status: { notIn: ['REJECTED', 'FAILED'] }, scheduledAt: { gte: new Date(from.getTime() - 864e5), lte: new Date(to.getTime() + 864e5) } }, select: { scheduledAt: true } })
   const days = new Set(taken.map((p) => localDay(p.scheduledAt!, app.timezone)))
   return slots.filter((s) => s.type === 'STORY' || !days.has(localDay(s.at, app.timezone)))
 }

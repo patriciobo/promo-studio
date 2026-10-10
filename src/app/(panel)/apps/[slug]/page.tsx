@@ -1,6 +1,7 @@
 import Link from 'next/link'
-import { generateWeek, retryPost, syncNow } from '@/app/actions'
-import { AutoRefresh, Progress, SubmitButton } from '@/components/client'
+import { deleteRejected, generateWeek, retryPost, syncNow } from '@/app/actions'
+import { AutoRefresh, ConfirmButton, Progress, SubmitButton } from '@/components/client'
+import { starterRedoable } from '@/lib/starter'
 import { ImagePicker } from '@/components/ImagePicker'
 import { ModelSelect } from '@/components/ModelSelect'
 import { PostMeta, PostThumbs } from '@/components/PostPreview'
@@ -24,9 +25,10 @@ export default async function Calendar({ params, searchParams }: PageProps<'/app
   })
   const images = await db.appImage.findMany({ where: { appId: app.id, archived: false }, orderBy: { createdAt: 'desc' }, take: 24 })
   const nm = nextMonday().toISOString().slice(0, 10)
-  const starter = await db.batch.findFirst({ where: { appId: app.id, kind: 'STARTER' }, include: { _count: { select: { posts: true } } } })
-  // El kit se ofrece mientras no haya semanas generadas (o si el kit falló sin llegar a armar posts).
-  const offerStarter = !batches.some((b) => b.kind === 'WEEK') && (!starter || (starter.status === 'FAILED' && !starter._count.posts))
+  const starter = await db.batch.findFirst({ where: { appId: app.id, kind: 'STARTER' }, include: { posts: { select: { status: true } } } })
+  // El kit se ofrece mientras no haya semanas generadas, y de nuevo si el anterior falló o se rechazó entero.
+  const redo = !!starter && starterRedoable(starter)
+  const offerStarter = redo || (!starter && !batches.some((b) => b.kind === 'WEEK'))
   const working = batches.some((b) => b.status === 'PLANNING' || b.status === 'GENERATING')
   const daily = (app.manifest as unknown as Manifest | null)?.daily
   const dailyPosts = daily ? await db.post.findMany({ where: { appId: app.id, dailyDate: { not: null } }, orderBy: [{ dailyDate: 'desc' }, { type: 'asc' }], take: 14, include: { assets: true } }) : []
@@ -40,7 +42,7 @@ export default async function Calendar({ params, searchParams }: PageProps<'/app
       )}
       {aviso === 'kit-generando' && working && <p className="notice ok">Generando el kit inicial: primero los textos de las 9 publicaciones y después las piezas. Tarda unos minutos; esta página se actualiza sola.</p>}
       {aviso === 'kit-ya-generado' && <p className="notice warn">Esta app ya tiene su kit inicial. Para rehacer una publicación, editala o regenerá su imagen desde Revisión.</p>}
-      {offerStarter && app.manifest && <StarterKit app={app} />}
+      {offerStarter && app.manifest && <StarterKit app={app} redo={redo} />}
       {aviso === 'ya-generada' && <p className="notice warn">La semana del {String(semana)} ya está generada. Para rehacer una publicación, editala o regenerá su imagen desde Revisión.</p>}
       <div className="card stack">
         <div className="row between">
@@ -124,6 +126,16 @@ export default async function Calendar({ params, searchParams }: PageProps<'/app
             </p>
           )}
           {b.error && <p className="notice bad small">{b.error}</p>}
+          {b.posts.some((p) => p.status === 'REJECTED') && (
+            <div className="row" style={{ gap: 8 }}>
+              <ConfirmButton
+                action={deleteRejected.bind(null, slug, { batchId: b.id })}
+                label={`Borrar las ${b.posts.filter((p) => p.status === 'REJECTED').length} rechazadas`}
+                confirm="Se borran con sus piezas; no se puede deshacer."
+                className="btn sm ghost"
+              />
+            </div>
+          )}
           <div className="grid">
             {b.posts.map((p) => (
               <article key={p.id} className="card post-card">
@@ -139,6 +151,7 @@ export default async function Calendar({ params, searchParams }: PageProps<'/app
                       Revisar
                     </Link>
                   )}
+                  {p.status === 'REJECTED' && <ConfirmButton action={deleteRejected.bind(null, slug, { postId: p.id })} label="Borrar" confirm="¿Borrarla?" className="btn sm ghost" />}
                   {p.status === 'FAILED' && p.assets.length > 0 && (
                     <form action={retryPost.bind(null, p.id)}>
                       <SubmitButton className="btn sm">Reintentar ahora</SubmitButton>
