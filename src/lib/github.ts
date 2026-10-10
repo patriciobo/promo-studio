@@ -114,11 +114,9 @@ export async function latestReleases(repo: string, n = 3) {
   }
 }
 
-/** Crea una rama con los archivos y abre un PR. Devuelve la URL del PR. */
-export async function openPullRequest(repo: string, base: string, branch: string, files: { path: string; content: Buffer | string }[], title: string, body: string) {
-  if (local(repo)) throw new Error('Los repos locales no admiten pull requests: descargá el archivo.')
-  const ref = (await gh(`/repos/${repo}/git/ref/heads/${base}`)) as { object: { sha: string } }
-  const baseCommit = (await gh(`/repos/${repo}/git/commits/${ref.object.sha}`)) as { tree: { sha: string } }
+/** Commit con los archivos encima de `parent` (sin mover ninguna rama). Devuelve el sha del commit nuevo. */
+async function commitOn(repo: string, parent: string, files: { path: string; content: Buffer | string }[], message: string) {
+  const baseCommit = (await gh(`/repos/${repo}/git/commits/${parent}`)) as { tree: { sha: string } }
   const tree = await Promise.all(
     files.map(async (f) => {
       const blob = (await gh(`/repos/${repo}/git/blobs`, {
@@ -129,8 +127,42 @@ export async function openPullRequest(repo: string, base: string, branch: string
     }),
   )
   const newTree = (await gh(`/repos/${repo}/git/trees`, { method: 'POST', body: JSON.stringify({ base_tree: baseCommit.tree.sha, tree }) })) as { sha: string }
-  const commit = (await gh(`/repos/${repo}/git/commits`, { method: 'POST', body: JSON.stringify({ message: title, tree: newTree.sha, parents: [ref.object.sha] }) })) as { sha: string }
-  await gh(`/repos/${repo}/git/refs`, { method: 'POST', body: JSON.stringify({ ref: `refs/heads/${branch}`, sha: commit.sha }) })
+  const commit = (await gh(`/repos/${repo}/git/commits`, { method: 'POST', body: JSON.stringify({ message, tree: newTree.sha, parents: [parent] }) })) as { sha: string }
+  return commit.sha
+}
+
+/** Crea una rama con los archivos y abre un PR. Devuelve la URL del PR. */
+export async function openPullRequest(repo: string, base: string, branch: string, files: { path: string; content: Buffer | string }[], title: string, body: string) {
+  if (local(repo)) throw new Error('Los repos locales no admiten pull requests: descargá el archivo.')
+  const ref = (await gh(`/repos/${repo}/git/ref/heads/${base}`)) as { object: { sha: string } }
+  const sha = await commitOn(repo, ref.object.sha, files, title)
+  await gh(`/repos/${repo}/git/refs`, { method: 'POST', body: JSON.stringify({ ref: `refs/heads/${branch}`, sha }) })
   const pr = (await gh(`/repos/${repo}/pulls`, { method: 'POST', body: JSON.stringify({ title, body, head: branch, base }) })) as { html_url: string }
   return pr.html_url
 }
+
+/** Commit directo en la rama (sin PR). Falla si la rama está protegida. Devuelve la URL del commit. */
+export async function commitFiles(repo: string, branch: string, files: { path: string; content: Buffer | string }[], message: string) {
+  if (local(repo)) throw new Error('En un repo local los archivos se escriben directo, sin commit.')
+  const ref = (await gh(`/repos/${repo}/git/ref/heads/${branch}`)) as { object: { sha: string } }
+  const sha = await commitOn(repo, ref.object.sha, files, message)
+  await gh(`/repos/${repo}/git/refs/heads/${branch}`, { method: 'PATCH', body: JSON.stringify({ sha, force: false }) })
+  return `https://github.com/${repo}/commit/${sha}`
+}
+
+/** Repo local ("file:/ruta"): escribe los archivos en disco. Devuelve la carpeta. */
+export async function writeLocalFiles(repo: string, files: { path: string; content: Buffer | string }[]) {
+  const dir = local(repo)
+  if (!dir) throw new Error('No es un repo local')
+  const { mkdir, writeFile } = await import('node:fs/promises')
+  const { dirname } = await import('node:path')
+  for (const f of files) {
+    const p = join(dir, f.path)
+    if (!p.startsWith(dir)) throw new Error(`Ruta inválida: ${f.path}`)
+    await mkdir(dirname(p), { recursive: true })
+    await writeFile(p, f.content)
+  }
+  return dir
+}
+
+export const isLocalRepo = (repo: string) => !!local(repo)

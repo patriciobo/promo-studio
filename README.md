@@ -79,6 +79,29 @@ sources:                                       # opcional: ideas que publica la 
 cadence: { feed: 3, reels: 1, stories: 2 }     # por semana
 ```
 
+## Identidad de marca
+
+Pestaña **Marca** de cada app (`/apps/<app>/marca`): un brief y rondas de **3 alternativas** (logo, paleta,
+tipografías, tono de voz, frase y gráfico de apoyo), cada una con su lámina para mostrar al cliente.
+
+- **Partir del repo:** lee el `promo.yaml` y, si no hay, los estilos, `package.json` y el README de la app.
+  Toma colores, tipografías, logo y frase, y marca para generar sólo lo que falta. Lo que no se marca se respeta.
+  **Desde cero** genera todo sin tomar nada del repo.
+- **Brief:** 5 bloques. Los bloques son el negocio, el público y el mercado, la personalidad (rasgos y 4 ejes), los gustos y referencias (con un logo de referencia opcional) y el uso y los límites.
+  Arranca con lo que dice el `promo.yaml`.
+- **Conceptos:** cada alternativa sale de un concepto distinto del catálogo `src/lib/brand/concepts.ts`.
+  El catálogo tiene 12 escuelas y tendencias 2026: suizo, holandés, nórdico, japonés, pop coreano, cinético fluido, hecho a mano, retro pulido, micrográfico, raíces locales, sensorial 3D y clásico.
+  `rankConcepts` los ordena según el brief y el modelo de texto elige 3. Las rondas siguientes prefieren conceptos nuevos y aceptan un pedido ("más minimal").
+- **Guardar en el repo** (con la alternativa elegida):
+  - escribe `.promo/marca/` con el logo (SVG si se vectorizó), la lámina, `MARCA.md` (guía) y `marca.json`.
+  - actualiza en el `promo.yaml` los campos marcados: colores, tipografía de las piezas, logo, frase, y opcionalmente tono y nombre.
+  - La edición del `promo.yaml` reemplaza sólo esos valores: comentarios y formato quedan igual.
+  - En GitHub abre un pull request (o hace un commit directo en la rama, a elección). En un repo local (`file:`) escribe los archivos.
+  - Con commit o repo local, la app se vuelve a sincronizar sola.
+- **Modelos:** el logo usa Recraft V4.1 Flash (~US$ 0,007, especializado en diseño) o Sunburst baja (~US$ 0,006), elegibles en cada ronda.
+  El logo se puede vectorizar con Recraft V4.1 Vector (~US$ 0,08). Una ronda completa cuesta ~US$ 0,03 y se descuenta del tope de la app.
+- Corre en el worker (colas `brand-round` y `brand-vector`). Los archivos quedan en `MEDIA_DIR/apps/<app>/marca/`.
+
 ## Seguridad
 
 - La interfaz pide usuario y contraseña (`ADMIN_USER` + `ADMIN_PASSWORD_HASH`, hash scrypt); tras 5 intentos fallidos la IP queda bloqueada 15 minutos. Son públicas sólo `/media/*` (lo que Instagram descarga) y `/l/*` (página de links).
@@ -91,6 +114,7 @@ cadence: { feed: 3, reels: 1, stories: 2 }     # por semana
 ```
 src/lib/          manifiesto, GitHub, OpenRouter (costos y topes), pipeline semanal, Instagram, anuncios, métricas
 src/lib/onboarding/  asistente de promo.yaml, control de salud de Meta, kit de perfil
+src/lib/brand/    identidad de marca: catálogo de conceptos, brief, lectura de repos y generación de alternativas
 src/templates/    plantillas HTML de las piezas (marca de cada app)
 src/render/       Chromium (puppeteer) y ffmpeg
 src/worker/       pg-boss: crons y colas

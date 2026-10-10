@@ -1,6 +1,6 @@
 'use server'
 // Acciones de la interfaz. Todas verifican la sesión; las pesadas se encolan para el worker.
-import type { PostType } from '@prisma/client'
+import { Prisma, type PostType } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { requireUser } from '@/auth'
@@ -23,6 +23,12 @@ import { setSecret, type SecretKey } from '@/lib/settings'
 import { designStyle, parseDesignStyle, SAMPLE_MODEL, SAMPLE_QUALITIES } from '@/lib/styles'
 import { allItems, parseSampleItems, setSamplesState } from '@/lib/style-samples'
 import { suggestStyles } from '@/lib/style-suggest'
+import { rm } from 'node:fs/promises'
+import { BriefSchema, missingElements, parseBriefForm, parseElements, projectDir, type ElementId, type Found } from '@/lib/brand/brief'
+import { readRepoBrand } from '@/lib/brand/repo'
+import { saveBrandToRepo, YAML_FIELDS, type YamlField } from '@/lib/brand/save'
+import { mediaPath, saveMedia } from '@/lib/media'
+import { TEXT_MODELS } from '@/lib/models'
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').replace(/\r\n/g, '\n').trim()
 
@@ -523,4 +529,133 @@ export async function saveSecrets(f: FormData) {
     else if (v) await setSecret(k, v)
   }
   revalidatePath('/configuracion')
+}
+
+// --- Identidad de marca (pestaña Marca de cada app) ----------------------------
+
+const REFERENCE_TYPES: Record<string, string> = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' }
+
+/** Logo de referencia subido en el formulario (si vino uno válido). */
+async function saveReference(slug: string, f: FormData) {
+  const file = imageFiles(f.getAll('reference'))[0]
+  if (!file || !(file.type in REFERENCE_TYPES)) return undefined
+  return saveMedia(`${projectDir(slug)}/referencia${REFERENCE_TYPES[file.type]}`, Buffer.from(await file.arrayBuffer()))
+}
+
+const textModelOf = (f: FormData, fallback: string) => {
+  const m = str(f, 'textModel')
+  return m && TEXT_MODELS.some((t) => t.id === m) ? m : fallback
+}
+
+const brandBack = (slug: string, q = '') => `/apps/${slug}/marca${q ? `?${q}` : ''}`
+
+/** Arranca la identidad de la app: brief con lo que dice el promo.yaml y lo que se encuentra en el repo. */
+export async function startBrand(slug: string, f: FormData) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  const m = app.manifest as unknown as Manifest | null
+  const fresh = str(f, 'mode') === 'cero'
+  const brief = BriefSchema.parse({
+    name: m?.name ?? app.name,
+    industry: m?.category ?? '',
+    offer: m?.description ?? m?.tagline ?? '',
+    audience: m?.audience.description ?? '',
+    tagline: fresh ? '' : (m?.tagline ?? ''),
+    language: m?.languages[0] ?? 'es',
+  })
+  let found: Found | null = null
+  let error: string | null = null
+  if (!fresh) {
+    try {
+      found = (await readRepoBrand(app.repo, app.branch, slug)).found
+    } catch (e) {
+      error = `No pude leer el repo: ${(e as Error).message}`
+    }
+  }
+  const elements: ElementId[] = found ? missingElements(found) : ['logo', 'paleta', 'tipografia', 'voz', 'tagline', 'patron']
+  await db.brandProject.upsert({
+    where: { appId: app.id },
+    create: { appId: app.id, brief, found: found ?? undefined, elements, textModel: app.textModel, error },
+    update: { brief, found: found ?? Prisma.DbNull, elements, error },
+  })
+  redirect(brandBack(slug, fresh ? 'aviso=cero' : 'aviso=repo'))
+}
+
+export async function updateBrandProject(slug: string, f: FormData) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug }, include: { brand: true } })
+  const reference = await saveReference(slug, f)
+  await db.brandProject.update({
+    where: { appId: app.id },
+    data: { brief: parseBriefForm(f), textModel: textModelOf(f, app.brand?.textModel ?? app.textModel), ...(reference ? { referencePath: reference } : {}) },
+  })
+  revalidatePath(brandBack(slug))
+  redirect(brandBack(slug, 'aviso=guardado'))
+}
+
+export async function generateBrandRound(slug: string, f: FormData) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug }, include: { brand: true } })
+  const p = app.brand
+  if (!p || p.status === 'running') redirect(brandBack(slug))
+  const elements = parseElements(f.getAll('elements').map(String))
+  await db.brandProject.update({ where: { id: p.id }, data: { elements: elements.length ? elements : p.elements, status: 'running', error: null, progress: { started: new Date().toISOString(), done: 0, total: 1 } } })
+  await enqueue(QUEUES.brandRound, { projectId: p.id, logoModel: str(f, 'logoModel') || undefined, notes: str(f, 'notes').slice(0, 500) || undefined })
+  revalidatePath(brandBack(slug))
+  redirect(brandBack(slug, 'aviso=generando'))
+}
+
+export async function chooseBrandOption(slug: string, optionId: string | null) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  await db.brandProject.update({ where: { appId: app.id }, data: { chosenId: optionId } })
+  revalidatePath(brandBack(slug))
+}
+
+export async function vectorizeBrandOption(slug: string, optionId: string) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  await db.brandProject.update({ where: { appId: app.id }, data: { status: 'running', error: null, progress: { started: new Date().toISOString(), vector: optionId } } })
+  await enqueue(QUEUES.brandVector, { optionId })
+  revalidatePath(brandBack(slug))
+}
+
+export async function rereadBrandRepo(slug: string) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  try {
+    const { found } = await readRepoBrand(app.repo, app.branch, slug)
+    await db.brandProject.update({ where: { appId: app.id }, data: { found, error: null } })
+  } catch (e) {
+    await db.brandProject.update({ where: { appId: app.id }, data: { error: `No pude leer el repo: ${(e as Error).message}` } })
+  }
+  revalidatePath(brandBack(slug))
+}
+
+/** Borra el proyecto de identidad de la app (brief, rondas y archivos generados). */
+export async function resetBrand(slug: string) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  await db.brandProject.deleteMany({ where: { appId: app.id } })
+  await rm(mediaPath(projectDir(slug)), { recursive: true, force: true })
+  revalidatePath(brandBack(slug))
+  redirect(brandBack(slug))
+}
+
+/** Guarda la alternativa en el repo de la app (PR, commit directo o archivos en un repo local). */
+export async function saveBrandAction(slug: string, optionId: string, f: FormData) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug }, include: { brand: true } })
+  if (!app.brand) redirect(brandBack(slug))
+  const fields = f.getAll('fields').map(String).filter((x): x is YamlField => YAML_FIELDS.some((y) => y.id === x))
+  let to: string
+  try {
+    const r = await saveBrandToRepo({ ...app.brand, app }, optionId, { fields, font: str(f, 'font') === 'display' ? 'display' : 'text', mode: str(f, 'mode') === 'commit' ? 'commit' : 'pr' })
+    to = r.url ? `guardado=${encodeURIComponent(r.url)}` : `aviso=${r.written ? 'escrito' : 'guardado-repo'}`
+    if (!r.hasYaml) to += '&sinyaml=1'
+  } catch (e) {
+    to = `error=${encodeURIComponent(`No se pudo guardar en el repo: ${(e as Error).message}`)}`
+  }
+  revalidatePath(`/apps/${slug}`, 'layout')
+  redirect(brandBack(slug, to))
 }

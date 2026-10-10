@@ -72,7 +72,7 @@ export const aspectFor = (model: string, aspect: AspectRatio): AspectRatio => (a
  * el de chat con salida de imagen (modelos tipo Gemini Image).
  * `references` (data URIs) sirve para mantener el estilo entre las piezas de un post.
  */
-export async function generateImage(opts: { appId: string | null; model: string; prompt: string; aspectRatio: AspectRatio; purpose: string; quality?: string | null; references?: string[]; kind?: ImageKind }): Promise<{ data: Buffer; mime: string; cost: number }> {
+export async function generateImage(opts: { appId: string | null; model: string; prompt: string; aspectRatio: AspectRatio; purpose: string; quality?: string | null; references?: string[]; kind?: ImageKind; withText?: boolean }): Promise<{ data: Buffer; mime: string; cost: number }> {
   await assertBudget(opts.appId, 0.1)
   const info = imageModel(opts.model)
   const refs = info?.references ? (opts.references ?? []).slice(0, 4) : []
@@ -98,7 +98,8 @@ export async function generateImage(opts: { appId: string | null; model: string;
       if (!(e instanceof OpenRouterError) || ![400, 404, 405].includes(e.status)) throw e
     }
   }
-  const text = `${opts.prompt}\n\nAspect ratio ${aspect}. No text, no letters, no logos.${refs.length ? ` Keep exactly the same ${opts.kind === 'photo' ? 'photographic look, lighting and people' : 'illustration style, palette and characters'} as the reference images.` : ''}`
+  // `withText`: logos y piezas de marca, donde el nombre sí tiene que aparecer.
+  const text = `${opts.prompt}\n\nAspect ratio ${aspect}.${opts.withText ? '' : ' No text, no letters, no logos.'}${refs.length ? ` Keep exactly the same ${opts.kind === 'photo' ? 'photographic look, lighting and people' : 'illustration style, palette and characters'} as the reference images.` : ''}`
   const r = (await call('/chat/completions', {
     model: opts.model,
     modalities: ['image', 'text'],
@@ -112,6 +113,18 @@ export async function generateImage(opts: { appId: string | null; model: string;
   const cost = r.usage?.cost ?? 0
   await record(opts.appId, 'image', opts.model, cost, r.usage?.total_tokens, opts.purpose)
   return { data: Buffer.from(b64, 'base64'), mime: meta.slice(5, meta.indexOf(';')), cost }
+}
+
+/** Modelo que redibuja una imagen como SVG (logos): Recraft V4.1 Vector, ~US$ 0,08 por imagen. */
+export const VECTOR_MODEL = 'recraft/recraft-v4.1-vector'
+
+/** Vectoriza un logo (data URI PNG/JPEG) y devuelve el SVG. */
+export async function vectorizeImage(opts: { appId: string | null; image: string; prompt: string; purpose: string }): Promise<{ data: Buffer; mime: string; cost: number }> {
+  await assertBudget(opts.appId, 0.1)
+  const r = (await call('/images', { model: VECTOR_MODEL, prompt: opts.prompt, aspect_ratio: '1:1', n: 1, output_format: 'svg', input_references: [imagePart(opts.image)] })) as { data: { b64_json: string; media_type?: string }[]; usage?: { cost?: number } }
+  const cost = r.usage?.cost ?? 0
+  await record(opts.appId, 'image', VECTOR_MODEL, cost, undefined, opts.purpose)
+  return { data: Buffer.from(r.data[0].b64_json, 'base64'), mime: r.data[0].media_type ?? 'image/svg+xml', cost }
 }
 
 export type ModelInfo = { id: string; name: string; price?: string }

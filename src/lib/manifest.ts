@@ -150,6 +150,51 @@ export function setYamlStyle(yamlText: string, style: string) {
   return doc.toString({ lineWidth: 0 })
 }
 
+/** Cambios de marca para el promo.yaml (sólo los campos presentes). */
+export type BrandPatch = { name?: string; tagline?: string; tone?: string; colors?: string[]; font?: string; logo?: string }
+
+/**
+ * Aplica la identidad elegida al texto del promo.yaml cambiando sólo el valor de cada campo: el resto del archivo
+ * (comentarios, orden, textos largos plegados y formato de listas) queda igual byte a byte.
+ * Si un campo no existe, se agrega como una línea más en su bloque.
+ */
+export function setYamlBrand(yamlText: string, patch: BrandPatch) {
+  const values: [string[], unknown][] = []
+  if (patch.name) values.push([['name'], patch.name])
+  if (patch.tagline) values.push([['tagline'], patch.tagline.slice(0, 120)])
+  if (patch.tone) values.push([['tone'], patch.tone])
+  if (patch.colors?.length) values.push([['brand', 'colors'], patch.colors.slice(0, 5)])
+  if (patch.font) values.push([['brand', 'font'], patch.font])
+  if (patch.logo) values.push([['brand', 'logo'], patch.logo])
+  const doc = parseDocument(yamlText)
+  const inline = (value: unknown) => (Array.isArray(value) ? `[${value.map((v) => JSON.stringify(v)).join(', ')}]` : stringify(value, { lineWidth: 0 }).trimEnd())
+  const edits: { from: number; to: number; text: string }[] = []
+  for (const [path, value] of values) {
+    const node = doc.getIn(path, true) as { range?: [number, number, number] } | undefined
+    if (node?.range) {
+      // Los textos plegados (>-) terminan en el salto de línea: se conserva.
+      const end = yamlText.slice(node.range[0], node.range[1]).endsWith('\n') ? node.range[1] - 1 : node.range[1]
+      edits.push({ from: node.range[0], to: end, text: inline(value) })
+      continue
+    }
+    // Campo nuevo: una línea al final de su bloque (brand) o del archivo, con la sangría de sus vecinos.
+    const key = path.at(-1)!
+    const parent = path.length > 1 ? (doc.getIn(path.slice(0, -1), true) as { range?: [number, number, number]; items?: { key: { range?: [number, number, number] } }[] } | undefined) : undefined
+    if (parent?.range && parent.items?.[0]?.key.range) {
+      const keyStart = parent.items[0].key.range[0]
+      const indent = keyStart - (yamlText.lastIndexOf('\n', keyStart - 1) + 1)
+      const at = parent.range[1]
+      const nl = yamlText[at - 1] === '\n' ? '' : '\n'
+      edits.push({ from: at, to: at, text: `${nl}${' '.repeat(indent)}${key}: ${inline(value)}${nl ? '' : '\n'}` })
+    } else if (path.length === 1) {
+      edits.push({ from: yamlText.length, to: yamlText.length, text: `${yamlText.endsWith('\n') ? '' : '\n'}${key}: ${inline(value)}\n` })
+    }
+  }
+  let out = yamlText
+  for (const e of edits.sort((x, y) => y.from - x.from)) out = out.slice(0, e.from) + e.text + out.slice(e.to)
+  return out
+}
+
 /** Contenido de una fuente "feed": ideas estructuradas que la app publica (p. ej. ejercicios, guías). */
 export const FeedSchema = z.object({
   items: z.array(

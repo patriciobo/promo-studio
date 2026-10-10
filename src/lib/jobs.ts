@@ -15,6 +15,8 @@ export const QUEUES = {
   pushCampaign: 'push-campaign', // { campaignId }: crear (o completar) la campaña en Meta, en pausa
   syncAds: 'sync-ads', // cada 3 horas: estado y resultados de las campañas
   styleSamples: 'style-samples', // { appId: string | null, styles, qualities }: muestras de estilo (null = genéricas)
+  brandRound: 'brand-round', // { projectId, logoModel?, notes? }: 3 alternativas de identidad de marca
+  brandVector: 'brand-vector', // { optionId }: logo de una alternativa a SVG
 } as const
 
 let boss: Promise<PgBoss> | null = null

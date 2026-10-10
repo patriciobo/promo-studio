@@ -26,6 +26,7 @@ export default async function AppLayout({ children, params }: LayoutProps<'/apps
           { href: `${base}/revision`, label: 'Revisión', count: app._count.posts },
           { href: `${base}/flujos`, label: 'Flujos' },
           { href: `${base}/imagenes`, label: 'Imágenes' },
+          { href: `${base}/marca`, label: 'Marca' },
           { href: `${base}/muestras`, label: 'Muestras' },
           { href: `${base}/rendimiento`, label: 'Rendimiento' },
           { href: `${base}/anuncios`, label: 'Anuncios' },

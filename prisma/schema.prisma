@@ -51,6 +51,7 @@ model App {
   campaigns AdCampaign[]
   linkHits LinkHit[]
   images   AppImage[]
+  brand    BrandProject?
 }
 
 model Batch {
@@ -269,4 +270,46 @@ model Setting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+/// Identidad de marca de una app (pestaña Marca): el brief, lo leído del repo y las rondas de 3 alternativas.
+model BrandProject {
+  id            String        @id @default(cuid())
+  appId         String        @unique
+  app           App           @relation(fields: [appId], references: [id], onDelete: Cascade)
+  brief         Json // src/lib/brand/brief.ts (BriefSchema)
+  found         Json? // lo encontrado en el repo de la app: colores, tipografías, logo, frase
+  elements      String[]      @default([]) // qué generar: logo, paleta, tipografia, voz, tagline, patron, nombre
+  textModel     String        @default("google/gemini-3.5-flash")
+  referencePath String? // logo de referencia subido (relativo a MEDIA_DIR)
+  status        String        @default("idle") // idle | running | error
+  error         String?
+  progress      Json? // { started, done, total } o { started, vector }
+  chosenId      String? // alternativa elegida
+  // Último guardado en el repo
+  savedOptionId String?
+  savedAt       DateTime?
+  savedUrl      String? // PR o commit; vacío si se escribió en un repo local
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  options       BrandOption[]
+}
+
+/// Una de las 3 alternativas de una ronda: concepto, paleta, tipografías, voz, logo y lámina de presentación.
+model BrandOption {
+  id         String       @id @default(cuid())
+  projectId  String
+  project    BrandProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  round      Int // 1, 2, 3… cada "Generar" suma una ronda
+  index      Int // 0 a 2
+  conceptId  String // src/lib/brand/concepts.ts
+  data       Json // src/lib/brand/generate.ts (OptionSchema)
+  logoPath   String?
+  logoModel  String?
+  vectorPath String? // SVG vectorizado del logo, si se pidió
+  boardPath  String? // lámina con todo, para mostrar y compartir
+  costUsd    Float        @default(0)
+  createdAt  DateTime     @default(now())
+
+  @@unique([projectId, round, index])
 }

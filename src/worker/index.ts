@@ -12,6 +12,7 @@ import { closeBrowser, renderHtml } from '@/render/renderer'
 import { mediaPath, saveMedia } from '@/lib/media'
 import { existsSync } from 'node:fs'
 import { generateSamples, setSamplesState, type SampleItem } from '@/lib/style-samples'
+import { generateRound, vectorizeOption } from '@/lib/brand/generate'
 
 const TZ = process.env.WORKER_TZ ?? 'America/Argentina/Buenos_Aires'
 
@@ -121,6 +122,15 @@ async function main() {
         await setSamplesState(app?.slug, { status: 'error', error: (e as Error).message })
       }
     }
+  })
+
+  // Identidad de marca: sin reintentos (cada ronda cuesta); el error queda en el proyecto y se pide de nuevo desde la web.
+  type BrandJob = { projectId: string; logoModel?: string; notes?: string }
+  await boss.work<BrandJob>(QUEUES.brandRound, async (jobs: Job<BrandJob>[]) => {
+    for (const j of jobs) await generateRound(j.data.projectId, { logoModel: j.data.logoModel, notes: j.data.notes }).catch((e) => console.error('[marca]', (e as Error).message))
+  })
+  await boss.work<{ optionId: string }>(QUEUES.brandVector, async (jobs: Job<{ optionId: string }>[]) => {
+    for (const j of jobs) await vectorizeOption(j.data.optionId).catch((e) => console.error('[marca] vectorizar:', (e as Error).message))
   })
 
   console.log('[worker] listo')
