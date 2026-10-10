@@ -14,7 +14,7 @@ export default async function ManifestPage({ params }: PageProps<'/apps/[slug]/m
         <div className="row between">
           <h2>Estado</h2>
           <form action={syncNow.bind(null, slug)}>
-            <SubmitButton className="btn sm" pendingText="Sincronizando…">
+            <SubmitButton className="btn sm" pendingText="Sincronizando…" expect={8}>
               Sincronizar
             </SubmitButton>
           </form>

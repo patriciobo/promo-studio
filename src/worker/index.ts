@@ -110,7 +110,13 @@ async function main() {
     for (const j of jobs) {
       const app = j.data.appId ? await db.app.findUnique({ where: { id: j.data.appId } }) : null
       try {
-        await generateSamples({ app: app ?? undefined, styles: j.data.styles, qualities: j.data.qualities })
+        const started = new Date().toISOString()
+        await generateSamples({
+          app: app ?? undefined,
+          styles: j.data.styles,
+          qualities: j.data.qualities,
+          onProgress: (done, total) => setSamplesState(app?.slug, { status: 'running', started, done, total }),
+        })
         await setSamplesState(app?.slug, null)
       } catch (e) {
         console.error('[muestras]', (e as Error).message)

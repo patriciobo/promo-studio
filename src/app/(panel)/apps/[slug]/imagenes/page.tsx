@@ -1,5 +1,5 @@
 import { setImageArchived, updateImage, uploadImages } from '@/app/actions'
-import { AutoRefresh, SubmitButton } from '@/components/client'
+import { AutoRefresh, Progress, SubmitButton } from '@/components/client'
 import { db } from '@/lib/db'
 import { mediaSrc } from '@/lib/media'
 
@@ -31,7 +31,7 @@ export default async function Images({ params }: PageProps<'/apps/[slug]/imagene
             <input name="imageNote" maxLength={500} />
           </label>
           <div className="row">
-            <SubmitButton pendingText="Subiendo…">Subir</SubmitButton>
+            <SubmitButton pendingText="Subiendo…" expect={6}>Subir</SubmitButton>
           </div>
         </form>
       </section>
@@ -42,6 +42,7 @@ export default async function Images({ params }: PageProps<'/apps/[slug]/imagene
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={mediaSrc(i.path)} alt={i.description ?? 'Imagen subida'} loading="lazy" />
             <p className="small">{i.description ?? <span className="muted">{describing ? 'Describiendo…' : 'Sin descripción todavía: se describe cuando el plan la use.'}</span>}</p>
+            {!i.description && i.createdAt > recent && <Progress since={i.createdAt} expect={15} />}
             <form action={updateImage.bind(null, i.id)} className="stack-sm">
               <label>
                 Nota

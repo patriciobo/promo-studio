@@ -21,7 +21,7 @@ export default async function Flows({ params }: PageProps<'/apps/[slug]/flujos'>
           </p>
         </div>
         <form action={syncNow.bind(null, slug)} className="row">
-          <SubmitButton className="btn sm" pendingText="Sincronizando…">
+          <SubmitButton className="btn sm" pendingText="Sincronizando…" expect={8}>
             Sincronizar capturas
           </SubmitButton>
           {app.syncedAt && <span className="xs muted">Última sincronización: {app.syncedAt.toLocaleString('es-AR', { timeZone: app.timezone })}</span>}

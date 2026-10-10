@@ -4,13 +4,17 @@ import { useState, useTransition } from 'react'
 import { discover, draftManifestAction, openManifestPR, profileKitAction, runHealthCheck, saveConnection, validateManifestAction, type DiscoverResult } from '@/app/actions'
 import type { Check } from '@/lib/onboarding/meta-health'
 import type { ProfileKit } from '@/lib/onboarding/profile-kit'
-import { CopyButton } from './client'
+import { CopyButton, Progress } from './client'
 
 export function ManifestWizard({ slug, initialYaml, repo }: { slug: string; initialYaml: string; repo: string }) {
   const [yaml, setYaml] = useState(initialYaml)
   const [msg, setMsg] = useState<{ tone: string; text: string; url?: string } | null>(null)
   const [pending, start] = useTransition()
-  const act = (fn: () => Promise<void>) => start(async () => fn().catch((e) => setMsg({ tone: 'bad', text: e.message })))
+  const [expect, setExpect] = useState(10)
+  const act = (fn: () => Promise<void>, secs = 5) => {
+    setExpect(secs)
+    start(async () => fn().catch((e) => setMsg({ tone: 'bad', text: e.message })))
+  }
   return (
     <div className="stack">
       <div className="row">
@@ -24,7 +28,7 @@ export function ManifestWizard({ slug, initialYaml, repo }: { slug: string; init
               const r = await draftManifestAction(slug)
               if (r.yaml) setYaml(r.yaml)
               setMsg(r.error ? { tone: 'warn', text: `Borrador con ajustes pendientes: ${r.error}` } : { tone: 'ok', text: 'Borrador listo. Revisalo y editalo antes de guardarlo.' })
-            })
+            }, 45)
           }
         >
           {yaml ? 'Regenerar borrador desde el repo' : 'Generar borrador desde el repo'}
@@ -50,7 +54,7 @@ export function ManifestWizard({ slug, initialYaml, repo }: { slug: string; init
             act(async () => {
               const r = await openManifestPR(slug, yaml)
               setMsg(r.url ? { tone: 'ok', text: 'Pull request abierto. Al mergearlo, sincronizá la app.', url: r.url } : { tone: 'bad', text: r.error ?? 'Error' })
-            })
+            }, 10)
           }
         >
           Abrir pull request en {repo}
@@ -59,6 +63,7 @@ export function ManifestWizard({ slug, initialYaml, repo }: { slug: string; init
           Descargar
         </a>
       </div>
+      {pending && <Progress expect={expect} />}
       {msg && (
         <p className={`notice ${msg.tone}`}>
           {msg.text}{' '}
@@ -92,6 +97,7 @@ export function ConnectionPanel({ slug, current }: { slug: string; current: { ig
         </button>
         {pending && <span className="small muted">Consultando a Meta…</span>}
       </div>
+      {pending && <Progress expect={10} />}
       {found && !found.ok && (
         <p className="notice bad">
           <strong>{found.title}.</strong> {found.cause} {found.fix}
@@ -184,6 +190,7 @@ export function ProfileKitPanel({ slug, mediaBase }: { slug: string; mediaBase: 
         </button>
         <span className="small muted">Usa 1 llamada al modelo de texto.</span>
       </div>
+      {pending && <Progress expect={40} />}
       {error && <p className="notice bad">{error}</p>}
       {kit && (
         <div className="grid-2">

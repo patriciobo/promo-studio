@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { campaignAction } from '@/app/actions'
-import { AutoRefresh, ConfirmButton, SubmitButton } from '@/components/client'
+import { AutoRefresh, ConfirmButton, Progress, SubmitButton } from '@/components/client'
 import { db } from '@/lib/db'
 import { mediaSrc } from '@/lib/media'
 import { campaignDays, committedThisMonth, detailGroups, EDUCATION, OBJECTIVES, plannedSpend, type Targeting } from '@/lib/meta-ads'
@@ -85,7 +85,12 @@ export default async function Ads({ params }: PageProps<'/apps/[slug]/anuncios'>
             </div>
             <p className="small num">{results(c.metrics as Record<string, unknown> | null)}</p>
             {c.error && <p className="notice bad small">{c.error}</p>}
-            {generating && <p className="notice info small">Generando la pieza nueva… Cuando esté, revisala en Revisión y tocá &quot;Crear en Meta&quot;.</p>}
+            {generating && (
+              <div className="notice info small stack-sm">
+                Generando la pieza nueva… Cuando esté, revisala en Revisión y tocá &quot;Crear en Meta&quot;.
+                <Progress since={c.ads.find((a) => a.post.status === 'DRAFT')!.post.createdAt} expect={90} delay={0} />
+              </div>
+            )}
             {failedPiece && <p className="notice bad small">La pieza nueva no se pudo generar: {failedPiece.post.error}</p>}
             <div className="campaign-ads">
               {c.ads.map((a) => (

@@ -104,7 +104,7 @@ export async function styleSamplesAction(slug: string, generic: boolean, f: Form
   const styles = generic ? ALL_STYLES : f.getAll('sampleStyles').map(String).flatMap((v) => parseDesignStyle(v) ?? [])
   const qualities = generic ? SAMPLE_QUALITIES : SAMPLE_QUALITIES.filter((q) => f.getAll('sampleQualities').includes(q))
   if (!styles.length || !qualities.length) redirect(`/apps/${slug}/ajustes?error=${encodeURIComponent('Elegí al menos un estilo y una calidad para las muestras.')}#estilo`)
-  await setSamplesState(generic ? undefined : app.slug, { status: 'running' })
+  await setSamplesState(generic ? undefined : app.slug, { status: 'running', started: new Date().toISOString(), done: 0, total: styles.length * qualities.length })
   await enqueue(QUEUES.styleSamples, { appId: generic ? null : app.id, styles, qualities }, { singletonKey: `muestras-${generic ? 'genericas' : app.id}` })
   redirect(`/apps/${slug}/ajustes?aviso=muestras#estilo`)
 }

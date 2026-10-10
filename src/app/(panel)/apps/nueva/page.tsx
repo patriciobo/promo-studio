@@ -42,7 +42,7 @@ export default async function NewApp() {
           <ImageModelPicker current={null} quality={null} kind={null} imagesPerMonth={imagesPerMonth({ feed: 3, reels: 1, stories: 2 })} available={images} designStyle={null} samples={await listSamples()} />
         </div>
         <div>
-          <SubmitButton pendingText="Conectando…">Conectar y seguir</SubmitButton>
+          <SubmitButton pendingText="Conectando…" expect={10}>Conectar y seguir</SubmitButton>
         </div>
       </form>
     </>

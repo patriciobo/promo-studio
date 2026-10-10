@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from 'react'
 import { suggestAction, suggestEstimateAction } from '@/app/actions'
 import type { ResolvedSuggestion, SuggestInput } from '@/lib/ad-suggest'
 import { CTAS, DETAIL_TYPES, EDUCATION, OBJECTIVES } from '@/lib/meta-ads-options'
+import { Progress } from './client'
 
 const usd = (n: number) => `US$ ${n < 0.01 ? n.toFixed(4) : n.toFixed(3)}`.replace('.', ',')
 const typeLabel = (t: string) => DETAIL_TYPES.find((d) => d.id === t)?.label ?? t
@@ -68,6 +69,7 @@ export function SuggestPanel({ slug, input, currency, onApply }: { slug: string;
             </button>
             {!input.postIds.length && !input.newPostTopic && <span className="xs muted">Elegí al menos una publicación o describí la pieza nueva.</span>}
           </div>
+          {pending && <Progress expect={30} />}
         </>
       )}
       {typeof result === 'string' && <p className="notice bad small">{result}</p>}

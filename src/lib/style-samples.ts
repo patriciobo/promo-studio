@@ -79,10 +79,12 @@ const PLACEHOLDER = (c: string[]) =>
  * Genera las muestras pedidas (estilo × calidad). Reutiliza el fondo IA ya generado salvo `force`,
  * así volver a armarlas tras cambiar una plantilla no cuesta nada. Con OPENROUTER_MOCK=1 usa un fondo de relleno.
  */
-export async function generateSamples(opts: { app?: App; styles: DesignStyleId[]; qualities: ImageQuality[]; force?: boolean; log?: (s: string) => void }) {
+export async function generateSamples(opts: { app?: App; styles: DesignStyleId[]; qualities: ImageQuality[]; force?: boolean; log?: (s: string) => void; onProgress?: (done: number, total: number) => Promise<unknown> }) {
   const subject = opts.app ? await subjectOf(opts.app) : demo
   const dir = dirOf(opts.app?.slug)
+  const total = opts.styles.length * opts.qualities.length
   let cost = 0
+  let done = 0
   try {
     for (const s of opts.styles) {
       const kind = subject.kind(s)
@@ -102,6 +104,7 @@ export async function generateSamples(opts: { app?: App; styles: DesignStyleId[]
         const html = TEMPLATES[s].cover(subject.brand, { ...subject.slide, background: bg }, SIZES.feed)
         await saveMedia(fileOf(dir, key), await renderHtml(html, SIZES.feed.w, SIZES.feed.h))
         opts.log?.(`${key} listo`)
+        await opts.onProgress?.(++done, total)
       }
     }
   } finally {
@@ -113,7 +116,7 @@ export async function generateSamples(opts: { app?: App; styles: DesignStyleId[]
 export const ALL_STYLES = DESIGN_STYLES.map((s) => s.id)
 
 // Estado del último pedido de muestras (lo corre el worker): para mostrar "generando" o el error en Ajustes.
-export type SamplesState = { status: 'running' | 'error'; at: string; error?: string }
+export type SamplesState = { status: 'running' | 'error'; at: string; error?: string; started?: string; done?: number; total?: number }
 const stateOf = (slug?: string) => `${dirOf(slug)}/estado.json`
 
 export async function setSamplesState(slug: string | undefined, state: Omit<SamplesState, 'at'> | null) {

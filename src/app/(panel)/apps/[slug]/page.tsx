@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { generateWeek, retryPost, syncNow } from '@/app/actions'
-import { AutoRefresh, SubmitButton } from '@/components/client'
+import { AutoRefresh, Progress, SubmitButton } from '@/components/client'
 import { ImagePicker } from '@/components/ImagePicker'
 import { ModelSelect } from '@/components/ModelSelect'
 import { PostMeta, PostThumbs } from '@/components/PostPreview'
@@ -44,7 +44,7 @@ export default async function Calendar({ params, searchParams }: PageProps<'/app
           </div>
           <div className="row">
             <form action={syncNow.bind(null, slug)}>
-              <SubmitButton className="btn" pendingText="Sincronizando…">
+              <SubmitButton className="btn" pendingText="Sincronizando…" expect={8}>
                 Sincronizar repo
               </SubmitButton>
             </form>
@@ -96,11 +96,13 @@ export default async function Calendar({ params, searchParams }: PageProps<'/app
           {b.status === 'PLANNING' && (
             <p className="notice small">
               <span className="spinner" aria-hidden /> Escribiendo los textos de la semana con IA (suele tardar menos de un minuto)… Si en unos minutos no avanza, revisá que el worker esté corriendo.
+              <Progress since={b.createdAt} expect={45} delay={0} />
             </p>
           )}
           {b.status === 'GENERATING' && (
             <p className="notice small">
               <span className="spinner" aria-hidden /> Generando ilustraciones y piezas: {b.posts.filter((p) => p.status !== 'DRAFT').length} de {b.posts.length} listas…
+              <Progress since={b.posts[0]?.createdAt ?? b.createdAt} value={b.posts.length ? b.posts.filter((p) => p.status !== 'DRAFT').length / b.posts.length : 0} steps={b.posts.length} expect={60 * Math.max(1, b.posts.length)} delay={0} />
             </p>
           )}
           {b.error && <p className="notice bad small">{b.error}</p>}

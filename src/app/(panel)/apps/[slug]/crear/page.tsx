@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import type { PostType } from '@prisma/client'
 import { createPostNow, retryPost } from '@/app/actions'
-import { AutoRefresh, SubmitButton } from '@/components/client'
+import { AutoRefresh, Progress, SubmitButton } from '@/components/client'
 import { ImagePicker } from '@/components/ImagePicker'
 import { ModelSelect } from '@/components/ModelSelect'
 import { PostMeta, PostThumbs } from '@/components/PostPreview'
@@ -71,7 +71,14 @@ export default async function CreateNow({ params }: PageProps<'/apps/[slug]/crea
             {posts.map((p) => (
               <article key={p.id} className="card post-card">
                 <PostMeta post={p} tz={app.timezone} />
-                {p.status === 'DRAFT' ? <div className="notice small">Generando: “{p.hook}”…</div> : <PostThumbs post={p} />}
+                {p.status === 'DRAFT' ? (
+                  <div className="notice small stack-sm">
+                    Generando: “{p.hook}”…
+                    <Progress since={p.createdAt} expect={90} delay={0} />
+                  </div>
+                ) : (
+                  <PostThumbs post={p} />
+                )}
                 {p.status !== 'DRAFT' && (
                   <p className="small" style={{ whiteSpace: 'pre-line' }}>
                     {p.caption.split('\n')[0]}
