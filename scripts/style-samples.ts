@@ -1,5 +1,5 @@
 // Muestras de estilo desde la terminal (lo mismo que los botones de Ajustes, sin pasar por el worker).
-//   npm run styles:samples                         → las genéricas que faltan, con la app de ejemplo (~US$ 0,21 por estilo)
+//   npm run styles:samples                         → las genéricas que faltan, con la app de ejemplo (~US$ 0,06 por estilo)
 //   npm run styles:samples -- --only=retro         → un estilo
 //   npm run styles:samples -- --app=mi-app --q=medium → con la marca de una app
 //   npm run styles:samples -- --kind=photo         → fotos realistas (o --kind=illustration,photo para las dos)

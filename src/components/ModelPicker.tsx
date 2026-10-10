@@ -8,7 +8,7 @@ import { StylePicker, type StyleAppProps } from './StylePicker'
 
 const OTHER = '__other'
 const money = (n: number) => `US$ ${n < 0.1 ? n.toFixed(3) : n.toFixed(2)}`
-const QUALITY_LABEL: Record<ImageQuality, string> = { low: 'Baja', medium: 'Media', high: 'Alta' }
+const QUALITY_LABEL: Record<ImageQuality, string> = { low: 'Baja', medium: 'Media' }
 const FIT_BADGE: Record<Fit, string> = { ideal: 'ok', bien: '', flojo: 'warn' }
 const KIND_PLURAL: Record<ImageKind, string> = { illustration: 'ilustraciones', photo: 'fotos' }
 

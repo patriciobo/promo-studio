@@ -6,7 +6,8 @@ import type { Cadence } from './schedule'
 export const PRICES_CHECKED = '2026-10-02'
 
 export type Tier = 'pruebas' | 'mejor-calidad'
-export type ImageQuality = 'low' | 'medium' | 'high'
+/** Sin calidad alta: cuesta el triple que la media y en las piezas (con texto encima) casi no se nota. */
+export type ImageQuality = 'low' | 'medium'
 export type ImageKind = 'illustration' | 'photo'
 /** Qué tan bien le sale cada tipo de imagen a un modelo. */
 export type Fit = 'ideal' | 'bien' | 'flojo'
@@ -87,7 +88,7 @@ export const IMAGE_MODELS: ImageModel[] = [
     uses: 'Piezas finales cuidadas',
     popularity: '#1 en LMArena y en las reviews de 2026',
     priceUsd: 0.05,
-    qualities: { low: 0.006, medium: 0.05, high: 0.15 },
+    qualities: { low: 0.006, medium: 0.05 },
     defaultQuality: 'medium',
     feedAspect: '3:4',
     references: true,
@@ -115,7 +116,7 @@ export const imageModel = (id: string | null | undefined) => IMAGE_MODELS.find((
 /** Precio por imagen con la calidad elegida (o la por defecto del modelo). */
 export function imagePrice(m: ImageModel, quality?: string | null) {
   const q = (quality ?? m.defaultQuality) as ImageQuality | undefined
-  return (q && m.qualities?.[q]) ?? m.priceUsd
+  return (q && m.qualities?.[q]) ?? (m.defaultQuality && m.qualities?.[m.defaultQuality]) ?? m.priceUsd
 }
 
 /** Diapositivas o escenas típicas: una ilustración por cada una. */

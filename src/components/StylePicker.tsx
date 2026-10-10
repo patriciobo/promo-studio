@@ -6,7 +6,7 @@ import { DESIGN_STYLES, SAMPLE_QUALITIES, sampleKey, type DesignStyleId, type St
 import { IMAGE_MODELS, type ImageQuality } from '@/lib/models'
 import { ActionButton } from './client'
 
-export const QUALITY_LABEL: Record<ImageQuality, string> = { low: 'Baja', medium: 'Media', high: 'Alta' }
+export const QUALITY_LABEL: Record<ImageQuality, string> = { low: 'Baja', medium: 'Media' }
 export const money = (n: number) => `US$ ${n < 0.1 ? n.toFixed(3) : n.toFixed(2)}`
 
 export interface StyleAppProps {

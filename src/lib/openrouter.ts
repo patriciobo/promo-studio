@@ -81,7 +81,8 @@ export async function generateImage(opts: { appId: string | null; model: string;
   const refs = info?.references ? (opts.references ?? []).slice(0, 4) : []
   let aspect = aspectFor(opts.model, opts.aspectRatio)
   if (info?.api !== 'chat') {
-    const quality = info?.qualities ? (opts.quality ?? info.defaultQuality) : undefined
+    // Una calidad que el catálogo ya no ofrece (p. ej. "high" guardada de antes) usa la por defecto.
+    const quality = info?.qualities ? (opts.quality && opts.quality in info.qualities ? opts.quality : info.defaultQuality) : undefined
     const body = () => ({ model: opts.model, prompt: opts.prompt, aspect_ratio: aspect, n: 1, output_format: 'jpeg', resolution: '1K', ...(quality ? { quality } : {}), ...(refs.length ? { input_references: refs.map(imagePart) } : {}) })
     try {
       let r

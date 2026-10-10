@@ -4,7 +4,7 @@ import { IMAGE_KINDS, IMAGE_MODELS, parseImageKind, type ImageQuality } from '@/
 import { listSamples } from '@/lib/style-samples'
 import { designStyle, SAMPLE_QUALITIES, sampleKey } from '@/lib/styles'
 
-const QUALITY: Record<ImageQuality, string> = { low: 'baja', medium: 'media', high: 'alta' }
+const QUALITY: Record<ImageQuality, string> = { low: 'baja', medium: 'media' }
 
 export async function StyleReminder({ app }: { app: { slug: string; designStyle: string | null; imageModel: string | null; imageQuality: string | null; imageKind: string | null } }) {
   const style = designStyle(app.designStyle)

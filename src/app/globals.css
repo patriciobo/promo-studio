@@ -205,12 +205,12 @@ details summary { cursor: pointer; font-weight: 560; }
 .suggest-list dd { margin: 0; }
 @media (max-width: 640px) { .suggest-list { grid-template-columns: 1fr; } .suggest-list dt { margin-top: 6px; } }
 
-/* Estilos de diseño (Ajustes): una tarjeta por estilo con sus ejemplos en calidad baja, media y alta. */
+/* Estilos de diseño (Ajustes): una tarjeta por estilo con sus ejemplos en calidad baja y media. */
 .style-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
 .style-card { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; }
 .style-card.on { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
 .style-head { display: flex; flex-direction: row; justify-content: space-between; align-items: center; gap: 8px; cursor: pointer; }
-.style-samples { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.style-samples { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
 .style-sample { display: flex; flex-direction: column; gap: 2px; align-items: center; padding: 3px 3px 5px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--fg-2); cursor: pointer; font: inherit; }
 .style-sample:hover { border-color: var(--border-strong); }
 .style-sample.on { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); color: var(--primary); font-weight: 600; }
@@ -244,7 +244,7 @@ details summary { cursor: pointer; font-weight: 560; }
 
 /* Pestaña Muestras */
 .samples-style.on { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
-.samples-qualities { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.samples-qualities { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .samples-quality { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
 .samples-quality.picked { border-color: var(--primary); background: var(--primary-soft); }
 .samples-quality.on { box-shadow: 0 0 0 2px var(--success); border-color: var(--success); }

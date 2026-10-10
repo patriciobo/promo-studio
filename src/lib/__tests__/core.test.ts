@@ -378,7 +378,7 @@ describe('modelos de imagen', () => {
   it('el precio depende de la calidad en los modelos que cobran por tokens', () => {
     const gpt = IMAGE_MODELS.find((m) => m.qualities)!
     expect(imagePrice(gpt, 'low')).toBeLessThan(imagePrice(gpt, null))
-    expect(imagePrice(gpt, 'high')).toBeGreaterThan(imagePrice(gpt, null))
+    expect(imagePrice(gpt, 'high')).toBe(imagePrice(gpt, 'medium')) // la alta ya no existe: cuenta como la por defecto
   })
   it('codifica la elección del selector junto a los botones', () => {
     expect(parseImageChoice(encodeImageChoice({ model: 'openai/gpt-image-2.5-sunburst', quality: 'medium' }))).toEqual({ model: 'openai/gpt-image-2.5-sunburst', quality: 'medium' })
@@ -502,20 +502,20 @@ describe('estilos de diseño', () => {
 
 describe('muestras de estilo', () => {
   it('lee las combinaciones tildadas y descarta las inválidas y repetidas', () => {
-    expect(parseSampleItems(['retro-medium', 'suave3d-low', 'retro-medium', 'retro-medium-foto', 'inventado-high', 'poster-ultra', 'poster-low-video'])).toEqual([
+    expect(parseSampleItems(['retro-medium', 'suave3d-low', 'retro-medium', 'retro-medium-foto', 'retro-high', 'inventado-high', 'poster-ultra', 'poster-low-video'])).toEqual([
       { style: 'retro', quality: 'medium', kind: 'illustration' },
       { style: 'suave3d', quality: 'low', kind: 'illustration' },
       { style: 'retro', quality: 'medium', kind: 'photo' },
     ])
   })
   it('todas las genéricas son cada estilo en cada calidad, del tipo pedido', () => {
-    expect(allItems()).toHaveLength(DESIGN_STYLES.length * 3)
-    expect(allItems(undefined, undefined, ['illustration', 'photo'])).toHaveLength(DESIGN_STYLES.length * 6)
+    expect(allItems()).toHaveLength(DESIGN_STYLES.length * 2)
+    expect(allItems(undefined, undefined, ['illustration', 'photo'])).toHaveLength(DESIGN_STYLES.length * 4)
   })
   it('separa las muestras por tipo de imagen', () => {
-    const all = { 'retro-medium': 'a', 'retro-medium-foto': 'b', 'papel-high-foto': 'c', 'otra-cosa': 'x' }
+    const all = { 'retro-medium': 'a', 'retro-medium-foto': 'b', 'papel-low-foto': 'c', 'papel-high': 'vieja', 'otra-cosa': 'x' }
     expect(samplesOfKind(all, 'illustration')).toEqual({ 'retro-medium': 'a' })
-    expect(samplesOfKind(all, 'photo')).toEqual({ 'retro-medium': 'b', 'papel-high': 'c' })
+    expect(samplesOfKind(all, 'photo')).toEqual({ 'retro-medium': 'b', 'papel-low': 'c' })
     expect(sampleKey('retro', 'low', 'photo')).toBe('retro-low-foto')
   })
 })

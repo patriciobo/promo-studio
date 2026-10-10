@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { encodeImageChoice, IMAGE_KINDS, IMAGE_MODELS, parseImageChoice, SUGGESTED, TIERS, type ImageKind, type ImageQuality } from '@/lib/models'
 
-const QUALITY_LABEL: Record<ImageQuality, string> = { low: 'baja', medium: 'media', high: 'alta' }
+const QUALITY_LABEL: Record<ImageQuality, string> = { low: 'baja', medium: 'media' }
 const money = (n: number) => `US$ ${n < 0.1 ? n.toFixed(3) : n.toFixed(2)}`
 
 export function ModelSelectFields({ imageModel, imageQuality, imageKind, label }: { imageModel: string | null; imageQuality: string | null; imageKind: ImageKind; label: string }) {
