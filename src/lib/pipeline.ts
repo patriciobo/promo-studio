@@ -3,7 +3,8 @@
 import type { App, AppImageKind, Post, PostType, Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { brandFrom, type Brand } from '@/templates/brand'
-import { coverSlide, ctaSlide, SIZES, textSlide, type SlideData } from '@/templates/html'
+import { SIZES, type SlideData } from '@/templates/html'
+import { TEMPLATES } from '@/templates/styles'
 import { buildReel, renderHtml } from '@/render/renderer'
 import { db } from './db'
 import { getFile, getRawBytes, latestReleases } from './github'
@@ -12,6 +13,7 @@ import { DEFAULT_IMAGE_STYLE, DEFAULT_PHOTO_STYLE, FeedSchema, parseManifest, ty
 import { bufferDataUri, dataUri, mediaPath, saveMedia } from './media'
 import { notify } from './notify'
 import { parseImageKind, type ImageChoice, type ImageKind } from './models'
+import { designStyle, parseDesignStyle } from './styles'
 import { completeJson, generateImage } from './openrouter'
 import { localParts, weekSlots, zonedTime, type Slot } from './schedule'
 import { existsSync } from 'node:fs'
@@ -37,7 +39,9 @@ export async function syncApp(appId: string) {
   if (r.hash !== app.manifestHash) await cacheBrandFiles(app, r.manifest)
   // En cada sincronización: las capturas pueden cambiar sin tocar el promo.yaml.
   const flows = await importFlowScreens(app, r.manifest).catch((e) => (console.error('[flujos]', e.message), { imported: 0, archived: 0 }))
-  await db.app.update({ where: { id: appId }, data: { manifest: r.manifest as Prisma.InputJsonValue, manifestHash: r.hash, manifestError: null, name: r.manifest.name, syncedAt: new Date() } })
+  // brand.style manda sólo cuando cambia el yaml: así lo elegido en Ajustes no se pisa en cada sincronización.
+  const style = r.hash !== app.manifestHash ? parseDesignStyle(r.manifest.brand.style) : undefined
+  await db.app.update({ where: { id: appId }, data: { manifest: r.manifest as Prisma.InputJsonValue, manifestHash: r.hash, manifestError: null, name: r.manifest.name, syncedAt: new Date(), ...(style ? { designStyle: style } : {}) } })
   return { ...r, flows }
 }
 
@@ -133,20 +137,21 @@ const SLIDE_RULES: Record<PostType, string> = {
   STORY: '1 slide: a short title (max 50 chars) and body (max 90 chars), conversational, inviting a reply or a link tap.',
 }
 
-/** Estilo visual de la app para el tipo de imagen: el del promo.yaml o el predeterminado. */
-export const styleFor = (m: Manifest, kind: ImageKind) => (kind === 'photo' ? (m.brand.photoStyle ?? DEFAULT_PHOTO_STYLE) : (m.brand.imageStyle ?? DEFAULT_IMAGE_STYLE))
+/** Estética de las imágenes: la del estilo de diseño elegido o, en el clásico, la del promo.yaml (o la predeterminada). */
+export const styleFor = (m: Manifest, kind: ImageKind, design?: string | null) =>
+  designStyle(design).image?.[kind] ?? (kind === 'photo' ? (m.brand.photoStyle ?? DEFAULT_PHOTO_STYLE) : (m.brand.imageStyle ?? DEFAULT_IMAGE_STYLE))
 
 /** Tipo de imagen de una generación: el elegido junto al botón o el de Ajustes. */
 const kindOf = (app: Pick<App, 'imageKind'>, image?: ImageChoice): ImageKind => image?.kind ?? parseImageKind(app.imageKind) ?? 'illustration'
 
-export function buildPlanPrompt(m: Manifest, slots: Slot[], ctx: { feed: Feed['items']; texts: string[]; releases: { name: string; body: string }[]; recent: { pillar: string | null; hook: string | null }[]; bestPillars: string[]; topic?: string; daily?: { date: string; report: string }; images?: PromptImage[]; kind?: ImageKind }) {
+export function buildPlanPrompt(m: Manifest, slots: Slot[], ctx: { feed: Feed['items']; texts: string[]; releases: { name: string; body: string }[]; recent: { pillar: string | null; hook: string | null }[]; bestPillars: string[]; topic?: string; daily?: { date: string; report: string }; images?: PromptImage[]; kind?: ImageKind; design?: string | null }) {
   const images = ctx.images ?? []
   const photo = ctx.kind === 'photo'
   const focus = images.filter((i) => i.focus)
   const system = `You are the social media manager of the app "${m.name}". You write Instagram content that promotes the app with real value for its audience, never clickbait.
 Write ALL user-facing text in ${m.languages[0]} with this tone: ${m.tone}.
 Never mention: ${m.avoid.join('; ') || 'nothing in particular'}.
-Image prompts are in English and describe ${photo ? 'a realistic photo' : 'an illustration'} in this style: ${styleFor(m, ctx.kind ?? 'illustration')}. Show people using the app or the problem it solves, ${photo ? 'with screens angled or out of focus' : 'with simplified UI shapes'} but WITHOUT any readable text, letters, numbers or logos; fit the brand colors ${m.brand.colors.join(', ')} and leave calm space for overlaid text.
+Image prompts are in English and describe ${photo ? 'a realistic photo' : 'an illustration'} in this style: ${styleFor(m, ctx.kind ?? 'illustration', ctx.design)}. Show people using the app or the problem it solves, ${photo ? 'with screens angled or out of focus' : 'with simplified UI shapes'} but WITHOUT any readable text, letters, numbers or logos; fit the brand colors ${m.brand.colors.join(', ')} and leave calm space for overlaid text.
 Every slide (or reel scene) also gets its own imagePrompt: the same ${photo ? 'people, setting' : 'characters'} and style, showing that slide's idea.${images.length ? `
 appImages are real images of the app uploaded by the user (SCREENSHOT = a screen of the app, PHOTO = a photo). A slide can show one instead of a generated image: set its "imageId" and write that slide's text about what the image really shows (never invent features that are not visible). Use each image at most once per post and never on the last call-to-action slide.` : ''}
 Captions: first line is a hook, 2-5 short lines of value, then the CTA "${m.cta}", then 3-5 specific hashtags (from: ${m.hashtags.join(' ') || 'choose relevant ones'}).
@@ -219,7 +224,7 @@ async function planPosts(app: App, m: Manifest, batchId: string, weekStart: Date
     .sort((a, b) => (b._avg.score ?? 0) - (a._avg.score ?? 0))
     .slice(0, 3)
     .map((s) => s.pillar!)
-  const { system, user } = buildPlanPrompt(m, slots, { ...src, releases: releases.filter((r) => Date.now() - Date.parse(r.date) < 30 * 864e5), recent, bestPillars, images: images.prompt, kind })
+  const { system, user } = buildPlanPrompt(m, slots, { ...src, releases: releases.filter((r) => Date.now() - Date.parse(r.date) < 30 * 864e5), recent, bestPillars, images: images.prompt, kind, design: app.designStyle })
   let textCost = 0
   const raw = process.env.OPENROUTER_MOCK === '1' ? mockPlan(m, slots, src.feed, imageIds) : await completeJson({ appId, model: app.textModel, system, user, images: images.shown, purpose: `plan ${weekStart.toISOString().slice(0, 10)}`, onCost: (c) => (textCost = c) })
   const plan = keepKnownImages(PlanSchema.parse(raw), images.prompt)
@@ -316,7 +321,7 @@ async function background(app: App, post: Post, position: number, scene: string 
   if (!model || !scene || process.env.OPENROUTER_MOCK === '1') return undefined
   const m = manifestOf(app)
   const kind = kindOf(app, opts.image)
-  const prompt = `${scene}. ${kind === 'photo' ? 'Photorealistic photo. ' : ''}Style: ${styleFor(m, kind)}. Color palette ${m.brand.colors.join(', ')}. Absolutely no text, letters, numbers, logos or watermarks.`
+  const prompt = `${scene}. ${kind === 'photo' ? 'Photorealistic photo. ' : ''}Style: ${styleFor(m, kind, app.designStyle)}. Color palette ${m.brand.colors.join(', ')}. Absolutely no text, letters, numbers, logos or watermarks.`
   const img = await generateImage({ appId: app.id, model, quality, prompt, aspectRatio: vertical(post.type) ? '9:16' : '4:5', references: opts.references, kind, purpose: `${kind === 'photo' ? 'foto' : 'ilustración'} ${post.type} ${position + 1}` })
   const rel = await saveMedia(`apps/${app.slug}/posts/${post.id}/bg-${position}-${Date.now()}.jpg`, img.data)
   await db.asset.create({ data: { postId: post.id, kind: 'BACKGROUND', position, path: rel, prompt, model, costUsd: img.cost } })
@@ -336,6 +341,7 @@ export async function renderPost(postId: string, opts: { regenerateImage?: boole
   const own = await slideImages(app.id, slides.flatMap((s) => (s.imageId ? [s.imageId] : [])))
   const size = vertical(post.type) ? SIZES.story : SIZES.feed
   const image = opts.image ?? { model: app.imageModel, quality: app.imageQuality }
+  const t = TEMPLATES[designStyle(app.designStyle).id]
   // Una ilustración por diapositiva (salvo el cierre y la de la captura), en orden: la primera es la referencia de estilo.
   const html: string[] = []
   const refs: string[] = []
@@ -344,22 +350,22 @@ export async function renderPost(postId: string, opts: { regenerateImage?: boole
     const layout = slideLayout(post.type, slides.length, i, shots.length > 0, s, mine?.kind)
     const d: SlideData = { ...s, index: i, total: post.type === 'CAROUSEL' ? slides.length : undefined }
     if (layout === 'cta') {
-      html.push(ctaSlide(brand, d, size))
+      html.push(t.cta(brand, d, size))
       continue
     }
     if (layout === 'text-shot') {
-      html.push(textSlide(brand, { ...d, screenshot: mine?.src ?? shots[0] }, size))
+      html.push(t.text(brand, { ...d, screenshot: mine?.src ?? shots[0] }, size))
       continue
     }
     // Foto subida: ocupa el lugar de la ilustración, sin generar nada.
     if (mine) {
-      html.push(layout === 'cover' ? coverSlide(brand, { ...d, background: mine.src }, size) : textSlide(brand, { ...d, illustration: mine.src }, size))
+      html.push(layout === 'cover' ? t.cover(brand, { ...d, background: mine.src }, size) : t.text(brand, { ...d, illustration: mine.src }, size))
       continue
     }
     const scene = s.imagePrompt ?? (i === 0 ? post.imagePrompt ?? undefined : post.imagePrompt ? `${post.imagePrompt}. Scene about: ${s.title}` : undefined)
     const img = await background(app, post, i, scene, { force: opts.regenerateImage, references: refs.slice(0, 1), image })
     if (img && !refs.length) refs.push(img)
-    html.push(layout === 'cover' ? coverSlide(brand, { ...d, background: img }, size) : textSlide(brand, { ...d, illustration: img }, size))
+    html.push(layout === 'cover' ? t.cover(brand, { ...d, background: img }, size) : t.text(brand, { ...d, illustration: img }, size))
   }
   await db.asset.deleteMany({ where: { postId, kind: { in: ['SLIDE', 'VIDEO'] } } })
   const stamp = Date.now()
@@ -446,7 +452,7 @@ export async function createOnDemand(postId: string, topic: string, image?: Imag
       db.post.findMany({ where: { appId: app.id, id: { not: postId } }, orderBy: { createdAt: 'desc' }, take: 30, select: { pillar: true, hook: true } }),
       imagesForPlan(app.id, imageIds),
     ])
-    const { system, user } = buildPlanPrompt(m, [slot], { feed: [], texts: src.texts, releases: [], recent, bestPillars: [], topic: fullTopic, images: images.prompt, kind: kindOf(app, image) })
+    const { system, user } = buildPlanPrompt(m, [slot], { feed: [], texts: src.texts, releases: [], recent, bestPillars: [], topic: fullTopic, images: images.prompt, kind: kindOf(app, image), design: app.designStyle })
     let textCost = 0
     const raw =
       process.env.OPENROUTER_MOCK === '1'
@@ -520,7 +526,7 @@ export async function runDaily(appId: string, now = new Date()) {
 
   try {
     const m = manifestOf(app)
-    const { system, user } = buildPlanPrompt(m, slots, { feed: [], texts: [], releases: [], recent: [], bestPillars: [], daily: { date, report }, kind: kindOf(app) })
+    const { system, user } = buildPlanPrompt(m, slots, { feed: [], texts: [], releases: [], recent: [], bestPillars: [], daily: { date, report }, kind: kindOf(app), design: app.designStyle })
     let textCost = 0
     const raw =
       process.env.OPENROUTER_MOCK === '1'

@@ -14,12 +14,15 @@ import { parseImageChoice, parseImageKind } from '@/lib/models'
 import { estimateSuggestion, suggestCampaign, type SuggestInput } from '@/lib/ad-suggest'
 import { activateCampaign, campaignLink, deleteCampaign, estimateAudience, friendly, pauseCampaign, searchPlaces, searchTargeting, syncCampaign, DETAIL_TYPES, EDUCATION, type Detail, type DetailType, type GeoPlace, type Objective, type Targeting } from '@/lib/meta-ads'
 import { explain } from '@/lib/meta-errors'
-import { draftManifest, logoFromRepo, proposeManifestPR, repoContext } from '@/lib/onboarding/manifest-wizard'
+import { draftManifest, logoFromRepo, proposeManifestPR, proposeStyleChange, repoContext } from '@/lib/onboarding/manifest-wizard'
 import { healthCheck, type Check } from '@/lib/onboarding/meta-health'
 import { buildProfileKit, type ProfileKit } from '@/lib/onboarding/profile-kit'
 import { syncApp } from '@/lib/pipeline'
 import { fromLocalInput, nextMonday } from '@/lib/schedule'
 import { setSecret, type SecretKey } from '@/lib/settings'
+import { designStyle, parseDesignStyle, SAMPLE_QUALITIES } from '@/lib/styles'
+import { ALL_STYLES, setSamplesState } from '@/lib/style-samples'
+import { suggestStyles } from '@/lib/style-suggest'
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').replace(/\r\n/g, '\n').trim()
 
@@ -37,7 +40,7 @@ export async function createApp(f: FormData) {
   await requireUser()
   const repo = normalizeRepo(str(f, 'repo'))
   const slug = (str(f, 'slug') || repo.split('/')[1]).toLowerCase().replace(/[^a-z0-9-]+/g, '-')
-  const app = await db.app.create({ data: { slug, repo, name: str(f, 'name') || repo.split('/')[1], branch: str(f, 'branch') || 'main', imageModel: str(f, 'imageModel') || null, imageQuality: str(f, 'imageQuality') || null, imageKind: parseImageKind(str(f, 'imageKind')) ?? null } })
+  const app = await db.app.create({ data: { slug, repo, name: str(f, 'name') || repo.split('/')[1], branch: str(f, 'branch') || 'main', imageModel: str(f, 'imageModel') || null, imageQuality: str(f, 'imageQuality') || null, imageKind: parseImageKind(str(f, 'imageKind')) ?? null, designStyle: parseDesignStyle(str(f, 'designStyle')) ?? null } })
   await syncApp(app.id).catch(() => null)
   redirect(`/apps/${app.slug}/manifiesto`)
 }
@@ -54,6 +57,7 @@ export async function updateSettings(slug: string, f: FormData) {
       imageModel: str(f, 'imageModel') || null,
       imageQuality: str(f, 'imageQuality') || null,
       imageKind: parseImageKind(str(f, 'imageKind')) ?? null,
+      designStyle: parseDesignStyle(str(f, 'designStyle')) ?? null,
       monthlyBudgetUsd: Number(str(f, 'monthlyBudgetUsd') || 7),
       adMonthlyBudget: str(f, 'adMonthlyBudget') ? Number(str(f, 'adMonthlyBudget')) : null,
       timezone: str(f, 'timezone'),
@@ -64,6 +68,45 @@ export async function updateSettings(slug: string, f: FormData) {
     },
   })
   revalidatePath(`/apps/${slug}`, 'layout')
+  // Estilo al promo.yaml del repo, si se pidió y es distinto del que ya tiene.
+  const style = parseDesignStyle(str(f, 'designStyle'))
+  if (f.get('styleToYaml') !== 'on' || !style) return
+  const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  if ((app.manifest as unknown as Manifest | null)?.brand.style === style) return
+  let to: string
+  try {
+    const r = await proposeStyleChange(app, style, designStyle(style).label)
+    to = r.url ? `pr=${encodeURIComponent(r.url)}` : r.written ? 'aviso=yaml-escrito' : 'aviso=yaml-igual'
+    if (r.written) await syncApp(app.id)
+  } catch (e) {
+    to = `error=${encodeURIComponent(`El estilo se guardó, pero no se pudo actualizar el promo.yaml: ${(e as Error).message}`)}`
+  }
+  redirect(`/apps/${slug}/ajustes?${to}`)
+}
+
+export async function suggestStylesAction(slug: string) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  let to = 'aviso=sugeridos#estilo'
+  try {
+    await suggestStyles(app)
+  } catch (e) {
+    to = `error=${encodeURIComponent(`No se pudieron sugerir estilos: ${(e as Error).message}`)}#estilo`
+  }
+  revalidatePath(`/apps/${slug}/ajustes`)
+  redirect(`/apps/${slug}/ajustes?${to}`)
+}
+
+/** Muestras de estilo con la marca de la app (o las genéricas, todas): las genera el worker. */
+export async function styleSamplesAction(slug: string, generic: boolean, f: FormData) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  const styles = generic ? ALL_STYLES : f.getAll('sampleStyles').map(String).flatMap((v) => parseDesignStyle(v) ?? [])
+  const qualities = generic ? SAMPLE_QUALITIES : SAMPLE_QUALITIES.filter((q) => f.getAll('sampleQualities').includes(q))
+  if (!styles.length || !qualities.length) redirect(`/apps/${slug}/ajustes?error=${encodeURIComponent('Elegí al menos un estilo y una calidad para las muestras.')}#estilo`)
+  await setSamplesState(generic ? undefined : app.slug, { status: 'running' })
+  await enqueue(QUEUES.styleSamples, { appId: generic ? null : app.id, styles, qualities }, { singletonKey: `muestras-${generic ? 'genericas' : app.id}` })
+  redirect(`/apps/${slug}/ajustes?aviso=muestras#estilo`)
 }
 
 export async function syncNow(slug: string) {

@@ -2,6 +2,7 @@ import { createApp } from '@/app/actions'
 import { SubmitButton } from '@/components/client'
 import { ImageModelPicker } from '@/components/ModelPicker'
 import { imagesPerMonth } from '@/lib/models'
+import { listSamples } from '@/lib/style-samples'
 import { imageModels } from '@/lib/openrouter'
 
 export default async function NewApp() {
@@ -38,7 +39,7 @@ export default async function NewApp() {
         <div className="stack-sm">
           <strong>Modelo de imagen de OpenRouter</strong>
           <span className="hint">Lo podés cambiar después en Ajustes. El estimado mensual usa la cadencia por defecto (3 posts y 2 stories por semana).</span>
-          <ImageModelPicker current={null} quality={null} kind={null} imagesPerMonth={imagesPerMonth({ feed: 3, reels: 1, stories: 2 })} available={images} />
+          <ImageModelPicker current={null} quality={null} kind={null} imagesPerMonth={imagesPerMonth({ feed: 3, reels: 1, stories: 2 })} available={images} designStyle={null} samples={await listSamples()} />
         </div>
         <div>
           <SubmitButton pendingText="Conectando…">Conectar y seguir</SubmitButton>

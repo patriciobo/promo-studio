@@ -14,6 +14,7 @@ export const QUEUES = {
   describeImage: 'describe-image', // { imageId }: descripción de una imagen subida
   pushCampaign: 'push-campaign', // { campaignId }: crear (o completar) la campaña en Meta, en pausa
   syncAds: 'sync-ads', // cada 3 horas: estado y resultados de las campañas
+  styleSamples: 'style-samples', // { appId: string | null, styles, qualities }: muestras de estilo (null = genéricas)
 } as const
 
 let boss: Promise<PgBoss> | null = null

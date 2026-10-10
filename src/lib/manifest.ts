@@ -1,6 +1,6 @@
 // Esquema de promo.yaml: lo que cada app le cuenta al servicio sobre sí misma.
 import { createHash } from 'node:crypto'
-import { parse as parseYaml, stringify } from 'yaml'
+import { parse as parseYaml, parseDocument, stringify } from 'yaml'
 import { z } from 'zod'
 
 /** Estilo de las ilustraciones si el promo.yaml no define brand.imageStyle. */
@@ -76,6 +76,7 @@ export const ManifestSchema = z.object({
     logo: z.string().optional(), // ruta en el repo o URL
     imageStyle: z.string().max(400).optional(), // estilo de las ilustraciones (en inglés)
     photoStyle: z.string().max(400).optional(), // estilo de las fotos realistas (en inglés)
+    style: z.string().optional(), // estilo de diseño de las piezas (src/lib/styles.ts); uno desconocido se ignora
   }),
   features: z.array(z.string()).min(1),
   screenshots: z.array(z.string()).default([]),
@@ -141,6 +142,13 @@ export function parseManifest(yamlText: string): ManifestResult {
 }
 
 export const manifestToYaml = (m: Manifest) => stringify(m, { lineWidth: 0 })
+
+/** Cambia brand.style en el texto del promo.yaml conservando comentarios y orden. */
+export function setYamlStyle(yamlText: string, style: string) {
+  const doc = parseDocument(yamlText)
+  doc.setIn(['brand', 'style'], style)
+  return doc.toString({ lineWidth: 0 })
+}
 
 /** Contenido de una fuente "feed": ideas estructuradas que la app publica (p. ej. ejercicios, guías). */
 export const FeedSchema = z.object({

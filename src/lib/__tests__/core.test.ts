@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('@/lib/db', () => ({ db: {} }))
 vi.mock('../db', () => ({ db: {} }))
 
-import { flowScreenPath, parseManifest } from '../manifest'
+import { flowScreenPath, parseManifest, setYamlStyle } from '../manifest'
 import { inOrder } from '../images'
 import { fromLocalInput, localParts, toLocalInput, weekSlots, zonedTime } from '../schedule'
 import { adCandidates, engagement, median, relativeScore } from '../score'
@@ -11,12 +11,15 @@ import { containerRequests, publish, type GraphClient } from '../instagram'
 import { explain, MetaError } from '../meta-errors'
 import { buildSuggestPrompt, mockSuggestion, SuggestionSchema } from '../ad-suggest'
 import { adMessage, adOnlyCreative, boostCreative, budgetError, campaignLink, campaignRequests, plannedSpend } from '../meta-ads'
-import { buildPlanPrompt, compactReport, dailySourceUrl, keepKnownImages, mockPlan, needsRender, postFromPlan, slideLayout } from '../pipeline'
+import { buildPlanPrompt, compactReport, styleFor, dailySourceUrl, keepKnownImages, mockPlan, needsRender, postFromPlan, slideLayout } from '../pipeline'
 import { encodeImageChoice, IMAGE_KINDS, IMAGE_MODELS, imagePrice, imagesPerMonth, parseImageChoice, parseImageKind, SUGGESTED } from '../models'
 import { aspectFor } from '../openrouter'
 import { normalizeRepo } from '../github'
 import { brandFrom } from '@/templates/brand'
 import { postCost, usdSmall } from '../view'
+import { DESIGN_STYLES, designStyle, parseDesignStyle } from '../styles'
+import { TEMPLATES } from '@/templates/styles'
+import { buildStylePrompt, cleanSuggestions } from '../style-suggest'
 
 const YAML = `
 name: Mi Tenis
@@ -453,5 +456,44 @@ describe('sugerencias de campaña', () => {
   it('la respuesta se valida con el esquema', () => {
     expect(SuggestionSchema.parse(mockSuggestion(m)).groups[0].length).toBeGreaterThan(0)
     expect(() => SuggestionSchema.parse({ ...mockSuggestion(m), groups: [[{ type: 'zodiac', term: 'Aries' }]] })).toThrow()
+  })
+})
+
+describe('estilos de diseño', () => {
+  const m = (parseManifest(YAML) as unknown as { manifest: never }).manifest as Parameters<typeof styleFor>[0]
+  const b = brandFrom(m)
+
+  it('cada estilo tiene sus tres plantillas y escapa el texto', () => {
+    for (const s of DESIGN_STYLES) {
+      const t = TEMPLATES[s.id]
+      for (const html of [t.cover(b, { title: 'A <b> & "c"', eyebrow: 'x', background: 'data:image/jpeg;base64,AA' }), t.text(b, { title: 'T', items: ['uno', 'dos'], illustration: 'data:,' }), t.cta(b, { title: 'Fin', index: 4, total: 5 })]) {
+        expect(html).toContain('<!doctype html>')
+        expect(html).not.toContain('<b> &')
+      }
+    }
+  })
+
+  it('la estética de imagen sale del estilo; el clásico usa la del promo.yaml', () => {
+    expect(styleFor(m, 'illustration', 'collage')).toContain('collage')
+    expect(styleFor(m, 'photo', 'retro')).toContain('film')
+    expect(styleFor(m, 'illustration', null)).toBe(styleFor(m, 'illustration', 'clasico'))
+    expect(designStyle('inventado').id).toBe('clasico')
+    expect(parseDesignStyle('inventado')).toBeUndefined()
+  })
+
+  it('brand.style se escribe en el promo.yaml sin perder comentarios ni el resto', () => {
+    const yaml = setYamlStyle(`# mi app\n${YAML}`, 'retro')
+    expect(yaml).toContain('# mi app')
+    const r = parseManifest(yaml)
+    expect(r.ok && r.manifest.brand.style).toBe('retro')
+    expect(r.ok && r.manifest.brand.colors).toEqual(['#1c6a4e', '#f6f6f3', '#17191b'])
+    expect(setYamlStyle(yaml, 'retro')).toBe(yaml)
+  })
+
+  it('las sugerencias sólo aceptan estilos del catálogo, sin repetir y hasta 3', () => {
+    const picks = cleanSuggestions({ picks: [{ id: 'retro', reason: 'a' }, { id: 'nada' }, { id: 'retro' }, { id: 'papel' }, { id: 'bento' }, { id: 'amano' }] })
+    expect(picks.map((p) => p.id)).toEqual(['retro', 'papel', 'bento'])
+    expect(cleanSuggestions(null)).toEqual([])
+    expect(buildStylePrompt(m).user).toContain('collage')
   })
 })

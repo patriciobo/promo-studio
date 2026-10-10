@@ -1,9 +1,12 @@
 // Asistente de promo.yaml: lee el repo, le pide al modelo de texto un borrador y lo valida.
+import type { App } from '@prisma/client'
+import { writeFile } from 'node:fs/promises'
+import { extname, join } from 'node:path'
 import { db } from '../db'
 import { getFile, getRawBytes, getRepo, listTree, openPullRequest } from '../github'
-import { ManifestSchema, manifestToYaml, type Manifest } from '../manifest'
+import { ManifestSchema, manifestToYaml, setYamlStyle, type Manifest } from '../manifest'
 import { completeJson } from '../openrouter'
-import { extname } from 'node:path'
+import type { DesignStyleId } from '../styles'
 
 const CANDIDATE_FILES = ['README.md', 'readme.md', 'package.json', 'public/llms.txt', 'llms.txt', 'public/manifest.json', 'public/manifest.webmanifest', 'app.json', 'capacitor.config.json']
 
@@ -67,4 +70,22 @@ export async function proposeManifestPR(appId: string, yaml: string, extra: { pa
 export async function logoFromRepo(repo: string, path: string, branch?: string) {
   const b = await getRawBytes(repo, path, branch)
   return b ? { path: `.promo/logo${extname(path)}`, content: b } : null
+}
+
+/**
+ * Guarda el estilo de diseño en el promo.yaml del repo: en un repo local escribe el archivo; en GitHub abre un PR
+ * (el resto del yaml queda igual, con sus comentarios).
+ */
+export async function proposeStyleChange(app: Pick<App, 'repo' | 'branch' | 'manifestPath'>, style: DesignStyleId, label: string): Promise<{ url?: string; written?: string }> {
+  const file = await getFile(app.repo, app.manifestPath, app.branch)
+  if (!file) throw new Error(`No existe ${app.manifestPath} en el repo`)
+  const yaml = setYamlStyle(file.text, style)
+  if (yaml === file.text) return {}
+  if (app.repo.startsWith('file:')) {
+    const path = join(app.repo.slice(5), app.manifestPath)
+    await writeFile(path, yaml)
+    return { written: path }
+  }
+  const url = await openPullRequest(app.repo, app.branch, `promo-studio/estilo-${style}-${Date.now().toString(36)}`, [{ path: app.manifestPath, content: yaml }], `promo.yaml: estilo de diseño "${label}"`, `Cambia \`brand.style\` a \`${style}\` (${label}), elegido en Ajustes de Promo Studio. Define la plantilla de las piezas y la estética de las imágenes.`)
+  return { url }
 }

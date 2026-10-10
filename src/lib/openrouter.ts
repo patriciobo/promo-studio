@@ -72,7 +72,7 @@ export const aspectFor = (model: string, aspect: AspectRatio): AspectRatio => (a
  * el de chat con salida de imagen (modelos tipo Gemini Image).
  * `references` (data URIs) sirve para mantener el estilo entre las piezas de un post.
  */
-export async function generateImage(opts: { appId: string; model: string; prompt: string; aspectRatio: AspectRatio; purpose: string; quality?: string | null; references?: string[]; kind?: ImageKind }): Promise<{ data: Buffer; mime: string; cost: number }> {
+export async function generateImage(opts: { appId: string | null; model: string; prompt: string; aspectRatio: AspectRatio; purpose: string; quality?: string | null; references?: string[]; kind?: ImageKind }): Promise<{ data: Buffer; mime: string; cost: number }> {
   await assertBudget(opts.appId, 0.1)
   const info = imageModel(opts.model)
   const refs = info?.references ? (opts.references ?? []).slice(0, 4) : []

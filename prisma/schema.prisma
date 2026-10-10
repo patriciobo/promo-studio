@@ -30,6 +30,8 @@ model App {
   imageModel       String?
   imageQuality     String? // low | medium | high, para modelos que cobran según la calidad
   imageKind        String? // illustration | photo (null = illustration)
+  designStyle      String? // estilo de las piezas (src/lib/styles.ts; null = clasico). brand.style del promo.yaml lo pisa al cambiar el yaml
+  styleSuggestions Json? // [{ id, reason }]: estilos que el modelo de texto sugiere para el negocio
   monthlyBudgetUsd Float     @default(7)
   adMonthlyBudget  Float? // tope mensual de anuncios en la moneda de la cuenta publicitaria (null = sin tope)
   // Publicación

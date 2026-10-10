@@ -1,20 +1,41 @@
-import { updateSettings } from '@/app/actions'
+import { styleSamplesAction, suggestStylesAction, updateSettings } from '@/app/actions'
 import { SubmitButton } from '@/components/client'
 import { ImageModelPicker, TextModelPicker } from '@/components/ModelPicker'
 import { spentThisMonth } from '@/lib/budget'
 import { db } from '@/lib/db'
 import type { Manifest } from '@/lib/manifest'
 import { imagesPerMonth } from '@/lib/models'
+import { listSamples, samplesState } from '@/lib/style-samples'
+import type { StyleSuggestion } from '@/lib/styles'
 import { imageModels, textModels } from '@/lib/openrouter'
 import { usd } from '@/lib/view'
 
-export default async function Settings({ params }: PageProps<'/apps/[slug]/ajustes'>) {
+export default async function Settings({ params, searchParams }: PageProps<'/apps/[slug]/ajustes'>) {
   const { slug } = await params
+  const { aviso, pr, error } = await searchParams
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
-  const cadence = (app.manifest as unknown as Manifest | null)?.cadence ?? { feed: 3, reels: 1, stories: 2 }
-  const [images, texts, spent] = await Promise.all([imageModels().catch(() => []), textModels().catch(() => []), spentThisMonth(app.id)])
+  const manifest = app.manifest as unknown as Manifest | null
+  const cadence = manifest?.cadence ?? { feed: 3, reels: 1, stories: 2 }
+  const [images, texts, spent, generic, mine, genericState, mineState] = await Promise.all([imageModels().catch(() => []), textModels().catch(() => []), spentThisMonth(app.id), listSamples(), listSamples(app.slug), samplesState(), samplesState(app.slug)])
+  const styleApp = {
+    name: app.name,
+    samples: mine,
+    suggestions: (app.styleSuggestions as StyleSuggestion[] | null) ?? [],
+    yamlStyle: manifest?.brand.style ?? null,
+    state: { mine: mineState, generic: genericState },
+    actions: { suggest: suggestStylesAction.bind(null, slug), samples: styleSamplesAction.bind(null, slug, false), genericSamples: styleSamplesAction.bind(null, slug, true) },
+  }
   return (
     <form action={updateSettings.bind(null, slug)} className="stack" style={{ maxWidth: 960, gap: 20 }}>
+      {typeof pr === 'string' && (
+        <p className="notice ok">
+          Estilo guardado. Abrí un PR con el cambio en el promo.yaml: <a href={pr} target="_blank" rel="noreferrer">{pr}</a>. Al aprobarlo, la próxima sincronización lo toma.
+        </p>
+      )}
+      {aviso === 'yaml-escrito' && <p className="notice ok">Estilo guardado y escrito en el promo.yaml del repo local.</p>}
+      {aviso === 'sugeridos' && <p className="notice ok">Listo: los estilos sugeridos quedaron primeros, con el porqué.</p>}
+      {aviso === 'muestras' && <p className="notice">Pedí las muestras: el worker las genera en 1 a 3 minutos.</p>}
+      {typeof error === 'string' && <p className="notice bad">{error}</p>}
       <section className="card stack">
         <h2>App</h2>
         <div className="form-grid">
@@ -35,9 +56,9 @@ export default async function Settings({ params }: PageProps<'/apps/[slug]/ajust
       <section className="card stack">
         <h2>Modelos de OpenRouter</h2>
         <div className="stack-sm">
-          <strong>Modelo de imagen para la generación automática</strong>
+          <strong>Estilo y modelo de imagen para la generación automática</strong>
           <span className="hint">Lo usa el lote semanal de cada domingo y es el que aparece preseleccionado junto a los botones de generar (Calendario, Crear ahora, Revisión), donde lo podés cambiar para esa vez. Genera una ilustración por diapositiva o escena; el texto lo pone la plantilla.</span>
-          <ImageModelPicker current={app.imageModel} quality={app.imageQuality} kind={app.imageKind} imagesPerMonth={imagesPerMonth(cadence, (app.manifest as unknown as Manifest | null)?.daily)} budget={app.monthlyBudgetUsd} available={images} />
+          <ImageModelPicker current={app.imageModel} quality={app.imageQuality} kind={app.imageKind} imagesPerMonth={imagesPerMonth(cadence, (app.manifest as unknown as Manifest | null)?.daily)} budget={app.monthlyBudgetUsd} available={images} designStyle={app.designStyle} samples={generic} styleApp={styleApp} />
         </div>
         <div className="stack-sm">
           <strong>Modelo de texto</strong>

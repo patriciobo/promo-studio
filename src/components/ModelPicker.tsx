@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { IMAGE_KINDS, IMAGE_MODELS, imagePrice, parseImageKind, PRICES_CHECKED, SUGGESTED, TEXT_MODELS, TIERS, type Fit, type ImageKind, type ImageQuality } from '@/lib/models'
 import type { ModelInfo } from '@/lib/openrouter'
+import { DEFAULT_DESIGN_STYLE, parseDesignStyle, SAMPLE_MODEL, type DesignStyleId } from '@/lib/styles'
+import { StylePicker, type StyleAppProps } from './StylePicker'
 
 const OTHER = '__other'
 const money = (n: number) => `US$ ${n < 0.1 ? n.toFixed(3) : n.toFixed(2)}`
@@ -17,6 +19,9 @@ export function ImageModelPicker({
   imagesPerMonth,
   budget,
   available,
+  designStyle,
+  samples,
+  styleApp,
 }: {
   current: string | null
   quality: string | null
@@ -26,7 +31,14 @@ export function ImageModelPicker({
   budget?: number
   /** Todos los modelos de imagen de OpenRouter (vacío si no se pudo consultar). */
   available: ModelInfo[]
+  /** Estilo de diseño guardado en la app (null = clásico). */
+  designStyle: string | null
+  /** Muestras genéricas de estilo ya generadas. */
+  samples: Record<string, string>
+  /** Sugerencias, muestras con la marca y promo.yaml (sólo en Ajustes de una app). */
+  styleApp?: StyleAppProps
 }) {
+  const [style, setStyle] = useState<DesignStyleId>(parseDesignStyle(designStyle) ?? DEFAULT_DESIGN_STYLE)
   const curated = IMAGE_MODELS.some((m) => m.id === current)
   const [choice, setChoice] = useState(curated ? current! : current ? OTHER : '')
   const [other, setOther] = useState(curated ? '' : (current ?? ''))
@@ -41,10 +53,22 @@ export function ImageModelPicker({
     const d = IMAGE_MODELS.find((m) => m.id === id)?.defaultQuality
     if (d) setQ(d)
   }
+  const sample = (id: DesignStyleId, quality: ImageQuality) => {
+    setStyle(id)
+    setChoice(SAMPLE_MODEL)
+    setQ(quality)
+  }
   return (
     <div className="stack">
       <input type="hidden" name="imageModel" value={value} />
       <input type="hidden" name="imageQuality" value={selected?.qualities ? q : ''} />
+      <fieldset className="stack-sm" style={{ border: 0, padding: 0, margin: 0 }}>
+        <legend>
+          <strong>Estilo de diseño</strong> <span className="hint">plantilla y estética de las imágenes; tocá una muestra para elegir estilo y calidad</span>
+        </legend>
+        <StylePicker style={style} onStyle={setStyle} sampleModel={{ id: SAMPLE_MODEL, selected: choice === SAMPLE_MODEL }} quality={q} onSample={sample} generic={samples} app={styleApp} />
+        <span className="xs muted">Las muestras están hechas con {IMAGE_MODELS.find((m) => m.id === SAMPLE_MODEL)?.name ?? SAMPLE_MODEL} en cada calidad. Tocar una también elige ese modelo y calidad abajo.</span>
+      </fieldset>
       <fieldset className="stack-sm" style={{ border: 0, padding: 0, margin: 0 }}>
         <legend>
           <strong>Tipo de imagen</strong> <span className="hint">se puede cambiar en cada generación</span>

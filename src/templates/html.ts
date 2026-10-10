@@ -3,12 +3,13 @@ import { onColor, type Brand } from './brand'
 
 export const SIZES = { feed: { w: 1080, h: 1350 }, story: { w: 1080, h: 1920 }, square: { w: 1080, h: 1080 } } as const
 
-const esc = (s = '') => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+export const esc = (s = '') => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
-function shell(b: Brand, w: number, h: number, css: string, body: string) {
-  const family = encodeURIComponent(b.font)
+/** `fonts`: familias extra de Google Fonts que usa un estilo (p. ej. "Anton" o "Fraunces:wght@400;700"). */
+export function shell(b: Brand, w: number, h: number, css: string, body: string, fonts: string[] = []) {
+  const families = [`${b.font}:wght@400;500;600;700;800`, ...fonts].map((f) => `family=${encodeURIComponent(f).replace(/%3A/g, ':').replace(/%40/g, '@').replace(/%3B/g, ';').replace(/%2C/g, ',')}`).join('&')
   return `<!doctype html><html><head><meta charset="utf-8">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=${family}:wght@400;500;600;700;800&display=block">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?${families}&display=block">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{width:${w}px;height:${h}px;overflow:hidden}
@@ -22,7 +23,7 @@ ${css}
 </style></head><body>${body}</body></html>`
 }
 
-const brandRow = (b: Brand, color?: string) => `<div class="brand" style="${color ? `color:${color}` : ''}">${b.logo ? `<img src="${b.logo}">` : ''}<span>${esc(b.name)}</span></div>`
+export const brandRow = (b: Brand, color?: string) => `<div class="brand" style="${color ? `color:${color}` : ''}">${b.logo ? `<img src="${b.logo}">` : ''}<span>${esc(b.name)}</span></div>`
 
 export interface SlideData {
   eyebrow?: string
