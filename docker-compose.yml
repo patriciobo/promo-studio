@@ -27,6 +27,7 @@ services:
       DATABASE_URL: postgresql://promo:${POSTGRES_PASSWORD:-promo}@db:5432/promo
       MEDIA_DIR: /data/media
       WAHA_URL: ${WAHA_URL:-http://waha:3000}
+      WAHA_WEBHOOK_TOKEN: ${WAHA_WEBHOOK_TOKEN:-}
     ports:
       - "3000:3000"
     volumes:
@@ -66,6 +67,8 @@ services:
       # Las respuestas de los clientes van directo a la web por la red interna.
       WHATSAPP_HOOK_URL: http://web:3000/api/waha?token=${WAHA_WEBHOOK_TOKEN:-}
       WHATSAPP_HOOK_EVENTS: message
+      # Suelta además, para que Coolify la detecte y la ofrezca en Environment Variables.
+      WAHA_WEBHOOK_TOKEN: ${WAHA_WEBHOOK_TOKEN:-}
     # Sólo en la máquina: para el QR, un túnel (ssh -L 3002:localhost:3002 vps) o un dominio con contraseña en Coolify/Caddy.
     ports:
       - "127.0.0.1:${WAHA_PORT:-3002}:3000"
