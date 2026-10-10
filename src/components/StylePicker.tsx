@@ -114,6 +114,13 @@ export function StylePicker({
               {mine && row(s.id, `Con ${app.name}`, app.samples, true)}
               {row(s.id, mine ? 'Genérica (marca de prueba)' : '', generic)}
               <span className="small">{s.hint}</span>
+              <span className="row" style={{ flexWrap: 'wrap', gap: 4 }} title="Lo que busca hacer sentir a los seguidores">
+                {s.feelings.map((w) => (
+                  <span key={w} className="badge">
+                    {w}
+                  </span>
+                ))}
+              </span>
               <span className="xs muted">{s.trend}</span>
               {app && (
                 <label className="check xs">

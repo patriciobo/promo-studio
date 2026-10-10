@@ -7,11 +7,11 @@ import { manifestOf } from './pipeline'
 import { DESIGN_STYLES, parseDesignStyle, type StyleSuggestion } from './styles'
 
 export function buildStylePrompt(m: Manifest) {
-  const system = `You are a senior social media art director. From the style catalog, pick the 3 design styles that best fit this business on Instagram, best first. Weigh its industry, audience, tone, brand colors and what its competitors' audiences respond to. Avoid styles that clash with the business (e.g. playful styles for serious finance or health, dark tech for kids).
+  const system = `You are a senior social media art director. From the style catalog, pick the 3 design styles that best fit this business on Instagram, best first. Weigh its industry, audience, tone, brand colors, the feelings each style evokes in followers and what its competitors' audiences respond to. Avoid styles that clash with the business (e.g. playful styles for serious finance or health, dark tech for kids).
 Answer only with JSON: {"picks":[{"id":string,"reason":string}]}. "id" must be a catalog id. "reason" in Spanish (voseo rioplatense), max 140 characters, specific to this business, not generic.`
   const user = JSON.stringify({
     business: { name: m.name, category: m.category, tagline: m.tagline, description: m.description?.slice(0, 600), audience: m.audience, tone: m.tone, colors: m.brand.colors, pillars: m.pillars, location: m.location },
-    catalog: DESIGN_STYLES.map((s) => ({ id: s.id, name: s.label, looks: s.hint })),
+    catalog: DESIGN_STYLES.map((s) => ({ id: s.id, name: s.label, looks: s.hint, makes_followers_feel: s.feelings })),
   })
   return { system, user }
 }
