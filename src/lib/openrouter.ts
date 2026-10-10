@@ -54,7 +54,7 @@ export async function completeJson<T = unknown>(opts: { appId: string | null; mo
   await record(opts.appId, 'text', opts.model, r.usage?.cost ?? 0, r.usage?.total_tokens, opts.purpose)
   opts.onCost?.(r.usage?.cost ?? 0)
   const content = r.choices?.[0]?.message?.content ?? ''
-  if (r.choices?.[0]?.finish_reason === 'length') throw new OpenRouterError(200, `la respuesta de ${opts.model} se cortó por el límite de tokens (${opts.maxTokens ?? 6000}); probá con otro modelo de texto`)
+  if (r.choices?.[0]?.finish_reason === 'length') throw new OpenRouterError(200, `la respuesta de ${opts.model} se cortó por el límite de tokens (${opts.maxTokens ?? 6000}); probá con otro modelo de texto (Ajustes > Modelos de OpenRouter > Modelo de texto)`)
   try {
     return JSON.parse(content.replace(/^```(?:json)?\s*|\s*```$/g, '')) as T
   } catch {

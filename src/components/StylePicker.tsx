@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { DESIGN_STYLES, SAMPLE_QUALITIES, sampleKey, type DesignStyleId, type StyleSuggestion } from '@/lib/styles'
 import { IMAGE_MODELS, type ImageQuality } from '@/lib/models'
 import type { SamplesState } from '@/lib/style-samples'
-import { AutoRefresh } from './client'
+import { ActionButton, AutoRefresh } from './client'
 
 const QUALITY_LABEL: Record<ImageQuality, string> = { low: 'Baja', medium: 'Media', high: 'Alta' }
 const money = (n: number) => `US$ ${n < 0.1 ? n.toFixed(3) : n.toFixed(2)}`
@@ -89,9 +89,9 @@ export function StylePicker({
       {app && (
         <div className="row between" style={{ flexWrap: 'wrap', gap: 8 }}>
           <span className="small">{suggested.length ? `Sugeridos para ${app.name} según su rubro, público y tono.` : `¿No sabés cuál va con ${app.name}? El modelo de texto lee el promo.yaml y sugiere 3.`}</span>
-          <button className="btn sm" formAction={app.actions.suggest} formNoValidate>
+          <ActionButton action={app.actions.suggest} pendingText="Leyendo el promo.yaml y eligiendo estilos…">
             {suggested.length ? 'Volver a sugerir' : 'Sugerir estilos para mi negocio'}
-          </button>
+          </ActionButton>
         </div>
       )}
       <div className="style-grid">
@@ -137,13 +137,13 @@ export function StylePicker({
             ))}
           </div>
           <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
-            <button className="btn sm primary" formAction={app.actions.samples} formNoValidate disabled={!!running || !toSample.size || !qualities.size}>
+            <ActionButton className="btn sm primary" action={app.actions.samples} pendingText="Encargando muestras…" disabled={!!running || !toSample.size || !qualities.size}>
               Generar {toSample.size * qualities.size} muestras (~{money(toSample.size * perStyle)})
-            </button>
+            </ActionButton>
             {genericMissing > 0 && (
-              <button className="btn sm" formAction={app.actions.genericSamples} formNoValidate disabled={!!running}>
+              <ActionButton action={app.actions.genericSamples} pendingText="Encargando muestras…" disabled={!!running}>
                 Generar las {DESIGN_STYLES.length * SAMPLE_QUALITIES.length} genéricas (~{money(prices ? DESIGN_STYLES.length * Object.values(prices).reduce((a, b) => a + b, 0) : 0)}, una sola vez)
-              </button>
+              </ActionButton>
             )}
           </div>
           {running && <p className="notice small">Generando muestras… tarda 1 a 3 minutos; esta página se actualiza sola.</p>}

@@ -62,7 +62,7 @@ export default async function Settings({ params, searchParams }: PageProps<'/app
         </div>
         <div className="stack-sm">
           <strong>Modelo de texto</strong>
-          <span className="hint">Planifica la semana (1 llamada por semana por app).</span>
+          <span className="hint">Planifica la semana (1 llamada por semana por app), sugiere estilos y campañas y describe las imágenes subidas.</span>
           <TextModelPicker current={app.textModel} available={texts} />
         </div>
         <label>

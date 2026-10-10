@@ -33,7 +33,7 @@ export async function suggestStyles(app: App) {
   const raw =
     process.env.OPENROUTER_MOCK === '1'
       ? { picks: [{ id: 'papel', reason: 'Modo demo: limpio y legible.' }, { id: 'editorial', reason: 'Modo demo: transmite autoridad.' }, { id: 'clasico', reason: 'Modo demo: el de siempre.' }] }
-      : await completeJson({ appId: app.id, model: app.textModel, system, user, maxTokens: 600, purpose: 'sugerir estilos' })
+      : await completeJson({ appId: app.id, model: app.textModel, system, user, maxTokens: 3000, purpose: 'sugerir estilos' })
   const picks = cleanSuggestions(raw)
   if (!picks.length) throw new Error('El modelo no sugirió ningún estilo del catálogo')
   await db.app.update({ where: { id: app.id }, data: { styleSuggestions: picks as unknown as Prisma.InputJsonValue } })

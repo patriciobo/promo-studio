@@ -52,6 +52,24 @@ export function SubmitButton({ children, className = 'btn primary', pendingText 
   )
 }
 
+/** Botón con `formAction` propio dentro de un form con varios: mientras corre, solo el tocado muestra el texto de espera. */
+export function ActionButton({ action, children, pendingText, className = 'btn sm', disabled }: { action: (f: FormData) => Promise<void>; children: React.ReactNode; pendingText: string; className?: string; disabled?: boolean }) {
+  const { pending } = useFormStatus()
+  const [clicked, setClicked] = useState(false)
+  const run = async (f: FormData) => {
+    try {
+      await action(f)
+    } finally {
+      setClicked(false)
+    }
+  }
+  return (
+    <button className={className} formAction={run} formNoValidate disabled={disabled || pending} onClick={() => setClicked(true)} aria-busy={clicked && pending}>
+      {clicked && pending ? pendingText : children}
+    </button>
+  )
+}
+
 /** Recarga los datos de la página cada tantos segundos mientras haya algo en proceso. */
 export function AutoRefresh({ every = 4000 }: { every?: number }) {
   const router = useRouter()

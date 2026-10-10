@@ -39,7 +39,7 @@ export async function describeImage(imageId: string) {
     system: 'You describe images for a social media planner. Answer only with JSON: {"kind":"SCREENSHOT"|"PHOTO","description":string}. kind is SCREENSHOT for an app or web screen, PHOTO for anything else. description, in Spanish, max 300 characters: what the image shows, which feature or step of the app is visible and any readable key text. Do not guess what is not visible.',
     user: img.note ? `Nota del usuario: ${img.note}` : 'Describí la imagen.',
     images: [await dataUri(img.path)],
-    maxTokens: 400,
+    maxTokens: 2000,
     purpose: 'describir imagen',
   })
   const kind: AppImageKind = r.kind === 'PHOTO' ? 'PHOTO' : 'SCREENSHOT'
