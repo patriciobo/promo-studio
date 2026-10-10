@@ -4,6 +4,7 @@ import { createPostNow, retryPost } from '@/app/actions'
 import { AutoRefresh, Progress, SubmitButton } from '@/components/client'
 import { ImagePicker } from '@/components/ImagePicker'
 import { ModelSelect } from '@/components/ModelSelect'
+import { StyleReminder } from '@/components/StyleReminder'
 import { PostMeta, PostThumbs } from '@/components/PostPreview'
 import { db } from '@/lib/db'
 import type { Manifest } from '@/lib/manifest'
@@ -58,6 +59,7 @@ export default async function CreateNow({ params }: PageProps<'/apps/[slug]/crea
             </label>
           )}
           <ImagePicker images={images} slug={slug} hint="Por ejemplo, las pantallas de un flujo en orden para un carrusel paso a paso." />
+          <StyleReminder app={app} />
           <div className="row">
             <ModelSelect app={app} />
             <SubmitButton pendingText="Encolando…">{app.manifest ? 'Generar' : 'Generar (falta promo.yaml)'}</SubmitButton>

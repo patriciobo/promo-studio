@@ -17,11 +17,12 @@ import { aspectFor } from '../openrouter'
 import { normalizeRepo } from '../github'
 import { brandFrom } from '@/templates/brand'
 import { postCost, usdSmall } from '../view'
-import { DESIGN_STYLES, designStyle, parseDesignStyle } from '../styles'
+import { DESIGN_STYLES, designStyle, parseDesignStyle, sampleKey, samplesOfKind } from '../styles'
 import { TEMPLATES } from '@/templates/styles'
 import { buildStylePrompt, cleanSuggestions } from '../style-suggest'
 import { allItems, parseSampleItems } from '../style-samples'
 import { digits, parseReply } from '../whatsapp'
+import { localDay, starterSlots, STARTER_TOPICS } from '../starter'
 
 const YAML = `
 name: Mi Tenis
@@ -501,13 +502,21 @@ describe('estilos de diseño', () => {
 
 describe('muestras de estilo', () => {
   it('lee las combinaciones tildadas y descarta las inválidas y repetidas', () => {
-    expect(parseSampleItems(['retro-medium', 'suave3d-low', 'retro-medium', 'inventado-high', 'poster-ultra'])).toEqual([
-      { style: 'retro', quality: 'medium' },
-      { style: 'suave3d', quality: 'low' },
+    expect(parseSampleItems(['retro-medium', 'suave3d-low', 'retro-medium', 'retro-medium-foto', 'inventado-high', 'poster-ultra', 'poster-low-video'])).toEqual([
+      { style: 'retro', quality: 'medium', kind: 'illustration' },
+      { style: 'suave3d', quality: 'low', kind: 'illustration' },
+      { style: 'retro', quality: 'medium', kind: 'photo' },
     ])
   })
-  it('todas las genéricas son cada estilo en cada calidad', () => {
+  it('todas las genéricas son cada estilo en cada calidad, del tipo pedido', () => {
     expect(allItems()).toHaveLength(DESIGN_STYLES.length * 3)
+    expect(allItems(undefined, undefined, ['illustration', 'photo'])).toHaveLength(DESIGN_STYLES.length * 6)
+  })
+  it('separa las muestras por tipo de imagen', () => {
+    const all = { 'retro-medium': 'a', 'retro-medium-foto': 'b', 'papel-high-foto': 'c', 'otra-cosa': 'x' }
+    expect(samplesOfKind(all, 'illustration')).toEqual({ 'retro-medium': 'a' })
+    expect(samplesOfKind(all, 'photo')).toEqual({ 'retro-medium': 'b', 'papel-high': 'c' })
+    expect(sampleKey('retro', 'low', 'photo')).toBe('retro-low-foto')
   })
 })
 
@@ -539,5 +548,28 @@ describe('aprobación por WhatsApp', () => {
   it('normaliza los números', () => {
     expect(digits('+54 9 351 123-4567')).toBe('5493511234567')
     expect(digits('5493511234567@c.us')).toBe('5493511234567')
+  })
+})
+
+describe('kit inicial', () => {
+  const m = (parseManifest(YAML) as unknown as { manifest: never }).manifest
+  const ctx = { feed: [], texts: [], releases: [], recent: [], bestPillars: [] }
+  const tz = 'America/Argentina/Buenos_Aires'
+  const slots = starterSlots(new Date('2026-10-14T00:00:00Z'), '10:00', tz)
+  it('primer día los 3 para fijar, separados 3 horas; después uno por día', () => {
+    expect(slots).toHaveLength(9)
+    expect(slots.slice(0, 3).map((s) => s.at.toISOString())).toEqual(['2026-10-14T13:00:00.000Z', '2026-10-14T16:00:00.000Z', '2026-10-14T19:00:00.000Z'])
+    expect(slots.slice(3).map((s) => localDay(s.at, tz))).toEqual(['2026-10-15', '2026-10-16', '2026-10-17', '2026-10-18', '2026-10-19', '2026-10-20'])
+    expect(STARTER_TOPICS.slice(0, 3).every((t) => t.pin)).toBe(true)
+    expect(slots.map((s) => s.type)).toEqual(STARTER_TOPICS.map((t) => t.type))
+    expect(slots[0].day).toBe(2) // miércoles
+  })
+  it('el plan sigue el tema de cada post y no inventa datos', () => {
+    const { user } = buildPlanPrompt(m, slots, { ...ctx, starter: STARTER_TOPICS.map((t) => ({ theme: t.label, goal: t.brief, pin: t.pin })) })
+    const u = JSON.parse(user)
+    expect(u.week[0]).toMatchObject({ theme: 'Quiénes somos y nuestra misión', pinnedOnProfile: true })
+    expect(u.week[3].pinnedOnProfile).toBeUndefined()
+    expect(u.instructions).toMatch(/STARTER KIT/)
+    expect(u.instructions).toMatch(/never invent figures/)
   })
 })

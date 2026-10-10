@@ -50,6 +50,9 @@ export default async function Config() {
         <p className="row" style={{ gap: 8 }}>
           <code style={{ overflowWrap: 'anywhere' }}>{webhookUrl()}</code> <CopyButton text={webhookUrl()} />
         </p>
+        <p className="xs muted">
+          Con el WAHA del docker compose no hace falta: ya viene configurado hacia <code>http://web:3000/api/waha</code> con <code>WAHA_WEBHOOK_TOKEN</code>.
+        </p>
         <p className="xs muted">El WhatsApp de cada cliente se carga en los Ajustes de su app. Lo que el cliente escriba y no sea una aprobación te llega como aviso.</p>
       </section>
       <section className="card stack">

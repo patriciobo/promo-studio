@@ -13,6 +13,7 @@ import { DEFAULT_IMAGE_STYLE, DEFAULT_PHOTO_STYLE, FeedSchema, parseManifest, ty
 import { bufferDataUri, dataUri, mediaPath, saveMedia } from './media'
 import { notify } from './notify'
 import { sendForReview } from './whatsapp'
+import { localDay, starterSlots, STARTER_TOPICS } from './starter'
 import { parseImageKind, type ImageChoice, type ImageKind } from './models'
 import { designStyle, parseDesignStyle } from './styles'
 import { completeJson, generateImage } from './openrouter'
@@ -145,7 +146,7 @@ export const styleFor = (m: Manifest, kind: ImageKind, design?: string | null) =
 /** Tipo de imagen de una generación: el elegido junto al botón o el de Ajustes. */
 const kindOf = (app: Pick<App, 'imageKind'>, image?: ImageChoice): ImageKind => image?.kind ?? parseImageKind(app.imageKind) ?? 'illustration'
 
-export function buildPlanPrompt(m: Manifest, slots: Slot[], ctx: { feed: Feed['items']; texts: string[]; releases: { name: string; body: string }[]; recent: { pillar: string | null; hook: string | null }[]; bestPillars: string[]; topic?: string; daily?: { date: string; report: string }; images?: PromptImage[]; kind?: ImageKind; design?: string | null; brief?: string | null }) {
+export function buildPlanPrompt(m: Manifest, slots: Slot[], ctx: { feed: Feed['items']; texts: string[]; releases: { name: string; body: string }[]; recent: { pillar: string | null; hook: string | null }[]; bestPillars: string[]; topic?: string; daily?: { date: string; report: string }; images?: PromptImage[]; kind?: ImageKind; design?: string | null; brief?: string | null; starter?: { theme: string; goal: string; pin?: boolean }[] }) {
   const images = ctx.images ?? []
   const photo = ctx.kind === 'photo'
   const focus = images.filter((i) => i.focus)
@@ -165,7 +166,7 @@ Answer only with JSON: {"posts":[{"slot":number,"pillar":string,"hook":string,"c
       : ''
   const user = JSON.stringify({
     app: { name: m.name, url: m.url, tagline: m.tagline, description: m.description, audience: m.audience, features: m.features, pillars: m.pillars, location: m.location },
-    week: slots.map((s, i) => ({ slot: i, type: s.type, day: ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'][s.day], slideRules: SLIDE_RULES[s.type] })),
+    week: slots.map((s, i) => ({ slot: i, type: s.type, day: ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'][s.day], slideRules: SLIDE_RULES[s.type], ...(ctx.starter?.[i] ? { theme: ctx.starter[i].theme, themeGoal: ctx.starter[i].goal, pinnedOnProfile: ctx.starter[i].pin || undefined } : {}) })),
     ideasFromApp: ctx.feed.slice(0, 20).map((f) => ({ id: f.id, title: f.title, pillar: f.pillar, body: f.body?.slice(0, 300), bullets: f.bullets?.slice(0, 5) })),
     appTexts: ctx.texts.map((t) => t.slice(0, 2000)),
     recentReleases: ctx.releases,
@@ -177,6 +178,8 @@ Answer only with JSON: {"posts":[{"slot":number,"pillar":string,"hook":string,"c
       ? `Create exactly one post per slot about TODAY's edition (${ctx.daily.date}) in todaysEdition. Use ONLY facts stated in that report: no other news, no opinions, no predictions, no invented figures; attribute claims to the sources as the report does. CAROUSEL: slide 1 is a cover with the date as eyebrow and the day's main story as title; then 3-5 slides with the most relevant regions or the trade/commodities climate (title + up to 4 short items each); last slide invites to read the full edition and subscribe. STORY: the 3 main headlines of the day, very short. Captions summarize the day in 2-4 lines and invite to read the full edition.`
       : ctx.topic
       ? `Create exactly one post about this topic chosen by the user: "${ctx.topic}". Stay on that topic, connect it to the app naturally and do not repeat hooks from doNotRepeat.`
+      : ctx.starter
+      ? `This is the STARTER KIT of a new Instagram account: the first posts a visitor sees on the profile, so together they must explain clearly what the business is, who it is for, what it offers and how to start. Create exactly one post per slot following its theme and themeGoal, without repeating the same idea across posts. Pinned posts (pinnedOnProfile) must work on their own for a first-time visitor. Use ONLY facts from the app data (description, features, audience, location, url, texts): never invent figures, prices, clients, testimonials, awards, years or team names. Put the main keyword people would search (what the business is + city if there is a location) in the first line of the caption and in the altText, and stay on the same niche in every post so Instagram learns who to show the account to. End each caption with a soft call to action that fits the post (follow, save, send to someone, link in bio or message), without engagement bait like "comment YES".${ctx.brief ? ` The user adds this brief for the kit: "${ctx.brief}".` : ''}`
       : ctx.brief
       ? `Create exactly one post per slot following this brief from the user for the week: "${ctx.brief}". The brief has priority over balancing pillars and over ideasFromApp (use them only when they fit it); keep each slot's type and slideRules, stay true to the app (never invent features) and do not repeat hooks from doNotRepeat.`
       : 'Create exactly one post per slot. Balance the pillars (favor the best performing ones), use ideasFromApp when relevant (set sourceId), announce recent releases if any, and do not repeat hooks from doNotRepeat.') + focusRule,
@@ -185,10 +188,10 @@ Answer only with JSON: {"posts":[{"slot":number,"pillar":string,"hook":string,"c
 }
 
 /** `imageIds`: imágenes subidas en las que se basa la semana (quedan en el lote por si hay que retomarlo). */
-export async function planBatch(appId: string, weekStart: Date, imageIds: string[] = [], kind?: ImageKind) {
+export async function planBatch(appId: string, weekStart: Date, imageIds: string[] = [], kind?: ImageKind, batchKind: BatchKind = 'WEEK') {
   const app = await db.app.findUniqueOrThrow({ where: { id: appId } })
   const m = manifestOf(app)
-  const existing = await db.batch.findUnique({ where: { appId_weekStart: { appId, weekStart } }, include: { _count: { select: { posts: true } } } })
+  const existing = await db.batch.findUnique({ where: { appId_weekStart_kind: { appId, weekStart, kind: batchKind } }, include: { _count: { select: { posts: true } } } })
   if (existing) {
     // Nunca se borran posts de un lote: un lote fallido que ya tiene posts se retoma (se renderiza lo que falta),
     // así no se pierde lo que ya revisaste o aprobaste.
@@ -199,21 +202,22 @@ export async function planBatch(appId: string, weekStart: Date, imageIds: string
   const focus = imageIds.length ? imageIds : (existing?.imageIds ?? [])
   const batch = existing
     ? await db.batch.update({ where: { id: existing.id }, data: { status: 'PLANNING', error: null, imageIds: focus } })
-    : await db.batch.create({ data: { appId, weekStart, status: 'PLANNING', imageIds: focus } })
+    : await db.batch.create({ data: { appId, weekStart, status: 'PLANNING', imageIds: focus, kind: batchKind } })
   try {
-    return await planPosts(app, m, batch.id, weekStart, focus, kind ?? kindOf(app), batch.brief)
+    return await planPosts(app, m, batch.id, weekStart, focus, kind ?? kindOf(app), batch.brief, batchKind)
   } catch (e) {
     await db.batch.update({ where: { id: batch.id }, data: { status: 'FAILED', error: `No se pudo planificar: ${(e as Error).message}` } })
-    await notify(`⚠️ ${app.name}: falló la planificación de la semana del ${weekStart.toISOString().slice(0, 10)}: ${(e as Error).message}`)
+    await notify(`⚠️ ${app.name}: falló la planificación ${batchKind === 'STARTER' ? 'del kit inicial' : 'de la semana'} del ${weekStart.toISOString().slice(0, 10)}: ${(e as Error).message}`)
     return db.batch.findUniqueOrThrow({ where: { id: batch.id } })
   }
 }
 
-async function planPosts(app: App, m: Manifest, batchId: string, weekStart: Date, imageIds: string[], kind: ImageKind, brief: string | null) {
+async function planPosts(app: App, m: Manifest, batchId: string, weekStart: Date, imageIds: string[], kind: ImageKind, brief: string | null, batchKind: BatchKind) {
   const appId = app.id
   const batch = { id: batchId }
 
-  const slots = weekSlots(weekStart, m.cadence, app.postTime, app.timezone)
+  const starter = batchKind === 'STARTER'
+  const slots = starter ? starterSlots(weekStart, app.postTime, app.timezone) : await withoutStarterDays(app, weekSlots(weekStart, m.cadence, app.postTime, app.timezone))
   if (!slots.length) return db.batch.update({ where: { id: batch.id }, data: { status: 'READY', notes: 'Cadencia semanal en 0' } })
   const [src, releases, recent, scored, images] = await Promise.all([
     sources(m),
@@ -227,9 +231,9 @@ async function planPosts(app: App, m: Manifest, batchId: string, weekStart: Date
     .sort((a, b) => (b._avg.score ?? 0) - (a._avg.score ?? 0))
     .slice(0, 3)
     .map((s) => s.pillar!)
-  const { system, user } = buildPlanPrompt(m, slots, { ...src, releases: releases.filter((r) => Date.now() - Date.parse(r.date) < 30 * 864e5), recent, bestPillars, images: images.prompt, kind, design: app.designStyle, brief })
+  const { system, user } = buildPlanPrompt(m, slots, { ...src, releases: releases.filter((r) => Date.now() - Date.parse(r.date) < 30 * 864e5), recent, bestPillars, images: images.prompt, kind, design: app.designStyle, brief, starter: starter ? STARTER_TOPICS.map((t) => ({ theme: t.label, goal: t.brief, pin: t.pin })) : undefined })
   let textCost = 0
-  const raw = process.env.OPENROUTER_MOCK === '1' ? mockPlan(m, slots, src.feed, imageIds) : await completeJson({ appId, model: app.textModel, system, user, images: images.shown, purpose: `plan ${weekStart.toISOString().slice(0, 10)}`, onCost: (c) => (textCost = c) })
+  const raw = process.env.OPENROUTER_MOCK === '1' ? mockPlan(m, slots, src.feed, imageIds) : await completeJson({ appId, model: app.textModel, system, user, images: images.shown, purpose: `${starter ? 'kit inicial' : 'plan'} ${weekStart.toISOString().slice(0, 10)}`, onCost: (c) => (textCost = c) })
   const plan = keepKnownImages(PlanSchema.parse(raw), images.prompt)
   for (const [i, slot] of slots.entries()) {
     const p = plan.posts.find((x) => x.slot === i) ?? plan.posts[i]
@@ -238,6 +242,18 @@ async function planPosts(app: App, m: Manifest, batchId: string, weekStart: Date
     await db.post.create({ data: { ...postFromPlan(app, batch.id, slot, p), textCostUsd: textCost / slots.length } })
   }
   return db.batch.update({ where: { id: batch.id }, data: { status: 'GENERATING' } })
+}
+
+export type BatchKind = 'WEEK' | 'STARTER'
+
+/** Los días con posts del kit inicial no llevan otro post de feed de la semana (las historias sí quedan). */
+async function withoutStarterDays(app: App, slots: Slot[]) {
+  if (!slots.length) return slots
+  const from = slots[0].at
+  const to = slots[slots.length - 1].at
+  const taken = await db.post.findMany({ where: { appId: app.id, batch: { kind: 'STARTER' }, scheduledAt: { gte: new Date(from.getTime() - 864e5), lte: new Date(to.getTime() + 864e5) } }, select: { scheduledAt: true } })
+  const days = new Set(taken.map((p) => localDay(p.scheduledAt!, app.timezone)))
+  return slots.filter((s) => s.type === 'STORY' || !days.has(localDay(s.at, app.timezone)))
 }
 
 /**
@@ -419,7 +435,7 @@ export async function generateBatch(batchId: string, image?: ImageChoice) {
   const ok = todo.length - failed.length
   const error = failed.length ? `${failed.length} de ${todo.length} publicaciones no se pudieron generar (${failed[0]}). Tocá "Generar semana" para reintentar sólo esas.` : null
   await db.batch.update({ where: { id: batchId }, data: { status: failed.length && !ok ? 'FAILED' : 'READY', error } })
-  if (ok) await notify(`📸 ${batch.app.name}: ${ok} publicaciones de la semana listas para revisar. Se aprueban solas en ${reviewHours} h.`)
+  if (ok) await notify(`📸 ${batch.app.name}: ${ok} publicaciones ${batch.kind === 'STARTER' ? 'del kit inicial' : 'de la semana'} listas para revisar. Se aprueban solas en ${reviewHours} h.`)
   if (ok) await toClient(batch.app.id)
   if (failed.length) await notify(`⚠️ ${batch.app.name}: ${error}`)
 }
@@ -437,12 +453,12 @@ export async function toClient(appId: string) {
 }
 
 /** Sincronizar + planificar + generar la semana que empieza en `weekStart`. */
-export async function runWeekly(appId: string, weekStart: Date, image?: ImageChoice, imageIds?: string[]) {
+export async function runWeekly(appId: string, weekStart: Date, image?: ImageChoice, imageIds?: string[], batchKind: BatchKind = 'WEEK') {
   const app = await db.app.findUniqueOrThrow({ where: { id: appId } })
   if (app.paused) return null
   const s = await syncApp(appId)
   if (!s.ok && !app.manifest) throw new Error(`${app.name}: ${'error' in s ? s.error : 'manifiesto inválido'}`)
-  const batch = await planBatch(appId, weekStart, imageIds, image?.kind)
+  const batch = await planBatch(appId, weekStart, imageIds, image?.kind, batchKind)
   if (batch.status === 'GENERATING') await generateBatch(batch.id, image)
   return batch
 }

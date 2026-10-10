@@ -4,6 +4,8 @@ import { AutoRefresh, Progress, SubmitButton } from '@/components/client'
 import { ImagePicker } from '@/components/ImagePicker'
 import { ModelSelect } from '@/components/ModelSelect'
 import { PostMeta, PostThumbs } from '@/components/PostPreview'
+import { StarterKit } from '@/components/StarterKit'
+import { StyleReminder } from '@/components/StyleReminder'
 import { db } from '@/lib/db'
 import type { Manifest } from '@/lib/manifest'
 import { nextMonday } from '@/lib/schedule'
@@ -22,6 +24,9 @@ export default async function Calendar({ params, searchParams }: PageProps<'/app
   })
   const images = await db.appImage.findMany({ where: { appId: app.id, archived: false }, orderBy: { createdAt: 'desc' }, take: 24 })
   const nm = nextMonday().toISOString().slice(0, 10)
+  const starter = await db.batch.findFirst({ where: { appId: app.id, kind: 'STARTER' }, include: { _count: { select: { posts: true } } } })
+  // El kit se ofrece mientras no haya semanas generadas (o si el kit falló sin llegar a armar posts).
+  const offerStarter = !batches.some((b) => b.kind === 'WEEK') && (!starter || (starter.status === 'FAILED' && !starter._count.posts))
   const working = batches.some((b) => b.status === 'PLANNING' || b.status === 'GENERATING')
   const daily = (app.manifest as unknown as Manifest | null)?.daily
   const dailyPosts = daily ? await db.post.findMany({ where: { appId: app.id, dailyDate: { not: null } }, orderBy: [{ dailyDate: 'desc' }, { type: 'asc' }], take: 14, include: { assets: true } }) : []
@@ -33,6 +38,9 @@ export default async function Calendar({ params, searchParams }: PageProps<'/app
           Generando la semana del {String(semana)}: primero se escriben los textos y después se arman las piezas, una por una. Tarda unos minutos; esta página se actualiza sola.
         </p>
       )}
+      {aviso === 'kit-generando' && working && <p className="notice ok">Generando el kit inicial: primero los textos de las 9 publicaciones y después las piezas. Tarda unos minutos; esta página se actualiza sola.</p>}
+      {aviso === 'kit-ya-generado' && <p className="notice warn">Esta app ya tiene su kit inicial. Para rehacer una publicación, editala o regenerá su imagen desde Revisión.</p>}
+      {offerStarter && app.manifest && <StarterKit app={app} />}
       {aviso === 'ya-generada' && <p className="notice warn">La semana del {String(semana)} ya está generada. Para rehacer una publicación, editala o regenerá su imagen desde Revisión.</p>}
       <div className="card stack">
         <div className="row between">
@@ -60,6 +68,7 @@ export default async function Calendar({ params, searchParams }: PageProps<'/app
           <textarea name="brief" form="generar-semana" rows={2} maxLength={1000} placeholder="Ej.: semana del Día del Padre, enfocada en regalos; mostrar la nueva función de reservas y cerrar con una promo del 20%." />
         </label>
         <ImagePicker images={images} slug={slug} form="generar-semana" hint="El plan reparte estas imágenes entre los posts de la semana." />
+        <StyleReminder app={app} />
       </div>
       {daily && (
         <section className="stack">
@@ -87,11 +96,11 @@ export default async function Calendar({ params, searchParams }: PageProps<'/app
           </div>
         </section>
       )}
-      {!batches.length && <div className="card empty">Todavía no hay lotes. Generá la primera semana.</div>}
+      {!batches.length && <div className="card empty">Todavía no hay lotes. {app.manifest ? 'Empezá por el kit inicial o generá la primera semana.' : 'Generá la primera semana.'}</div>}
       {batches.map((b) => (
         <section key={b.id} className="stack">
           <div className="row between">
-            <h2>Semana del {b.weekStart.toISOString().slice(0, 10)}</h2>
+            <h2>{b.kind === 'STARTER' ? `Kit inicial · desde el ${b.weekStart.toISOString().slice(0, 10)}` : `Semana del ${b.weekStart.toISOString().slice(0, 10)}`}</h2>
             <span className={`badge ${b.status === 'READY' ? 'ok' : b.status === 'FAILED' ? 'bad' : 'info'}`}>
               {(b.status === 'PLANNING' || b.status === 'GENERATING') && <span className="spinner" aria-hidden />}
               {BATCH_STATUS[b.status]}
@@ -99,7 +108,7 @@ export default async function Calendar({ params, searchParams }: PageProps<'/app
           </div>
           {b.status === 'PLANNING' && (
             <p className="notice small">
-              <span className="spinner" aria-hidden /> Escribiendo los textos de la semana con IA (suele tardar menos de un minuto)… Si en unos minutos no avanza, revisá que el worker esté corriendo.
+              <span className="spinner" aria-hidden /> Escribiendo los textos {b.kind === 'STARTER' ? 'del kit' : 'de la semana'} con IA (suele tardar menos de un minuto)… Si en unos minutos no avanza, revisá que el worker esté corriendo.
               <Progress since={b.createdAt} expect={45} delay={0} />
             </p>
           )}

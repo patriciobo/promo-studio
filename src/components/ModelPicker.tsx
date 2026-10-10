@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { IMAGE_KINDS, IMAGE_MODELS, imagePrice, parseImageKind, PRICES_CHECKED, SUGGESTED, TEXT_MODELS, TIERS, type Fit, type ImageKind, type ImageQuality } from '@/lib/models'
 import type { ModelInfo } from '@/lib/openrouter'
-import { DEFAULT_DESIGN_STYLE, parseDesignStyle, SAMPLE_MODEL, type DesignStyleId } from '@/lib/styles'
+import { DEFAULT_DESIGN_STYLE, parseDesignStyle, SAMPLE_MODEL, samplesOfKind, type DesignStyleId } from '@/lib/styles'
 import { StylePicker, type StyleAppProps } from './StylePicker'
 
 const OTHER = '__other'
@@ -66,8 +66,8 @@ export function ImageModelPicker({
         <legend>
           <strong>Estilo de diseño</strong> <span className="hint">plantilla y estética de las imágenes; tocá una muestra para elegir estilo y calidad</span>
         </legend>
-        <StylePicker style={style} onStyle={setStyle} sampleModel={{ id: SAMPLE_MODEL, selected: choice === SAMPLE_MODEL }} quality={q} onSample={sample} generic={samples} app={styleApp} />
-        <span className="xs muted">Las muestras están hechas con {IMAGE_MODELS.find((m) => m.id === SAMPLE_MODEL)?.name ?? SAMPLE_MODEL} en cada calidad. Tocar una también elige ese modelo y calidad abajo.</span>
+        <StylePicker style={style} onStyle={setStyle} sampleModel={{ id: SAMPLE_MODEL, selected: choice === SAMPLE_MODEL }} quality={q} onSample={sample} generic={samplesOfKind(samples, kind)} app={styleApp && { ...styleApp, samples: samplesOfKind(styleApp.samples, kind) }} />
+        <span className="xs muted">Se ven las muestras en {kind === 'photo' ? 'foto realista' : 'ilustración'} (el tipo de imagen de abajo). Las muestras están hechas con {IMAGE_MODELS.find((m) => m.id === SAMPLE_MODEL)?.name ?? SAMPLE_MODEL} en cada calidad. Tocar una también elige ese modelo y calidad abajo.</span>
       </fieldset>
       <fieldset className="stack-sm" style={{ border: 0, padding: 0, margin: 0 }}>
         <legend>

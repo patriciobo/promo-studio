@@ -43,7 +43,16 @@ Cada app arranca en **simulación** (no publica en Instagram); se desactiva en A
 2. `.env` desde `.env.example`: `PUBLIC_URL`, `APP_SECRET`, `AUTH_SECRET`, `ADMIN_USER` y `ADMIN_PASSWORD_HASH` (generalo con `npm run password -- 'tu contraseña'`).
 3. `docker compose up -d --build` (web en el puerto 3000 detrás de Coolify o Caddy, worker y Postgres).
 4. En la web: Configuración → Claves (Meta, OpenRouter, GitHub y, si querés avisos por WhatsApp, WAHA).
-5. Backups: volumen `pgdata` (Postgres) y `media`.
+5. Backups: volumen `pgdata` (Postgres), `media` y `waha` (la sesión de WhatsApp).
+
+### WhatsApp (aprobación de los clientes)
+
+El compose trae un WAHA liviano (motor GOWS, sin navegador, ~500 MB de RAM), sólo accesible desde el VPS.
+
+1. En `.env`: `WAHA_API_KEY`, `WAHA_WEBHOOK_TOKEN`, `WAHA_DASHBOARD_PASSWORD` y `WAHA_CHAT_ID` (el número que vas a conectar). En ARM, `WAHA_IMAGE=devlikeapro/waha:gows-arm-2026.9.1`.
+2. `docker compose up -d` y un túnel al panel: `ssh -L 3002:localhost:3002 vps`, después `http://localhost:3002/dashboard` (usuario `admin`).
+3. En el panel, sesión `default` → escaneá el QR con el WhatsApp del número de origen (Dispositivos vinculados).
+4. El webhook ya viene configurado hacia la web. En cada app, Ajustes → WhatsApp del cliente.
 
 ## Conectar una app
 

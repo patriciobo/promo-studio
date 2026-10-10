@@ -3,15 +3,15 @@ import { AutoRefresh } from '@/components/client'
 import { SamplesBoard } from '@/components/SamplesBoard'
 import { db } from '@/lib/db'
 import type { Manifest } from '@/lib/manifest'
-import { IMAGE_MODELS } from '@/lib/models'
+import { IMAGE_MODELS, parseImageKind } from '@/lib/models'
 import { exampleApp, genericOrigin, listSamples, samplesState } from '@/lib/style-samples'
 import { parseDesignStyle, SAMPLE_MODEL, SAMPLE_QUALITIES, type StyleSuggestion } from '@/lib/styles'
 
 export default async function Samples({ params, searchParams }: PageProps<'/apps/[slug]/muestras'>) {
   const { slug } = await params
-  const { aviso, error } = await searchParams
+  const { aviso, error, tipo } = await searchParams
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
-  const [generic, mine, origin, example, genericState, mineState] = await Promise.all([listSamples(), listSamples(slug), genericOrigin(), exampleApp(), samplesState(), samplesState(slug)])
+  const [generic, mine, origin, example, genericState, mineState] = await Promise.all([listSamples(), listSamples(slug, app.imageKind), genericOrigin(), exampleApp(), samplesState(), samplesState(slug)])
   const isExample = example?.id === app.id
   // Las genéricas viejas (sin origen guardado) se hicieron con la marca de prueba.
   const hasGeneric = Object.keys(generic).length > 0
@@ -21,10 +21,11 @@ export default async function Samples({ params, searchParams }: PageProps<'/apps
   const style = parseDesignStyle(app.designStyle)
   const q = SAMPLE_QUALITIES.find((x) => x === app.imageQuality)
   const running = genericState?.status === 'running' || mineState?.status === 'running'
-  const choose = async (s: string, quality: string) => {
+  const choose = async (s: string, quality: string, kind: string) => {
     'use server'
-    await chooseSampleAction(slug, s, quality)
+    await chooseSampleAction(slug, s, quality, kind)
   }
+  const appKind = parseImageKind(app.imageKind) ?? 'illustration'
   return (
     <div className="stack" style={{ maxWidth: 1100 }}>
       {running && <AutoRefresh every={5000} />}
@@ -49,7 +50,8 @@ export default async function Samples({ params, searchParams }: PageProps<'/apps
           mine={isExample ? generic : mine}
           suggestions={(app.styleSuggestions as StyleSuggestion[] | null) ?? []}
           prices={IMAGE_MODELS.find((m) => m.id === SAMPLE_MODEL)!.qualities!}
-          current={style && q && app.imageModel === SAMPLE_MODEL ? { id: style, q } : null}
+          current={style && q && app.imageModel === SAMPLE_MODEL ? { id: style, q, kind: appKind } : null}
+          initialKind={parseImageKind(typeof tipo === 'string' ? tipo : null) ?? appKind}
           state={{ mine: isExample ? null : mineState, generic: genericState }}
           actions={{ samples: styleSamplesAction.bind(null, slug, false), generic: styleSamplesAction.bind(null, slug, true), suggest: suggestStylesAction.bind(null, slug, 'muestras'), choose }}
         />

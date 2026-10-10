@@ -112,20 +112,23 @@ export async function suggestStylesAction(slug: string, back: 'ajustes' | 'muest
 export async function styleSamplesAction(slug: string, generic: boolean, f: FormData) {
   await requireUser()
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
-  const items = generic ? allItems() : parseSampleItems(f.getAll('sample').map(String))
+  const items = generic ? allItems(undefined, undefined, [parseImageKind(str(f, 'genericKind')) ?? 'illustration']) : parseSampleItems(f.getAll('sample').map(String))
   if (!items.length) redirect(`/apps/${slug}/muestras?error=${encodeURIComponent('Tildá al menos una calidad de un estilo para probar.')}`)
   await setSamplesState(generic ? undefined : app.slug, { status: 'running', started: new Date().toISOString(), done: 0, total: items.length })
   await enqueue(QUEUES.styleSamples, { appId: generic ? null : app.id, items, force: generic && f.get('force') === '1' }, { singletonKey: `muestras-${generic ? 'genericas' : app.id}` })
-  redirect(`/apps/${slug}/muestras?aviso=muestras`)
+  // Al volver se ve el tipo de imagen pedido (si fueron de los dos, el de Ajustes).
+  const kinds = new Set(items.map((i) => i.kind))
+  redirect(`/apps/${slug}/muestras?aviso=muestras${kinds.size === 1 ? `&tipo=${items[0].kind}` : ''}`)
 }
 
-/** Elegir una muestra: el estilo, el modelo de las muestras y esa calidad quedan como los de la app. */
-export async function chooseSampleAction(slug: string, style: string, quality: string) {
+/** Elegir una muestra: el estilo, el modelo de las muestras, esa calidad y ese tipo de imagen quedan como los de la app. */
+export async function chooseSampleAction(slug: string, style: string, quality: string, kind: string) {
   await requireUser()
   const id = parseDesignStyle(style)
   const q = SAMPLE_QUALITIES.find((x) => x === quality)
-  if (!id || !q) throw new Error('Muestra inválida')
-  await db.app.update({ where: { slug }, data: { designStyle: id, imageModel: SAMPLE_MODEL, imageQuality: q } })
+  const k = parseImageKind(kind)
+  if (!id || !q || !k) throw new Error('Muestra inválida')
+  await db.app.update({ where: { slug }, data: { designStyle: id, imageModel: SAMPLE_MODEL, imageQuality: q, imageKind: k } })
   revalidatePath(`/apps/${slug}`, 'layout')
 }
 
@@ -142,7 +145,7 @@ export async function generateWeek(slug: string, f: FormData) {
   const week = str(f, 'week')
   const weekStart = week ? new Date(`${week}T00:00:00Z`) : nextMonday()
   const day = weekStart.toISOString().slice(0, 10)
-  const existing = await db.batch.findUnique({ where: { appId_weekStart: { appId: app.id, weekStart } } })
+  const existing = await db.batch.findUnique({ where: { appId_weekStart_kind: { appId: app.id, weekStart, kind: 'WEEK' } } })
   if (existing?.status === 'READY' && !existing.error) redirect(`/apps/${slug}?aviso=ya-generada&semana=${day}`)
   // El lote aparece enseguida en el Calendario ("Planificando") aunque el worker tarde unos segundos en tomarlo.
   // La consigna queda en el lote: si hay que retomarlo, se planifica con la misma.
@@ -154,6 +157,24 @@ export async function generateWeek(slug: string, f: FormData) {
   await enqueue(QUEUES.runWeekly, { appId: app.id, weekStart: weekStart.toISOString(), image: parseImageChoice(str(f, 'imageChoice'), str(f, 'imageKind')), imageIds }, { singletonKey: `${app.id}-${weekStart.toISOString()}` })
   revalidatePath(`/apps/${slug}`)
   redirect(`/apps/${slug}?aviso=generando&semana=${day}`)
+}
+
+/** Kit de publicaciones iniciales: uno por app. Si falló sin llegar a armar posts, se puede volver a pedir. */
+export async function generateStarter(slug: string, f: FormData) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  const start = str(f, 'start')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return
+  const weekStart = new Date(`${start}T00:00:00Z`)
+  const old = await db.batch.findFirst({ where: { appId: app.id, kind: 'STARTER' }, include: { _count: { select: { posts: true } } } })
+  if (old && (old.status !== 'FAILED' || old._count.posts)) redirect(`/apps/${slug}?aviso=kit-ya-generado`)
+  if (old) await db.batch.delete({ where: { id: old.id } })
+  const brief = str(f, 'brief').slice(0, 1000) || null
+  await db.batch.create({ data: { appId: app.id, weekStart, status: 'PLANNING', brief, kind: 'STARTER' } })
+  const imageIds = await requestImages(app, f)
+  await enqueue(QUEUES.runWeekly, { appId: app.id, weekStart: weekStart.toISOString(), image: parseImageChoice(str(f, 'imageChoice'), str(f, 'imageKind')), imageIds, batchKind: 'STARTER' }, { singletonKey: `${app.id}-starter` })
+  revalidatePath(`/apps/${slug}`)
+  redirect(`/apps/${slug}?aviso=kit-generando`)
 }
 
 // --- A pedido ----------------------------------------------------------------

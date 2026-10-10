@@ -2,6 +2,7 @@
 //   npm run styles:samples                         → las genéricas que faltan, con la app de ejemplo (~US$ 0,21 por estilo)
 //   npm run styles:samples -- --only=retro         → un estilo
 //   npm run styles:samples -- --app=mi-app --q=medium → con la marca de una app
+//   npm run styles:samples -- --kind=photo         → fotos realistas (o --kind=illustration,photo para las dos)
 //   npm run styles:samples -- --layouts --out=/tmp/x → sin IA: las 5 piezas de cada plantilla, para revisarlas
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -10,13 +11,14 @@ import { SIZES, type SlideData } from '@/templates/html'
 import { TEMPLATES } from '@/templates/styles'
 import { closeBrowser, renderHtml } from '@/render/renderer'
 import { db } from '@/lib/db'
-import type { ImageQuality } from '@/lib/models'
+import { parseImageKind, type ImageKind, type ImageQuality } from '@/lib/models'
 import { ALL_STYLES, allItems, generateSamples, samplesCost } from '@/lib/style-samples'
 import { parseDesignStyle, SAMPLE_QUALITIES } from '@/lib/styles'
 
 const args = new Map(process.argv.slice(2).map((a) => [a.replace(/^--/, '').split('=')[0], a.split('=')[1] ?? '1']))
 const styles = args.get('only') ? [parseDesignStyle(args.get('only'))!].filter(Boolean) : ALL_STYLES
 const qualities = args.get('q') ? (args.get('q')!.split(',') as ImageQuality[]) : SAMPLE_QUALITIES
+const kinds = (args.get('kind') ?? 'illustration').split(',').map(parseImageKind).filter((k): k is ImageKind => !!k)
 
 async function layouts(out: string) {
   const brand: Brand = { name: 'Rumbo', primary: '#ff5a36', accent: '#ffb000', bg: '#fff7ef', ink: '#1c1a24', font: 'Inter', url: 'rumbo.app' }
@@ -40,7 +42,7 @@ async function main() {
   if (args.has('layouts')) return layouts(args.get('out') ?? 'data/layouts')
   const slug = args.get('app')
   const app = slug ? await db.app.findUniqueOrThrow({ where: { slug } }) : undefined
-  const items = allItems(styles, qualities)
+  const items = allItems(styles, qualities, kinds)
   console.log(`${items.length} muestras ${app ? `de ${app.name}` : 'genéricas'}, ~US$ ${samplesCost(items, slug).toFixed(2)} (los fondos ya generados no se pagan de nuevo)`)
   const { cost } = await generateSamples({ app, items, log: console.log })
   await closeBrowser(true)

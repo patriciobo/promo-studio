@@ -286,3 +286,16 @@ details summary { cursor: pointer; font-weight: 560; }
 .downloads summary { list-style: none; cursor: pointer; }
 .downloads summary::-webkit-details-marker { display: none; }
 .downloads a { text-decoration: underline; }
+
+/* Recordatorio del estilo por defecto y kit inicial */
+.style-reminder { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px dashed var(--border); border-radius: 10px; }
+.style-reminder img { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; flex: none; }
+.style-reminder a { text-decoration: underline; }
+.starter-list { margin: 0; padding-left: 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px 20px; }
+.starter-list li { display: grid; gap: 2px; }
+
+/* Selector de dos o tres opciones en una sola pieza (tipo de imagen en Muestras) */
+.segmented { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border-strong); border-radius: 10px; overflow: hidden; align-self: flex-start; }
+.segmented button { background: transparent; border: 0; padding: 7px 14px; font: inherit; font-size: 14px; color: inherit; cursor: pointer; }
+.segmented button + button { border-left: 1px solid var(--border-strong); }
+.segmented button.on { background: var(--primary-soft); color: var(--primary); font-weight: 600; }

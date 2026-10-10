@@ -1,9 +1,9 @@
-// Muestras de estilo: una portada por estilo y calidad, para elegir en la pestaña Muestras.
+// Muestras de estilo: una portada por estilo, calidad y tipo de imagen (ilustración o foto realista), para elegir en la pestaña Muestras.
 // Genéricas (con la app de ejemplo, Fogón, iguales para todas las apps: sirven para comparar estilos y calidades)
 // o con la marca y el tema de la app que se está viendo.
 import type { App } from '@prisma/client'
 import { existsSync, statSync } from 'node:fs'
-import { readdir, readFile, rm } from 'node:fs/promises'
+import { readdir, readFile, rename, rm } from 'node:fs/promises'
 import { TEMPLATES } from '@/templates/styles'
 import type { Brand } from '@/templates/brand'
 import { SIZES, type SlideData } from '@/templates/html'
@@ -14,39 +14,56 @@ import { bufferDataUri, dataUri, mediaPath, mediaSrc, saveMedia } from './media'
 import { IMAGE_MODELS, parseImageKind, type ImageKind, type ImageQuality } from './models'
 import { generateImage } from './openrouter'
 import { brandOf, manifestOf, styleFor } from './pipeline'
-import { DESIGN_STYLES, designStyle, parseDesignStyle, SAMPLE_MODEL, SAMPLE_QUALITIES, sampleKey, type DesignStyleId } from './styles'
+import { DESIGN_STYLES, designStyle, parseSampleKey, SAMPLE_MODEL, SAMPLE_QUALITIES, sampleKey, type DesignStyleId } from './styles'
 
 const dirOf = (slug?: string) => (slug ? `apps/${slug}/estilos` : 'estilos')
 const fileOf = (dir: string, key: string) => `${dir}/${key}.jpg`
 const bgOf = (dir: string, key: string) => `${dir}/fondos/${key}.jpg`
 
-/** Muestras ya generadas: clave "estilo-calidad" → src para la web (con la fecha, porque /media se cachea como inmutable). */
-export async function listSamples(slug?: string): Promise<Record<string, string>> {
+/**
+ * Antes las muestras eran de un solo tipo de imagen, sin decirlo en el nombre: las genéricas, el del estilo
+ * (sampleKind) y las de una app, el de sus Ajustes. Las que eran fotos pasan a llamarse "…-foto", una sola vez.
+ */
+async function migrateKinds(dir: string, kindOf: (style: DesignStyleId) => ImageKind) {
+  const mark = `${dir}/tipos.json`
+  if (existsSync(mediaPath(mark))) return
+  for (const sub of [dir, `${dir}/fondos`]) {
+    const files = await readdir(mediaPath(sub)).catch(() => [] as string[])
+    for (const f of files) {
+      const p = f.endsWith('.jpg') ? parseSampleKey(f.slice(0, -4)) : null
+      if (p?.kind === 'illustration' && kindOf(p.style) === 'photo') await rename(mediaPath(`${sub}/${f}`), mediaPath(`${sub}/${sampleKey(p.style, p.quality, 'photo')}.jpg`))
+    }
+  }
+  await saveMedia(mark, Buffer.from('{"v":1}'))
+}
+
+const migrate = (slug?: string, appKind?: string | null) => (slug ? migrateKinds(dirOf(slug), () => parseImageKind(appKind) ?? 'illustration') : migrateKinds(dirOf(), (s) => designStyle(s).sampleKind ?? 'illustration'))
+
+/**
+ * Muestras ya generadas: clave "estilo-calidad[-foto]" → src para la web (con la fecha, porque /media se cachea como inmutable).
+ * `appKind`: el tipo de imagen de la app, para ordenar sus muestras viejas.
+ */
+export async function listSamples(slug?: string, appKind?: string | null): Promise<Record<string, string>> {
   const dir = dirOf(slug)
+  if (!slug || appKind !== undefined) await migrate(slug, appKind)
   const files = await readdir(mediaPath(dir)).catch(() => [] as string[])
   return Object.fromEntries(files.filter((f) => f.endsWith('.jpg')).map((f) => [f.slice(0, -4), `${mediaSrc(`${dir}/${f}`)}?v=${Math.round(statSync(mediaPath(`${dir}/${f}`)).mtimeMs)}`]))
 }
 
-/** Una muestra a generar: estilo y calidad. */
-export type SampleItem = { style: DesignStyleId; quality: ImageQuality }
-export const allItems = (styles: DesignStyleId[] = ALL_STYLES, qualities: ImageQuality[] = SAMPLE_QUALITIES): SampleItem[] => styles.flatMap((style) => qualities.map((quality) => ({ style, quality })))
+/** Una muestra a generar: estilo, calidad y tipo de imagen. */
+export type SampleItem = { style: DesignStyleId; quality: ImageQuality; kind: ImageKind }
+export const allItems = (styles: DesignStyleId[] = ALL_STYLES, qualities: ImageQuality[] = SAMPLE_QUALITIES, kinds: ImageKind[] = ['illustration']): SampleItem[] =>
+  kinds.flatMap((kind) => styles.flatMap((style) => qualities.map((quality) => ({ style, quality, kind }))))
 
-/** "estilo-calidad" del formulario a combinaciones válidas, sin repetidas. */
+/** "estilo-calidad[-foto]" del formulario a combinaciones válidas, sin repetidas. */
 export function parseSampleItems(keys: string[]): SampleItem[] {
-  const out: SampleItem[] = []
-  for (const k of new Set(keys)) {
-    const i = k.lastIndexOf('-')
-    const style = parseDesignStyle(k.slice(0, i))
-    const quality = SAMPLE_QUALITIES.find((q) => q === k.slice(i + 1))
-    if (style && quality) out.push({ style, quality })
-  }
-  return out
+  return [...new Set(keys)].map(parseSampleKey).filter((x): x is SampleItem => !!x)
 }
 
 /** US$ estimados para generar estas muestras (las que ya tienen fondo no cuestan, salvo `force`). */
 export function samplesCost(items: SampleItem[], slug?: string, force = false) {
   const prices = IMAGE_MODELS.find((m) => m.id === SAMPLE_MODEL)!.qualities!
-  return items.filter((i) => force || !existsSync(mediaPath(bgOf(dirOf(slug), sampleKey(i.style, i.quality))))).reduce((a, i) => a + prices[i.quality], 0)
+  return items.filter((i) => force || !existsSync(mediaPath(bgOf(dirOf(slug), sampleKey(i.style, i.quality, i.kind))))).reduce((a, i) => a + prices[i.quality], 0)
 }
 
 /**
@@ -77,7 +94,6 @@ interface Subject {
   scene: string
   colors: string[]
   look: (style: DesignStyleId, kind: ImageKind) => string
-  kind: (style: DesignStyleId) => ImageKind
 }
 
 const demo: Subject = {
@@ -86,22 +102,19 @@ const demo: Subject = {
   scene: DEMO_SCENE,
   colors: DEMO_COLORS,
   look: (s, k) => designStyle(s).image?.[k] ?? (k === 'photo' ? DEFAULT_PHOTO_STYLE : DEFAULT_IMAGE_STYLE),
-  kind: (s) => designStyle(s).sampleKind ?? 'illustration',
 }
 
-/** La portada de muestra de una app: su marca, su tema y su tipo de imagen (el de Ajustes). */
+/** La portada de muestra de una app: su marca y su tema. */
 async function subjectOf(app: App): Promise<Subject> {
   const m = manifestOf(app)
   const last = await db.post.findFirst({ where: { appId: app.id, hook: { not: null } }, orderBy: { createdAt: 'desc' }, select: { hook: true } })
   const title = last?.hook && last.hook.length <= 60 && !last.hook.startsWith('Edición ') ? last.hook : m.tagline
-  const kind = parseImageKind(app.imageKind) ?? 'illustration'
   return {
     brand: await brandOf(app),
     slide: { eyebrow: m.pillars[0], title, body: title === m.tagline ? m.features[0] : m.tagline, index: 0, total: 5 },
     scene: `A scene for "${m.name}" (${m.tagline}). ${m.description ? `${m.description.slice(0, 300)}. ` : ''}Show ${m.audience.description ?? 'its typical customer'} in a moment where it helps them`,
     colors: m.brand.colors,
     look: (s, k) => styleFor(m, k, s),
-    kind: () => kind,
   }
 }
 
@@ -114,6 +127,8 @@ const PLACEHOLDER = (c: string[]) =>
  */
 export async function generateSamples(opts: { app?: App; items: SampleItem[]; force?: boolean; log?: (s: string) => void; onProgress?: (done: number, total: number) => Promise<unknown> }) {
   const dir = dirOf(opts.app?.slug)
+  // Antes de agregar muestras con el tipo en el nombre, se ordenan las viejas (si no, se confundirían con ellas).
+  await migrate(opts.app?.slug, opts.app?.imageKind)
   let subject = demo
   if (opts.app) subject = await subjectOf(opts.app)
   else {
@@ -129,16 +144,15 @@ export async function generateSamples(opts: { app?: App; items: SampleItem[]; fo
   let cost = 0
   let done = 0
   try {
-    for (const { style: s, quality: q } of opts.items) {
-      const kind = subject.kind(s)
-      const key = sampleKey(s, q)
+    for (const { style: s, quality: q, kind } of opts.items) {
+      const key = sampleKey(s, q, kind)
       const bgRel = bgOf(dir, key)
       let bg: string
       if (!opts.force && existsSync(mediaPath(bgRel))) bg = await dataUri(bgRel)
       else if (process.env.OPENROUTER_MOCK === '1') bg = PLACEHOLDER(subject.colors)
       else {
         const prompt = `${subject.scene}. ${kind === 'photo' ? 'Photorealistic photo. ' : ''}Style: ${subject.look(s, kind)}. Color palette ${subject.colors.join(', ')}. Leave calm space for overlaid text. Absolutely no text, letters, numbers, logos or watermarks.`
-        const img = await generateImage({ appId: opts.app?.id ?? null, model: SAMPLE_MODEL, quality: q, prompt, aspectRatio: '4:5', kind, purpose: `muestra de estilo ${s} (${q})` })
+        const img = await generateImage({ appId: opts.app?.id ?? null, model: SAMPLE_MODEL, quality: q, prompt, aspectRatio: '4:5', kind, purpose: `muestra de estilo ${s} (${q}${kind === 'photo' ? ', foto' : ''})` })
         await saveMedia(bgRel, img.data)
         cost += img.cost
         bg = bufferDataUri(img.data, img.mime)

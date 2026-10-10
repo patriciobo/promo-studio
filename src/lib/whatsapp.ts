@@ -145,8 +145,8 @@ export function parseReply(text: string): Reply {
   return { kind, nums, note }
 }
 
-/** Token del webhook: se deriva de APP_SECRET, así no hay otra clave que guardar. */
-export const webhookToken = () => createHmac('sha256', env.appSecret).update('waha-webhook').digest('hex').slice(0, 32)
+/** Token del webhook: WAHA_WEBHOOK_TOKEN (el que usa el WAHA del docker compose) o, si no está, uno derivado de APP_SECRET. */
+export const webhookToken = () => process.env.WAHA_WEBHOOK_TOKEN || createHmac('sha256', env.appSecret).update('waha-webhook').digest('hex').slice(0, 32)
 export const webhookUrl = () => `${env.publicUrl}/api/waha?token=${webhookToken()}`
 
 /** El chat del que vino el mensaje, como número. Los chats nuevos de WhatsApp llegan como @lid: se le pide el número a WAHA. */

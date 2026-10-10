@@ -64,11 +64,12 @@ model Batch {
   error     String?
   notes     String?
   brief     String? // consigna del usuario para la semana ("Generar semana")
+  kind      String      @default("WEEK") // WEEK = lote semanal | STARTER = kit de publicaciones iniciales (weekStart = su primer día)
   imageIds  String[]    @default([]) // imágenes subidas en las que se basa la semana
   createdAt DateTime    @default(now())
   posts     Post[]
 
-  @@unique([appId, weekStart])
+  @@unique([appId, weekStart, kind])
 }
 
 enum BatchStatus {

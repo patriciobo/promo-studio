@@ -129,7 +129,24 @@ export const designStyle = (v: string | null | undefined) => DESIGN_STYLES.find(
 /** Modelo con el que se generan los ejemplos: cada calidad muestra cuánto cambia el resultado. */
 export const SAMPLE_MODEL = 'openai/gpt-image-2.5-sunburst'
 export const SAMPLE_QUALITIES: ImageQuality[] = ['low', 'medium', 'high']
-export const sampleKey = (id: DesignStyleId, q: ImageQuality) => `${id}-${q}`
+/** Archivo de una muestra: "estilo-calidad" (ilustración) o "estilo-calidad-foto" (foto realista). */
+export const sampleKey = (id: DesignStyleId, q: ImageQuality, kind: ImageKind = 'illustration') => `${id}-${q}${kind === 'photo' ? '-foto' : ''}`
+
+export function parseSampleKey(k: string): { style: DesignStyleId; quality: ImageQuality; kind: ImageKind } | null {
+  const m = k.match(/^(.+)-(low|medium|high)(-foto)?$/)
+  const style = m && parseDesignStyle(m[1])
+  return style ? { style, quality: m[2] as ImageQuality, kind: m[3] ? 'photo' : 'illustration' } : null
+}
+
+/** Las muestras de un tipo de imagen, con clave "estilo-calidad" (lo que esperan los selectores). */
+export function samplesOfKind(all: Record<string, string>, kind: ImageKind): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [k, src] of Object.entries(all)) {
+    const p = parseSampleKey(k)
+    if (p?.kind === kind) out[sampleKey(p.style, p.quality)] = src
+  }
+  return out
+}
 
 /** Estilo sugerido para el negocio, con el porqué (lo escribe el modelo de texto). */
 export type StyleSuggestion = { id: DesignStyleId; reason: string }

@@ -16,7 +16,7 @@ export default async function Settings({ params, searchParams }: PageProps<'/app
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
   const manifest = app.manifest as unknown as Manifest | null
   const cadence = manifest?.cadence ?? { feed: 3, reels: 1, stories: 2 }
-  const [images, texts, spent, generic, mine, origin] = await Promise.all([imageModels().catch(() => []), textModels().catch(() => []), spentThisMonth(app.id), listSamples(), listSamples(app.slug), genericOrigin()])
+  const [images, texts, spent, generic, mine, origin] = await Promise.all([imageModels().catch(() => []), textModels().catch(() => []), spentThisMonth(app.id), listSamples(), listSamples(app.slug, app.imageKind), genericOrigin()])
   const styleApp = {
     name: app.name,
     slug,
