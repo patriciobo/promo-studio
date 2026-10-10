@@ -38,6 +38,9 @@ async function record(appId: string | null, kind: 'text' | 'image', model: strin
   await db.usageLedger.create({ data: { appId, kind, model, costUsd: cost, tokens, purpose } })
 }
 
+/** Tope de tokens de respuesta: generoso, porque los modelos que razonan gastan parte en pensar y sólo se paga lo usado. */
+const MAX_TOKENS = Number(process.env.TEXT_MAX_TOKENS ?? 32000)
+
 /** Pide una respuesta JSON al modelo de texto. `images` (data URIs) se le muestran junto al pedido. */
 export async function completeJson<T = unknown>(opts: { appId: string | null; model: string; system: string; user: string; purpose: string; maxTokens?: number; images?: string[]; onCost?: (usd: number) => void }): Promise<T> {
   await assertBudget(opts.appId, 0.05)
@@ -48,13 +51,13 @@ export async function completeJson<T = unknown>(opts: { appId: string | null; mo
       { role: 'user', content: opts.images?.length ? [{ type: 'text', text: opts.user }, ...opts.images.map(imagePart)] : opts.user },
     ],
     response_format: { type: 'json_object' },
-    max_tokens: opts.maxTokens ?? 6000,
+    max_tokens: opts.maxTokens ?? MAX_TOKENS,
     usage: { include: true },
   })) as { choices: { message: { content: string }; finish_reason?: string }[]; usage?: { cost?: number; total_tokens?: number } }
   await record(opts.appId, 'text', opts.model, r.usage?.cost ?? 0, r.usage?.total_tokens, opts.purpose)
   opts.onCost?.(r.usage?.cost ?? 0)
   const content = r.choices?.[0]?.message?.content ?? ''
-  if (r.choices?.[0]?.finish_reason === 'length') throw new OpenRouterError(200, `la respuesta de ${opts.model} se cortó por el límite de tokens (${opts.maxTokens ?? 6000}); probá con otro modelo de texto (Ajustes > Modelos de OpenRouter > Modelo de texto)`)
+  if (r.choices?.[0]?.finish_reason === 'length') throw new OpenRouterError(200, `la respuesta de ${opts.model} se cortó por el límite de tokens (${opts.maxTokens ?? MAX_TOKENS}); probá con otro modelo de texto (Ajustes > Modelos de OpenRouter > Modelo de texto)`)
   try {
     return JSON.parse(content.replace(/^```(?:json)?\s*|\s*```$/g, '')) as T
   } catch {

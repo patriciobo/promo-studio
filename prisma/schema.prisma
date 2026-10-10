@@ -26,7 +26,7 @@ model App {
   igUsername       String?
   adAccountId      String?
   // Generación
-  textModel        String    @default("google/gemini-3.5-flash")
+  textModel        String    @default("anthropic/claude-haiku-5.5")
   imageModel       String?
   imageQuality     String? // low | medium | high, para modelos que cobran según la calidad
   imageKind        String? // illustration | photo (null = illustration)
@@ -284,7 +284,7 @@ model BrandProject {
   brief         Json // src/lib/brand/brief.ts (BriefSchema)
   found         Json? // lo encontrado en el repo de la app: colores, tipografías, logo, frase
   elements      String[]      @default([]) // qué generar: logo, paleta, tipografia, voz, tagline, patron, nombre
-  textModel     String        @default("google/gemini-3.5-flash")
+  textModel     String        @default("anthropic/claude-haiku-5.5")
   referencePath String? // logo de referencia subido (relativo a MEDIA_DIR)
   status        String        @default("idle") // idle | running | error
   error         String?

@@ -128,7 +128,7 @@ export async function suggestCampaign(app: App, input: SuggestInput): Promise<Re
   const raw =
     process.env.OPENROUTER_MOCK === '1'
       ? mockSuggestion(ctx.m)
-      : await completeJson({ appId: app.id, model: app.textModel, system, user, maxTokens: 3000, purpose: 'sugerir campaña', onCost: (c) => (cost = c) })
+      : await completeJson({ appId: app.id, model: app.textModel, system, user, purpose: 'sugerir campaña', onCost: (c) => (cost = c) })
   const s = SuggestionSchema.parse(raw)
   if (s.objective === 'WHATSAPP' && !ctx.m.contact?.whatsapp) s.objective = 'TRAFFIC'
   if (!CTAS.some((c) => c.id === s.cta)) s.cta = 'LEARN_MORE'

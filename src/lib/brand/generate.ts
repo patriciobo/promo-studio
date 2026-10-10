@@ -312,7 +312,7 @@ export async function generateRound(projectId: string, opts: { logoModel?: strin
     if (ctx.hasReference) images.push(await dataUri(p.referencePath!))
     if (ctx.found?.logoPath && existsSync(mediaPath(ctx.found.logoPath)) && !/\.svg$/i.test(ctx.found.logoPath)) images.push(await dataUri(ctx.found.logoPath))
     let textCost = 0
-    const raw = process.env.OPENROUTER_MOCK === '1' ? mockOptions(ctx) : await completeJson({ appId: p.appId, model: p.textModel, system, user, images, purpose: `identidad de marca ${p.app.name}`, maxTokens: 9000, onCost: (c) => (textCost = c) })
+    const raw = process.env.OPENROUTER_MOCK === '1' ? mockOptions(ctx) : await completeJson({ appId: p.appId, model: p.textModel, system, user, images, purpose: `identidad de marca ${p.app.name}`, onCost: (c) => (textCost = c) })
     const options = normalizeOptions(raw, ctx, cands)
     await step()
 
