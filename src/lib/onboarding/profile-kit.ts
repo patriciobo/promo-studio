@@ -1,4 +1,5 @@
 // Kit de perfil: la API no permite cambiar foto, nombre, bio ni link, así que se entregan listos para copiar.
+import { Prisma } from '@prisma/client'
 import { renderHtml } from '@/render/renderer'
 import { highlightCover, profilePhoto } from '@/templates/html'
 import { db } from '../db'
@@ -15,6 +16,8 @@ export interface ProfileKit {
   link: string
   photo: string // ruta en media
   highlightCovers: { label: string; path: string }[]
+  /** Cuándo se generó (las imágenes se pisan al regenerar y /media se cachea: va en la URL). */
+  generatedAt?: string
 }
 
 export async function buildProfileKit(appId: string): Promise<ProfileKit> {
@@ -36,7 +39,7 @@ names: the searchable Name field (max 30 chars): brand + main keyword (e.g. "Mi 
     const path = await saveMedia(`apps/${app.slug}/kit/destacada-${label.toLowerCase().replace(/[^a-z0-9áéíóúñ]+/gi, '-')}.jpg`, await renderHtml(highlightCover(brand, label), 1080, 1920))
     highlightCovers.push({ label, path })
   }
-  return {
+  const kit: ProfileKit = {
     names: r.names.map((n) => n.slice(0, 30)),
     bios: r.bios.map((b) => b.slice(0, 150)),
     category: r.category,
@@ -44,5 +47,9 @@ names: the searchable Name field (max 30 chars): brand + main keyword (e.g. "Mi 
     link: `${env.publicUrl}/l/${app.slug}`,
     photo,
     highlightCovers,
+    generatedAt: new Date().toISOString(),
   }
+  // Se guarda para que no se pierda al recargar la página; lo ya aplicado se reinicia con el kit nuevo.
+  await db.app.update({ where: { id: appId }, data: { profileKit: kit as unknown as Prisma.InputJsonValue, profileKitDone: Prisma.DbNull } })
+  return kit
 }

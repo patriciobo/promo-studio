@@ -342,6 +342,13 @@ export async function profileKitAction(slug: string): Promise<{ kit?: ProfileKit
   }
 }
 
+/** Marcar una parte del kit como aplicada en Instagram (queda guardado). */
+export async function profileKitDoneAction(slug: string, done: Record<string, boolean>) {
+  await requireUser()
+  const clean = Object.fromEntries(Object.entries(done).filter(([k, v]) => ['photo', 'name', 'bio', 'link', 'highlights'].includes(k) && v === true))
+  await db.app.update({ where: { slug }, data: { profileKitDone: clean } })
+}
+
 // --- Anuncios -----------------------------------------------------------------
 
 const AD_POST_TYPES: PostType[] = ['IMAGE', 'CAROUSEL', 'REEL']

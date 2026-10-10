@@ -1,7 +1,7 @@
 'use client'
 // Paneles interactivos: asistente de promo.yaml, conexión con Meta y kit de perfil.
 import { useState, useTransition } from 'react'
-import { discover, draftManifestAction, openManifestPR, profileKitAction, runHealthCheck, saveConnection, validateManifestAction, type DiscoverResult } from '@/app/actions'
+import { discover, draftManifestAction, openManifestPR, profileKitAction, profileKitDoneAction, runHealthCheck, saveConnection, validateManifestAction, type DiscoverResult } from '@/app/actions'
 import type { Check } from '@/lib/onboarding/meta-health'
 import type { ProfileKit } from '@/lib/onboarding/profile-kit'
 import { CopyButton, Progress } from './client'
@@ -163,14 +163,24 @@ export function ConnectionPanel({ slug, current }: { slug: string; current: { ig
   )
 }
 
-export function ProfileKitPanel({ slug, mediaBase }: { slug: string; mediaBase: string }) {
-  const [kit, setKit] = useState<ProfileKit | null>(null)
+export function ProfileKitPanel({ slug, mediaBase, initialKit, initialDone }: { slug: string; mediaBase: string; initialKit: ProfileKit | null; initialDone: Record<string, boolean> }) {
+  const [kit, setKit] = useState<ProfileKit | null>(initialKit)
   const [error, setError] = useState<string | null>(null)
   const [pending, start] = useTransition()
-  const [done, setDone] = useState<Record<string, boolean>>({})
+  const [done, setDone] = useState<Record<string, boolean>>(initialDone)
   const tick = (k: string) => (
-    <input type="checkbox" checked={!!done[k]} onChange={(e) => setDone({ ...done, [k]: e.target.checked })} aria-label="Hecho" />
+    <input
+      type="checkbox"
+      checked={!!done[k]}
+      onChange={(e) => {
+        const next = { ...done, [k]: e.target.checked }
+        setDone(next)
+        profileKitDoneAction(slug, next).catch(() => setError('No se pudo guardar lo aplicado; probá de nuevo.'))
+      }}
+      aria-label="Hecho"
+    />
   )
+  const src = (path: string) => `${mediaBase}/${path}${kit?.generatedAt ? `?v=${Date.parse(kit.generatedAt)}` : ''}`
   return (
     <div className="stack">
       <div className="row">
@@ -181,14 +191,20 @@ export function ProfileKitPanel({ slug, mediaBase }: { slug: string; mediaBase: 
           onClick={() =>
             start(async () => {
               const r = await profileKitAction(slug)
-              setKit(r.kit ?? null)
+              // Si falla, queda el kit anterior.
+              if (r.kit) {
+                setKit(r.kit)
+                setDone({})
+              }
               setError(r.error ?? null)
             })
           }
         >
           {pending ? 'Generando…' : kit ? 'Regenerar kit' : 'Generar kit de perfil'}
         </button>
-        <span className="small muted">Usa 1 llamada al modelo de texto.</span>
+        <span className="small muted">
+          Usa 1 llamada al modelo de texto.{kit?.generatedAt ? ` Generado el ${new Date(kit.generatedAt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}.` : ''}
+        </span>
       </div>
       {pending && <Progress expect={40} />}
       {error && <p className="notice bad">{error}</p>}
@@ -197,8 +213,8 @@ export function ProfileKitPanel({ slug, mediaBase }: { slug: string; mediaBase: 
           <section className="card stack">
             <h2 className="row">{tick('photo')} Foto de perfil</h2>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`${mediaBase}/${kit.photo}`} alt="Foto de perfil" style={{ width: 160, borderRadius: '50%', border: '1px solid var(--border)' }} />
-            <a className="btn sm" href={`${mediaBase}/${kit.photo}`} download>
+            <img src={src(kit.photo)} alt="Foto de perfil" style={{ width: 160, borderRadius: '50%', border: '1px solid var(--border)' }} />
+            <a className="btn sm" href={src(kit.photo)} download>
               Descargar PNG
             </a>
           </section>
@@ -238,9 +254,9 @@ export function ProfileKitPanel({ slug, mediaBase }: { slug: string; mediaBase: 
             <p className="small muted">Publicá cada portada como story y agregala a una destacada desde el teléfono (la API no administra destacadas).</p>
             <div className="thumbs vertical">
               {kit.highlightCovers.map((h) => (
-                <a key={h.path} href={`${mediaBase}/${h.path}`} download title={h.label}>
+                <a key={h.path} href={src(h.path)} download title={h.label}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={`${mediaBase}/${h.path}`} alt={h.label} />
+                  <img src={src(h.path)} alt={h.label} />
                 </a>
               ))}
             </div>

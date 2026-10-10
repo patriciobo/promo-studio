@@ -1,0 +1,2 @@
+ALTER TABLE "App" ADD COLUMN "profileKit" JSONB;
+ALTER TABLE "App" ADD COLUMN "profileKitDone" JSONB;

@@ -1,6 +1,7 @@
 import { ProfileKitPanel } from '@/components/panels'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
+import type { ProfileKit } from '@/lib/onboarding/profile-kit'
 import { daysAgo } from '@/lib/view'
 
 const TIPS = [
@@ -21,7 +22,7 @@ export default async function ProfilePage({ params }: PageProps<'/apps/[slug]/pe
       <p className="notice">
         La API de Instagram no permite cambiar la foto, el nombre, la bio ni el link del perfil. El kit los deja listos para copiar; marcá cada uno cuando lo apliques desde el teléfono.
       </p>
-      {app.manifest ? <ProfileKitPanel slug={slug} mediaBase={`${env.publicUrl}/media`} /> : <p className="notice warn">Primero hace falta un promo.yaml válido.</p>}
+      {app.manifest ? <ProfileKitPanel slug={slug} mediaBase={`${env.publicUrl}/media`} initialKit={(app.profileKit as unknown as ProfileKit | null) ?? null} initialDone={(app.profileKitDone as Record<string, boolean> | null) ?? {}} /> : <p className="notice warn">Primero hace falta un promo.yaml válido.</p>}
       <section className="card stack">
         <h2>Clics en la página de links (30 días)</h2>
         {hits.length ? (
