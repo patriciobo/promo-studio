@@ -1,11 +1,11 @@
-import { styleSamplesAction, suggestStylesAction, updateSettings } from '@/app/actions'
+import { suggestStylesAction, updateSettings } from '@/app/actions'
 import { SubmitButton } from '@/components/client'
 import { ImageModelPicker, TextModelPicker } from '@/components/ModelPicker'
 import { spentThisMonth } from '@/lib/budget'
 import { db } from '@/lib/db'
 import type { Manifest } from '@/lib/manifest'
 import { imagesPerMonth } from '@/lib/models'
-import { listSamples, samplesState } from '@/lib/style-samples'
+import { genericOrigin, listSamples } from '@/lib/style-samples'
 import type { StyleSuggestion } from '@/lib/styles'
 import { imageModels, textModels } from '@/lib/openrouter'
 import { usd } from '@/lib/view'
@@ -16,14 +16,15 @@ export default async function Settings({ params, searchParams }: PageProps<'/app
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
   const manifest = app.manifest as unknown as Manifest | null
   const cadence = manifest?.cadence ?? { feed: 3, reels: 1, stories: 2 }
-  const [images, texts, spent, generic, mine, genericState, mineState] = await Promise.all([imageModels().catch(() => []), textModels().catch(() => []), spentThisMonth(app.id), listSamples(), listSamples(app.slug), samplesState(), samplesState(app.slug)])
+  const [images, texts, spent, generic, mine, origin] = await Promise.all([imageModels().catch(() => []), textModels().catch(() => []), spentThisMonth(app.id), listSamples(), listSamples(app.slug), genericOrigin()])
   const styleApp = {
     name: app.name,
+    slug,
+    genericName: origin ?? (Object.keys(generic).length ? 'Rumbo (marca de prueba)' : 'la app de ejemplo'),
     samples: mine,
     suggestions: (app.styleSuggestions as StyleSuggestion[] | null) ?? [],
     yamlStyle: manifest?.brand.style ?? null,
-    state: { mine: mineState, generic: genericState },
-    actions: { suggest: suggestStylesAction.bind(null, slug), samples: styleSamplesAction.bind(null, slug, false), genericSamples: styleSamplesAction.bind(null, slug, true) },
+    suggest: suggestStylesAction.bind(null, slug, 'ajustes'),
   }
   return (
     <form action={updateSettings.bind(null, slug)} className="stack" style={{ maxWidth: 960, gap: 20 }}>
@@ -34,7 +35,6 @@ export default async function Settings({ params, searchParams }: PageProps<'/app
       )}
       {aviso === 'yaml-escrito' && <p className="notice ok">Estilo guardado y escrito en el promo.yaml del repo local.</p>}
       {aviso === 'sugeridos' && <p className="notice ok">Listo: los estilos sugeridos quedaron primeros, con el porqué.</p>}
-      {aviso === 'muestras' && <p className="notice">Pedí las muestras: el worker las genera en 1 a 3 minutos.</p>}
       {typeof error === 'string' && <p className="notice bad">{error}</p>}
       <section className="card stack">
         <h2>App</h2>

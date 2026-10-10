@@ -1,5 +1,6 @@
-// Muestras de estilo: una portada por estilo y calidad, para elegir en Ajustes.
-// Genéricas (marca de prueba, iguales para todas las apps: sirven para comparar calidades) o con la marca y el tema de una app.
+// Muestras de estilo: una portada por estilo y calidad, para elegir en la pestaña Muestras.
+// Genéricas (con la app de ejemplo, Fogón, iguales para todas las apps: sirven para comparar estilos y calidades)
+// o con la marca y el tema de la app que se está viendo.
 import type { App } from '@prisma/client'
 import { existsSync, statSync } from 'node:fs'
 import { readdir, readFile, rm } from 'node:fs/promises'
@@ -13,7 +14,7 @@ import { bufferDataUri, dataUri, mediaPath, mediaSrc, saveMedia } from './media'
 import { IMAGE_MODELS, parseImageKind, type ImageKind, type ImageQuality } from './models'
 import { generateImage } from './openrouter'
 import { brandOf, manifestOf, styleFor } from './pipeline'
-import { DESIGN_STYLES, designStyle, SAMPLE_MODEL, sampleKey, type DesignStyleId } from './styles'
+import { DESIGN_STYLES, designStyle, parseDesignStyle, SAMPLE_MODEL, SAMPLE_QUALITIES, sampleKey, type DesignStyleId } from './styles'
 
 const dirOf = (slug?: string) => (slug ? `apps/${slug}/estilos` : 'estilos')
 const fileOf = (dir: string, key: string) => `${dir}/${key}.jpg`
@@ -26,10 +27,42 @@ export async function listSamples(slug?: string): Promise<Record<string, string>
   return Object.fromEntries(files.filter((f) => f.endsWith('.jpg')).map((f) => [f.slice(0, -4), `${mediaSrc(`${dir}/${f}`)}?v=${Math.round(statSync(mediaPath(`${dir}/${f}`)).mtimeMs)}`]))
 }
 
-/** US$ estimados para generar estas muestras (las que ya tienen fondo no cuestan). */
-export function samplesCost(styles: DesignStyleId[], qualities: ImageQuality[], slug?: string) {
+/** Una muestra a generar: estilo y calidad. */
+export type SampleItem = { style: DesignStyleId; quality: ImageQuality }
+export const allItems = (styles: DesignStyleId[] = ALL_STYLES, qualities: ImageQuality[] = SAMPLE_QUALITIES): SampleItem[] => styles.flatMap((style) => qualities.map((quality) => ({ style, quality })))
+
+/** "estilo-calidad" del formulario a combinaciones válidas, sin repetidas. */
+export function parseSampleItems(keys: string[]): SampleItem[] {
+  const out: SampleItem[] = []
+  for (const k of new Set(keys)) {
+    const i = k.lastIndexOf('-')
+    const style = parseDesignStyle(k.slice(0, i))
+    const quality = SAMPLE_QUALITIES.find((q) => q === k.slice(i + 1))
+    if (style && quality) out.push({ style, quality })
+  }
+  return out
+}
+
+/** US$ estimados para generar estas muestras (las que ya tienen fondo no cuestan, salvo `force`). */
+export function samplesCost(items: SampleItem[], slug?: string, force = false) {
   const prices = IMAGE_MODELS.find((m) => m.id === SAMPLE_MODEL)!.qualities!
-  return styles.flatMap((s) => qualities.filter((q) => !existsSync(mediaPath(bgOf(dirOf(slug), sampleKey(s, q))))).map((q) => prices[q])).reduce((a, b) => a + b, 0)
+  return items.filter((i) => force || !existsSync(mediaPath(bgOf(dirOf(slug), sampleKey(i.style, i.quality))))).reduce((a, i) => a + prices[i.quality], 0)
+}
+
+/**
+ * La app de ejemplo de las muestras genéricas: SAMPLES_APP (slug) o la que se llame Fogón.
+ * Si no existe, las genéricas usan una marca inventada (Rumbo).
+ */
+export async function exampleApp() {
+  const slug = process.env.SAMPLES_APP
+  return db.app.findFirst({ where: slug ? { slug } : { OR: [{ slug: 'fogon' }, { name: { equals: 'Fogón', mode: 'insensitive' } }, { name: { equals: 'Fogon', mode: 'insensitive' } }] } })
+}
+
+/** Con qué marca se hicieron las genéricas que hay guardadas. */
+export async function genericOrigin(): Promise<string | null> {
+  return readFile(mediaPath('estilos/origen.json'), 'utf8')
+    .then((t) => (JSON.parse(t) as { name: string }).name)
+    .catch(() => null)
 }
 
 // Contenido de prueba de las genéricas: una app de finanzas inventada.
@@ -79,33 +112,41 @@ const PLACEHOLDER = (c: string[]) =>
  * Genera las muestras pedidas (estilo × calidad). Reutiliza el fondo IA ya generado salvo `force`,
  * así volver a armarlas tras cambiar una plantilla no cuesta nada. Con OPENROUTER_MOCK=1 usa un fondo de relleno.
  */
-export async function generateSamples(opts: { app?: App; styles: DesignStyleId[]; qualities: ImageQuality[]; force?: boolean; log?: (s: string) => void; onProgress?: (done: number, total: number) => Promise<unknown> }) {
-  const subject = opts.app ? await subjectOf(opts.app) : demo
+export async function generateSamples(opts: { app?: App; items: SampleItem[]; force?: boolean; log?: (s: string) => void; onProgress?: (done: number, total: number) => Promise<unknown> }) {
   const dir = dirOf(opts.app?.slug)
-  const total = opts.styles.length * opts.qualities.length
+  let subject = demo
+  if (opts.app) subject = await subjectOf(opts.app)
+  else {
+    // Genéricas: con la app de ejemplo. Si cambió la marca, los fondos guardados no sirven.
+    const ex = await exampleApp()
+    if (ex) subject = await subjectOf(ex)
+    if ((await genericOrigin()) !== subject.brand.name) {
+      await rm(mediaPath(`${dir}/fondos`), { recursive: true, force: true })
+      await saveMedia('estilos/origen.json', Buffer.from(JSON.stringify({ name: subject.brand.name })))
+    }
+  }
+  const total = opts.items.length
   let cost = 0
   let done = 0
   try {
-    for (const s of opts.styles) {
+    for (const { style: s, quality: q } of opts.items) {
       const kind = subject.kind(s)
-      for (const q of opts.qualities) {
-        const key = sampleKey(s, q)
-        const bgRel = bgOf(dir, key)
-        let bg: string
-        if (!opts.force && existsSync(mediaPath(bgRel))) bg = await dataUri(bgRel)
-        else if (process.env.OPENROUTER_MOCK === '1') bg = PLACEHOLDER(subject.colors)
-        else {
-          const prompt = `${subject.scene}. ${kind === 'photo' ? 'Photorealistic photo. ' : ''}Style: ${subject.look(s, kind)}. Color palette ${subject.colors.join(', ')}. Leave calm space for overlaid text. Absolutely no text, letters, numbers, logos or watermarks.`
-          const img = await generateImage({ appId: opts.app?.id ?? null, model: SAMPLE_MODEL, quality: q, prompt, aspectRatio: '4:5', kind, purpose: `muestra de estilo ${s} (${q})` })
-          await saveMedia(bgRel, img.data)
-          cost += img.cost
-          bg = bufferDataUri(img.data, img.mime)
-        }
-        const html = TEMPLATES[s].cover(subject.brand, { ...subject.slide, background: bg }, SIZES.feed)
-        await saveMedia(fileOf(dir, key), await renderHtml(html, SIZES.feed.w, SIZES.feed.h))
-        opts.log?.(`${key} listo`)
-        await opts.onProgress?.(++done, total)
+      const key = sampleKey(s, q)
+      const bgRel = bgOf(dir, key)
+      let bg: string
+      if (!opts.force && existsSync(mediaPath(bgRel))) bg = await dataUri(bgRel)
+      else if (process.env.OPENROUTER_MOCK === '1') bg = PLACEHOLDER(subject.colors)
+      else {
+        const prompt = `${subject.scene}. ${kind === 'photo' ? 'Photorealistic photo. ' : ''}Style: ${subject.look(s, kind)}. Color palette ${subject.colors.join(', ')}. Leave calm space for overlaid text. Absolutely no text, letters, numbers, logos or watermarks.`
+        const img = await generateImage({ appId: opts.app?.id ?? null, model: SAMPLE_MODEL, quality: q, prompt, aspectRatio: '4:5', kind, purpose: `muestra de estilo ${s} (${q})` })
+        await saveMedia(bgRel, img.data)
+        cost += img.cost
+        bg = bufferDataUri(img.data, img.mime)
       }
+      const html = TEMPLATES[s].cover(subject.brand, { ...subject.slide, background: bg }, SIZES.feed)
+      await saveMedia(fileOf(dir, key), await renderHtml(html, SIZES.feed.w, SIZES.feed.h))
+      opts.log?.(`${key} listo`)
+      await opts.onProgress?.(++done, total)
     }
   } finally {
     await closeBrowser()

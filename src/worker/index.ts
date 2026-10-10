@@ -11,9 +11,7 @@ import { nextMonday } from '@/lib/schedule'
 import { closeBrowser, renderHtml } from '@/render/renderer'
 import { mediaPath, saveMedia } from '@/lib/media'
 import { existsSync } from 'node:fs'
-import { generateSamples, setSamplesState } from '@/lib/style-samples'
-import type { DesignStyleId } from '@/lib/styles'
-import type { ImageQuality } from '@/lib/models'
+import { generateSamples, setSamplesState, type SampleItem } from '@/lib/style-samples'
 
 const TZ = process.env.WORKER_TZ ?? 'America/Argentina/Buenos_Aires'
 
@@ -104,7 +102,7 @@ async function main() {
     for (const j of jobs) await syncApp(j.data.appId)
   })
 
-  type SamplesJob = { appId: string | null; styles: DesignStyleId[]; qualities: ImageQuality[] }
+  type SamplesJob = { appId: string | null; items: SampleItem[]; force?: boolean }
   await boss.work<SamplesJob>(QUEUES.styleSamples, async (jobs: Job<SamplesJob>[]) => {
     // Sin reintentos: cada muestra cuesta; si falla queda el error en Ajustes y se pide de nuevo a mano.
     for (const j of jobs) {
@@ -113,8 +111,8 @@ async function main() {
         const started = new Date().toISOString()
         await generateSamples({
           app: app ?? undefined,
-          styles: j.data.styles,
-          qualities: j.data.qualities,
+          items: j.data.items ?? [],
+          force: j.data.force,
           onProgress: (done, total) => setSamplesState(app?.slug, { status: 'running', started, done, total }),
         })
         await setSamplesState(app?.slug, null)

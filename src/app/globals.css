@@ -59,7 +59,7 @@ p { margin: 0; }
 code, pre { font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
 pre { white-space: pre-wrap; background: var(--surface-2); padding: 12px; border-radius: var(--r-sm); overflow: auto; }
 
-.shell { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
+.shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh; }
 .side { border-right: 1px solid var(--border); padding: 20px 14px; display: flex; flex-direction: column; gap: 4px; position: sticky; top: 0; height: 100vh; }
 .side .logo { font-weight: 700; padding: 4px 10px 16px; display: flex; gap: 8px; align-items: center; }
 .side .logo i { width: 22px; height: 22px; border-radius: 7px; background: var(--primary); display: inline-block; }
@@ -70,14 +70,14 @@ pre { white-space: pre-wrap; background: var(--surface-2); padding: 12px; border
 .side .spacer { flex: 1; }
 .main { padding: 32px 40px 64px; max-width: 1180px; width: 100%; }
 @media (max-width: 860px) {
-  .shell { grid-template-columns: 1fr; }
+  .shell { grid-template-columns: minmax(0, 1fr); }
   .side { position: static; height: auto; flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--border); }
   .side .label, .side .spacer { display: none; }
   .main { padding: 20px 16px 48px; }
 }
 
 .page-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.page-head p { color: var(--muted); margin-top: 4px; }
+.page-head p { color: var(--muted); margin-top: 4px; overflow-wrap: anywhere; }
 .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 24px; overflow-x: auto; }
 .tabs a { padding: 9px 12px; font-size: 14px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
 .tabs a:hover { color: var(--fg); }
@@ -241,3 +241,19 @@ details summary { cursor: pointer; font-weight: 560; }
 .sample-viewer-compare img { display: block; width: 100%; height: auto; max-height: calc(100dvh - 200px); object-fit: contain; border-radius: var(--r-sm); background: var(--surface-2); cursor: zoom-in; }
 @media (max-width: 640px) { .sample-viewer-compare { grid-template-columns: 1fr !important; } }
 @media (max-width: 640px) { .sample-viewer-keys { display: none; } .sample-viewer { padding: 12px; } }
+
+/* Pestaña Muestras */
+.samples-style.on { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.samples-qualities { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.samples-quality { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.samples-quality.picked { border-color: var(--primary); background: var(--primary-soft); }
+.samples-quality.on { box-shadow: 0 0 0 2px var(--success); border-color: var(--success); }
+.samples-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.sample-thumb { position: relative; display: block; padding: 0; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface-2); overflow: hidden; cursor: zoom-in; font: inherit; color: inherit; }
+.sample-thumb img { display: block; width: 100%; aspect-ratio: 4 / 5; object-fit: cover; }
+.sample-thumb:hover { border-color: var(--border-strong); }
+.sample-thumb-label { position: absolute; left: 4px; right: 4px; bottom: 4px; display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 3px 6px; border-radius: 6px; background: rgb(0 0 0 / 0.6); color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sample-thumb.empty { display: grid; place-items: center; aspect-ratio: 4 / 5; padding: 8px; font-size: 12px; text-align: center; border-style: dashed; cursor: default; }
+.samples-bar { position: sticky; bottom: 12px; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px 14px; border: 1px solid var(--border-strong); border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--shadow); }
+.samples-bar .progress { flex: 1; }
+@media (max-width: 760px) { .samples-qualities { grid-template-columns: 1fr; } }

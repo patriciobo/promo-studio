@@ -20,6 +20,7 @@ import { postCost, usdSmall } from '../view'
 import { DESIGN_STYLES, designStyle, parseDesignStyle } from '../styles'
 import { TEMPLATES } from '@/templates/styles'
 import { buildStylePrompt, cleanSuggestions } from '../style-suggest'
+import { allItems, parseSampleItems } from '../style-samples'
 
 const YAML = `
 name: Mi Tenis
@@ -362,10 +363,9 @@ describe('edición diaria', () => {
 })
 
 describe('modelos de imagen', () => {
-  it('el catálogo tiene 5 o 6 modelos, de los tres usos, con todos los datos', () => {
-    expect(IMAGE_MODELS.length).toBeGreaterThanOrEqual(5)
-    expect(IMAGE_MODELS.length).toBeLessThanOrEqual(6)
-    expect(new Set(IMAGE_MODELS.map((m) => m.tier))).toEqual(new Set(['pruebas', 'costo-calidad', 'mejor-calidad']))
+  it('el catálogo tiene 3 modelos, de los dos usos, con todos los datos', () => {
+    expect(IMAGE_MODELS.map((m) => m.id)).toEqual(['recraft/recraft-v4.1-flash', 'google/gemini-3.1-flash-image', 'openai/gpt-image-2.5-sunburst'])
+    expect(new Set(IMAGE_MODELS.map((m) => m.tier))).toEqual(new Set(['pruebas', 'mejor-calidad']))
     for (const m of IMAGE_MODELS) expect(m.level && m.uses && m.popularity && m.priceUsd > 0).toBeTruthy()
   })
   it('estima las imágenes por mes según la cadencia (una por diapositiva o escena)', () => {
@@ -495,5 +495,17 @@ describe('estilos de diseño', () => {
     expect(picks.map((p) => p.id)).toEqual(['retro', 'papel', 'bento'])
     expect(cleanSuggestions(null)).toEqual([])
     expect(buildStylePrompt(m).user).toContain('collage')
+  })
+})
+
+describe('muestras de estilo', () => {
+  it('lee las combinaciones tildadas y descarta las inválidas y repetidas', () => {
+    expect(parseSampleItems(['retro-medium', 'suave3d-low', 'retro-medium', 'inventado-high', 'poster-ultra'])).toEqual([
+      { style: 'retro', quality: 'medium' },
+      { style: 'suave3d', quality: 'low' },
+    ])
+  })
+  it('todas las genéricas son cada estilo en cada calidad', () => {
+    expect(allItems()).toHaveLength(DESIGN_STYLES.length * 3)
   })
 })

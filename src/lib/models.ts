@@ -5,7 +5,7 @@ import type { Cadence } from './schedule'
 
 export const PRICES_CHECKED = '2026-10-02'
 
-export type Tier = 'pruebas' | 'costo-calidad' | 'mejor-calidad'
+export type Tier = 'pruebas' | 'mejor-calidad'
 export type ImageQuality = 'low' | 'medium' | 'high'
 export type ImageKind = 'illustration' | 'photo'
 /** Qué tan bien le sale cada tipo de imagen a un modelo. */
@@ -24,7 +24,6 @@ export const SUGGESTED: Record<ImageKind, string> = {
 
 export const TIERS: { id: Tier; label: string; hint: string }[] = [
   { id: 'pruebas', label: 'Pruebas rápidas', hint: 'Centavos por imagen: para probar el circuito o regenerar mucho.' },
-  { id: 'costo-calidad', label: 'Costo/calidad', hint: 'Buen resultado para publicar todas las semanas.' },
   { id: 'mejor-calidad', label: 'Mejor calidad', hint: 'Las mejores piezas; entran en ~US$ 20/mes para 3 apps.' },
 ]
 
@@ -62,47 +61,6 @@ export const IMAGE_MODELS: ImageModel[] = [
     uses: 'Probar el circuito, borradores, regenerar sin pensar en el costo',
     popularity: 'Recraft es la referencia en diseño, vectores y marca',
     priceUsd: 0.007,
-    feedAspect: '3:4',
-    references: false,
-    api: 'images',
-    fit: { illustration: 'ideal', photo: 'flojo' },
-  },
-  {
-    id: 'openai/gpt-image-2.5-flare',
-    name: 'GPT Image 2.5 Flare',
-    tier: 'costo-calidad',
-    level: 'Muy bueno (como GPT Image 2), ~50% más rápido',
-    uses: 'Contenido de redes en volumen, iterar rápido',
-    popularity: '#2 en LMArena; las reviews lo prefieren para redes y lotes',
-    priceUsd: 0.05,
-    qualities: { low: 0.006, medium: 0.05, high: 0.15 },
-    defaultQuality: 'medium',
-    feedAspect: '3:4',
-    references: true,
-    api: 'images',
-    fit: { illustration: 'bien', photo: 'bien' },
-  },
-  {
-    id: 'bytedance-seed/seedream-5-0-lite',
-    name: 'Seedream 5.0 Lite',
-    tier: 'costo-calidad',
-    level: 'Muy bueno en infografías y composiciones densas',
-    uses: 'Piezas informativas con varios elementos',
-    popularity: 'Muy recomendado para redes e infografías por su precio',
-    priceUsd: 0.035,
-    feedAspect: '4:5',
-    references: true,
-    api: 'images',
-    fit: { illustration: 'bien', photo: 'bien' },
-  },
-  {
-    id: 'recraft/recraft-v4.1',
-    name: 'Recraft V4.1',
-    tier: 'costo-calidad',
-    level: 'Muy bueno: estética de marca, ilustración cuidada',
-    uses: 'Ilustraciones de marca coherentes',
-    popularity: 'Elegido en las reviews para marcas y vectores',
-    priceUsd: 0.04,
     feedAspect: '3:4',
     references: false,
     api: 'images',

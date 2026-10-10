@@ -20,8 +20,8 @@ import { buildProfileKit, type ProfileKit } from '@/lib/onboarding/profile-kit'
 import { syncApp } from '@/lib/pipeline'
 import { fromLocalInput, nextMonday } from '@/lib/schedule'
 import { setSecret, type SecretKey } from '@/lib/settings'
-import { designStyle, parseDesignStyle, SAMPLE_QUALITIES } from '@/lib/styles'
-import { ALL_STYLES, setSamplesState } from '@/lib/style-samples'
+import { designStyle, parseDesignStyle, SAMPLE_MODEL, SAMPLE_QUALITIES } from '@/lib/styles'
+import { allItems, parseSampleItems, setSamplesState } from '@/lib/style-samples'
 import { suggestStyles } from '@/lib/style-suggest'
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').replace(/\r\n/g, '\n').trim()
@@ -84,7 +84,7 @@ export async function updateSettings(slug: string, f: FormData) {
   redirect(`/apps/${slug}/ajustes?${to}`)
 }
 
-export async function suggestStylesAction(slug: string) {
+export async function suggestStylesAction(slug: string, back: 'ajustes' | 'muestras' = 'ajustes') {
   await requireUser()
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
   let to = 'aviso=sugeridos#estilo'
@@ -93,20 +93,32 @@ export async function suggestStylesAction(slug: string) {
   } catch (e) {
     to = `error=${encodeURIComponent(`No se pudieron sugerir estilos: ${(e as Error).message}`)}#estilo`
   }
-  revalidatePath(`/apps/${slug}/ajustes`)
-  redirect(`/apps/${slug}/ajustes?${to}`)
+  revalidatePath(`/apps/${slug}/${back}`)
+  redirect(`/apps/${slug}/${back}?${to}`)
 }
 
-/** Muestras de estilo con la marca de la app (o las genéricas, todas): las genera el worker. */
+/**
+ * Muestras de estilo: las combinaciones tildadas con la marca de la app, o todas las genéricas con la app de ejemplo.
+ * Las genera el worker.
+ */
 export async function styleSamplesAction(slug: string, generic: boolean, f: FormData) {
   await requireUser()
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
-  const styles = generic ? ALL_STYLES : f.getAll('sampleStyles').map(String).flatMap((v) => parseDesignStyle(v) ?? [])
-  const qualities = generic ? SAMPLE_QUALITIES : SAMPLE_QUALITIES.filter((q) => f.getAll('sampleQualities').includes(q))
-  if (!styles.length || !qualities.length) redirect(`/apps/${slug}/ajustes?error=${encodeURIComponent('Elegí al menos un estilo y una calidad para las muestras.')}#estilo`)
-  await setSamplesState(generic ? undefined : app.slug, { status: 'running', started: new Date().toISOString(), done: 0, total: styles.length * qualities.length })
-  await enqueue(QUEUES.styleSamples, { appId: generic ? null : app.id, styles, qualities }, { singletonKey: `muestras-${generic ? 'genericas' : app.id}` })
-  redirect(`/apps/${slug}/ajustes?aviso=muestras#estilo`)
+  const items = generic ? allItems() : parseSampleItems(f.getAll('sample').map(String))
+  if (!items.length) redirect(`/apps/${slug}/muestras?error=${encodeURIComponent('Tildá al menos una calidad de un estilo para probar.')}`)
+  await setSamplesState(generic ? undefined : app.slug, { status: 'running', started: new Date().toISOString(), done: 0, total: items.length })
+  await enqueue(QUEUES.styleSamples, { appId: generic ? null : app.id, items, force: generic && f.get('force') === '1' }, { singletonKey: `muestras-${generic ? 'genericas' : app.id}` })
+  redirect(`/apps/${slug}/muestras?aviso=muestras`)
+}
+
+/** Elegir una muestra: el estilo, el modelo de las muestras y esa calidad quedan como los de la app. */
+export async function chooseSampleAction(slug: string, style: string, quality: string) {
+  await requireUser()
+  const id = parseDesignStyle(style)
+  const q = SAMPLE_QUALITIES.find((x) => x === quality)
+  if (!id || !q) throw new Error('Muestra inválida')
+  await db.app.update({ where: { slug }, data: { designStyle: id, imageModel: SAMPLE_MODEL, imageQuality: q } })
+  revalidatePath(`/apps/${slug}`, 'layout')
 }
 
 export async function syncNow(slug: string) {

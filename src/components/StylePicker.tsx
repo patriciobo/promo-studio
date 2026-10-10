@@ -1,24 +1,25 @@
 'use client'
 // Estilos de diseño con sus muestras en cada calidad de GPT Image 2.5 Sunburst: tocar una muestra elige el estilo y esa calidad.
-// Con una app: sugerencias según el negocio, muestras con su marca y guardar el estilo en el promo.yaml del repo.
+// Con una app: sugerencias según el negocio y guardar el estilo en el promo.yaml del repo. Las muestras se piden en la pestaña Muestras.
 import { useEffect, useRef, useState } from 'react'
 import { DESIGN_STYLES, SAMPLE_QUALITIES, sampleKey, type DesignStyleId, type StyleSuggestion } from '@/lib/styles'
 import { IMAGE_MODELS, type ImageQuality } from '@/lib/models'
-import type { SamplesState } from '@/lib/style-samples'
-import { ActionButton, AutoRefresh, Progress } from './client'
+import { ActionButton } from './client'
 
-const QUALITY_LABEL: Record<ImageQuality, string> = { low: 'Baja', medium: 'Media', high: 'Alta' }
-const money = (n: number) => `US$ ${n < 0.1 ? n.toFixed(3) : n.toFixed(2)}`
+export const QUALITY_LABEL: Record<ImageQuality, string> = { low: 'Baja', medium: 'Media', high: 'Alta' }
+export const money = (n: number) => `US$ ${n < 0.1 ? n.toFixed(3) : n.toFixed(2)}`
 
 export interface StyleAppProps {
   name: string
+  slug: string
+  /** Con qué marca se hicieron las muestras genéricas. */
+  genericName: string
   /** Muestras con la marca de la app (clave "estilo-calidad" → src). */
   samples: Record<string, string>
   suggestions: StyleSuggestion[]
   /** brand.style del promo.yaml (null si no lo define). */
   yamlStyle: string | null
-  state: { mine: SamplesState | null; generic: SamplesState | null }
-  actions: { suggest: () => Promise<void>; samples: (f: FormData) => Promise<void>; genericSamples: (f: FormData) => Promise<void> }
+  suggest: () => Promise<void>
 }
 
 export function StylePicker({
@@ -48,20 +49,8 @@ export function StylePicker({
     return i < 0 ? 99 : i
   }
   const styles = [...DESIGN_STYLES].sort((a, b) => rank(a.id) - rank(b.id))
-  const [toSample, setToSample] = useState<Set<DesignStyleId>>(new Set(suggested.length ? suggested.map((s) => s.id) : [style]))
-  const [qualities, setQualities] = useState<Set<ImageQuality>>(new Set(['medium']))
   const [toYaml, setToYaml] = useState(false)
   const [view, setView] = useState<View | null>(null)
-  const toggle = <T,>(set: Set<T>, v: T) => {
-    const n = new Set(set)
-    if (n.has(v)) n.delete(v)
-    else n.add(v)
-    return n
-  }
-  const perStyle = prices ? [...qualities].reduce((a, q) => a + prices[q], 0) : 0
-  const genericMissing = DESIGN_STYLES.length * SAMPLE_QUALITIES.length - Object.keys(generic).length
-  const running = app && (app.state.mine?.status === 'running' || app.state.generic?.status === 'running')
-
   const row = (id: DesignStyleId, label: string, srcs: Record<string, string>, only?: boolean) => (
     <div className="stack-sm" style={{ gap: 4 }}>
       {label && <span className="xs muted">{label}</span>}
@@ -112,11 +101,10 @@ export function StylePicker({
         />
       )}
       <input type="hidden" name="designStyle" value={style} />
-      {running && <AutoRefresh every={6000} />}
       {app && (
         <div className="row between" style={{ flexWrap: 'wrap', gap: 8 }}>
           <span className="small">{suggested.length ? `Sugeridos para ${app.name} según su rubro, público y tono.` : `¿No sabés cuál va con ${app.name}? El modelo de texto lee el promo.yaml y sugiere 3.`}</span>
-          <ActionButton action={app.actions.suggest} pendingText="Leyendo el promo.yaml y eligiendo estilos…" expect={20}>
+          <ActionButton action={app.suggest} pendingText="Leyendo el promo.yaml y eligiendo estilos…" expect={20}>
             {suggested.length ? 'Volver a sugerir' : 'Sugerir estilos para mi negocio'}
           </ActionButton>
         </div>
@@ -139,7 +127,7 @@ export function StylePicker({
               </label>
               {r < 99 && <span className="small">{suggested[r].reason}</span>}
               {mine && row(s.id, `Con ${app.name}`, app.samples, true)}
-              {row(s.id, mine ? 'Genérica (marca de prueba)' : '', generic)}
+              {row(s.id, mine ? `Ejemplo con ${app.genericName}` : '', generic)}
               <span className="small">{s.hint}</span>
               <span className="row" style={{ flexWrap: 'wrap', gap: 4 }} title="Lo que busca hacer sentir a los seguidores">
                 {s.feelings.map((w) => (
@@ -149,51 +137,17 @@ export function StylePicker({
                 ))}
               </span>
               <span className="xs muted">{s.trend}</span>
-              {app && (
-                <label className="check xs">
-                  <input type="checkbox" name="sampleStyles" value={s.id} checked={toSample.has(s.id)} onChange={() => setToSample(toggle(toSample, s.id))} /> Hacer muestra con {app.name}
-                </label>
-              )}
             </div>
           )
         })}
       </div>
       {app && (
-        <div className="card stack-sm" style={{ background: 'var(--surface-2)' }}>
-          <strong>Muestras con {app.name}</strong>
-          <span className="hint small">Su marca, su tema y su tipo de imagen en la portada de cada estilo marcado. Las genéricas usan una marca de prueba y sirven para comparar calidades.</span>
-          <div className="row" style={{ flexWrap: 'wrap', gap: 12 }}>
-            {SAMPLE_QUALITIES.map((q) => (
-              <label key={q} className="check">
-                <input type="checkbox" name="sampleQualities" value={q} checked={qualities.has(q)} onChange={() => setQualities(toggle(qualities, q))} /> {QUALITY_LABEL[q]}
-                {prices ? ` (${money(prices[q])})` : ''}
-              </label>
-            ))}
-          </div>
-          <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
-            <ActionButton className="btn sm primary" action={app.actions.samples} pendingText="Encargando muestras…" disabled={!!running || !toSample.size || !qualities.size}>
-              Generar {toSample.size * qualities.size} muestras (~{money(toSample.size * perStyle)})
-            </ActionButton>
-            {genericMissing > 0 && (
-              <ActionButton action={app.actions.genericSamples} pendingText="Encargando muestras…" disabled={!!running}>
-                Generar las {DESIGN_STYLES.length * SAMPLE_QUALITIES.length} genéricas (~{money(prices ? DESIGN_STYLES.length * Object.values(prices).reduce((a, b) => a + b, 0) : 0)}, una sola vez)
-              </ActionButton>
-            )}
-          </div>
-          {running && (
-            <div className="notice small stack-sm">
-              Generando muestras… esta página se actualiza sola.
-              {[app.state.mine, app.state.generic].map(
-                (st, i) =>
-                  st?.status === 'running' && (
-                    <Progress key={i} label={`${i ? 'Genéricas' : `Con ${app.name}`}: ${st.done ?? 0} de ${st.total ?? '?'}`} since={st.started ?? st.at} value={st.total ? (st.done ?? 0) / st.total : undefined} steps={st.total} expect={25 * (st.total ?? 3)} delay={0} />
-                  ),
-              )}
-            </div>
-          )}
-          {app.state.mine?.status === 'error' && <p className="notice bad small">Falló la última tanda de muestras: {app.state.mine.error}</p>}
-          {app.state.generic?.status === 'error' && <p className="notice bad small">Fallaron las muestras genéricas: {app.state.generic.error}</p>}
-        </div>
+        <p className="notice small row between" style={{ flexWrap: 'wrap', gap: 8 }}>
+          <span>Para ver cómo queda cada estilo con la marca de {app.name}, tildá las calidades que quieras probar en la pestaña Muestras.</span>
+          <a className="btn sm" href={`/apps/${app.slug}/muestras`}>
+            Ir a Muestras →
+          </a>
+        </p>
       )}
       {app && (
         <div className="stack-sm">
@@ -213,10 +167,10 @@ export function StylePicker({
   )
 }
 
-type View = { id: DesignStyleId; label: string; srcs: Record<string, string>; q: ImageQuality }
+export type View = { id: DesignStyleId; label: string; srcs: Record<string, string>; q: ImageQuality }
 
 /** Muestra ampliada: una calidad grande (clic = tamaño real) o las 3 lado a lado, con flechas para cambiar de calidad. */
-function SampleViewer({
+export function SampleViewer({
   view,
   order,
   prices,
@@ -263,7 +217,7 @@ function SampleViewer({
         <div className="stack-sm" style={{ gap: 2 }}>
           <strong>{s.label}</strong>
           <span className="xs muted">
-            {view.label || 'Genérica (marca de prueba)'} · {s.feelings.join(', ')}
+            {view.label || 'Ejemplo genérico'} · {s.feelings.join(', ')}
           </span>
         </div>
         <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>

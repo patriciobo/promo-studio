@@ -1,5 +1,5 @@
 // Muestras de estilo desde la terminal (lo mismo que los botones de Ajustes, sin pasar por el worker).
-//   npm run styles:samples                         → las genéricas que faltan (~US$ 0,21 por estilo)
+//   npm run styles:samples                         → las genéricas que faltan, con la app de ejemplo (~US$ 0,21 por estilo)
 //   npm run styles:samples -- --only=retro         → un estilo
 //   npm run styles:samples -- --app=mi-app --q=medium → con la marca de una app
 //   npm run styles:samples -- --layouts --out=/tmp/x → sin IA: las 5 piezas de cada plantilla, para revisarlas
@@ -11,7 +11,7 @@ import { TEMPLATES } from '@/templates/styles'
 import { closeBrowser, renderHtml } from '@/render/renderer'
 import { db } from '@/lib/db'
 import type { ImageQuality } from '@/lib/models'
-import { ALL_STYLES, generateSamples, samplesCost } from '@/lib/style-samples'
+import { ALL_STYLES, allItems, generateSamples, samplesCost } from '@/lib/style-samples'
 import { parseDesignStyle, SAMPLE_QUALITIES } from '@/lib/styles'
 
 const args = new Map(process.argv.slice(2).map((a) => [a.replace(/^--/, '').split('=')[0], a.split('=')[1] ?? '1']))
@@ -40,8 +40,9 @@ async function main() {
   if (args.has('layouts')) return layouts(args.get('out') ?? 'data/layouts')
   const slug = args.get('app')
   const app = slug ? await db.app.findUniqueOrThrow({ where: { slug } }) : undefined
-  console.log(`${styles.length * qualities.length} muestras ${app ? `de ${app.name}` : 'genéricas'}, ~US$ ${samplesCost(styles, qualities, slug).toFixed(2)} (los fondos ya generados no se pagan de nuevo)`)
-  const { cost } = await generateSamples({ app, styles, qualities, log: console.log })
+  const items = allItems(styles, qualities)
+  console.log(`${items.length} muestras ${app ? `de ${app.name}` : 'genéricas'}, ~US$ ${samplesCost(items, slug).toFixed(2)} (los fondos ya generados no se pagan de nuevo)`)
+  const { cost } = await generateSamples({ app, items, log: console.log })
   await closeBrowser(true)
   console.log(`Listo: US$ ${cost.toFixed(3)}`)
 }
