@@ -19,6 +19,9 @@ async function gh(path: string, init: RequestInit = {}) {
   })
   if (!res.ok) {
     const msg = (await res.json().catch(() => ({}))) as { message?: string }
+    // Token fine-grained sin permiso de escritura: decir qué falta en lugar del mensaje de GitHub.
+    if (res.status === 403 && init.method && init.method !== 'GET' && /not accessible by personal access token/i.test(msg.message ?? ''))
+      throw new GithubError(403, `el token de GitHub no tiene permiso de escritura en ${path.split('/').slice(2, 4).join('/')}. En GitHub → Settings → Developer settings → Fine-grained tokens, dale acceso a ese repo con Contents: Read and write (y Pull requests: Read and write para abrir PRs), y si cambia, cargalo de nuevo en Configuración.`)
     throw new GithubError(res.status, `${init.method ?? 'GET'} ${path}: ${res.status} ${msg.message ?? ''}`.trim())
   }
   return res.status === 204 ? null : res.json()
