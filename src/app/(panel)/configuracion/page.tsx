@@ -3,7 +3,7 @@ import { CopyButton, SubmitButton } from '@/components/client'
 import { spentThisMonth } from '@/lib/budget'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
-import { getSecret, mask, type SecretKey } from '@/lib/settings'
+import { getSecret, mask, secretSource, type SecretKey } from '@/lib/settings'
 import { webhookUrl } from '@/lib/whatsapp'
 import { usd } from '@/lib/view'
 
@@ -17,7 +17,7 @@ const FIELDS: { key: SecretKey; label: string; hint: string }[] = [
 ]
 
 export default async function Config() {
-  const values = await Promise.all(FIELDS.map((f) => getSecret(f.key)))
+  const [values, sources] = await Promise.all([Promise.all(FIELDS.map((f) => getSecret(f.key))), Promise.all(FIELDS.map((f) => secretSource(f.key)))])
   const [global, byApp] = await Promise.all([spentThisMonth(), db.usageLedger.groupBy({ by: ['appId', 'kind'], _sum: { costUsd: true }, _count: true, where: { createdAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) } } })])
   const apps = await db.app.findMany({ select: { id: true, name: true } })
   const name = (id: string | null) => apps.find((a) => a.id === id)?.name ?? 'Sin app (asistentes)'
@@ -26,14 +26,16 @@ export default async function Config() {
       <div className="page-head">
         <div>
           <h1>Configuración</h1>
-          <p>Las claves se guardan cifradas. Dejá un campo vacío para no cambiarlo; escribí __borrar__ para quitarlo.</p>
+          <p>Las claves se guardan cifradas y pisan a las variables de entorno. Dejá un campo vacío para no cambiarlo; escribí __borrar__ para quitar la guardada acá (vuelve a usarse la del entorno, si hay).</p>
         </div>
       </div>
       <form action={saveSecrets} className="card stack">
         <h2>Claves</h2>
         {FIELDS.map((f, i) => (
           <label key={f.key}>
-            {f.label} {values[i] ? <span className="badge ok">{mask(values[i])}</span> : <span className="badge">sin cargar</span>}
+            {f.label} {values[i] ? <span className="badge ok">{mask(values[i])}</span> : <span className="badge">sin cargar</span>}{' '}
+            {sources[i] === 'web' && <span className="badge info">guardada acá</span>}
+            {sources[i] === 'env' && <span className="badge">del entorno (.env / Coolify)</span>}
             <input name={f.key} type="password" autoComplete="off" placeholder={values[i] ? 'Cargado — escribí para reemplazar' : ''} />
             <span className="hint">{f.hint}</span>
           </label>

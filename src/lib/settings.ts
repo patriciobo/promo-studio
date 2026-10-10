@@ -35,6 +35,12 @@ export async function getSecret(k: SecretKey): Promise<string | null> {
   return process.env[k] || null
 }
 
+/** De dónde sale el valor: guardado desde la web (pisa al entorno), variable de entorno, o ninguno. */
+export async function secretSource(k: SecretKey): Promise<'web' | 'env' | null> {
+  if (await db.setting.findUnique({ where: { key: k }, select: { key: true } })) return 'web'
+  return process.env[k] ? 'env' : null
+}
+
 export async function setSecret(k: SecretKey, value: string) {
   if (!value) return db.setting.deleteMany({ where: { key: k } })
   const enc = encrypt(value)
