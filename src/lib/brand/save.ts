@@ -1,4 +1,5 @@
-// Guarda la alternativa elegida en el repositorio de la app: logo, lámina, guía de marca y promo.yaml actualizado.
+// Guarda la alternativa elegida en el repositorio de la app, sólo con archivos que tienen un uso concreto:
+// el logo que referencia el promo.yaml, los íconos que el sitio ya usa, el promo.yaml y, si se pide, la guía.
 // GitHub: pull request (por defecto) o commit directo en la rama. Repo local (file:): escribe los archivos en disco.
 import type { App, BrandOption, BrandProject } from '@prisma/client'
 import { existsSync } from 'node:fs'
@@ -9,22 +10,12 @@ import { commitFiles, getFile, isLocalRepo, openPullRequest, writeLocalFiles } f
 import { setYamlBrand, type BrandPatch } from '../manifest'
 import { mediaPath } from '../media'
 import { syncApp } from '../pipeline'
+import { FoundSchema, type Found } from './brief'
 import { concept } from './concepts'
+import { iconSource, planFiles, REPO_DIR, type YamlField } from './plan'
+
+export { REPO_DIR, YAML_FIELDS, planFiles, type YamlField } from './plan'
 import { OptionSchema, type OptionData } from './generate'
-
-/** Carpeta del repo donde quedan los archivos de la marca. */
-export const REPO_DIR = '.promo/marca'
-
-/** Qué del promo.yaml se puede actualizar con la alternativa. */
-export const YAML_FIELDS = [
-  { id: 'colors', label: 'Colores', hint: 'brand.colors: principal, fondo, texto y acento' },
-  { id: 'font', label: 'Tipografía', hint: 'brand.font: la de las piezas de Instagram' },
-  { id: 'logo', label: 'Logo', hint: `brand.logo: ${REPO_DIR}/logo` },
-  { id: 'tagline', label: 'Frase', hint: 'tagline' },
-  { id: 'tone', label: 'Tono de voz', hint: 'tone' },
-  { id: 'name', label: 'Nombre', hint: 'name (sólo si se propusieron nombres)' },
-] as const
-export type YamlField = (typeof YAML_FIELDS)[number]['id']
 
 /** Campos que tiene sentido actualizar con esta alternativa (lo que se generó). */
 export function availableFields(o: OptionData, option: Pick<BrandOption, 'logoPath' | 'vectorPath'>, elements: string[]): YamlField[] {
@@ -79,8 +70,6 @@ export function brandGuide(o: OptionData, appName: string, logoFile: string | nu
       ? ['## Tono de voz', '', o.voice.tone, '', ...(o.voice.do.length ? ['Sí:', ...o.voice.do.map((x) => `- ${x}`), ''] : []), ...(o.voice.dont.length ? ['No:', ...o.voice.dont.map((x) => `- ${x}`), ''] : []), `Ejemplo: "${o.voice.sample}"`, '']
       : []),
     ...(o.pattern !== 'ninguno' ? ['## Gráfico de apoyo', '', `Patrón: ${o.pattern}, con el color de acento sobre el fondo.`, ''] : []),
-    '![Lámina](lamina.jpg)',
-    '',
   ]
   return lines.filter((l, i, a) => !(l === '' && a[i - 1] === '')).join('\n')
 }
@@ -90,45 +79,50 @@ export interface SaveOptions {
   font: 'display' | 'text'
   /** pr (por defecto) o commit directo en la rama de la app. Ignorado en repos locales. */
   mode: 'pr' | 'commit'
+  /** Íconos del sitio a reemplazar (rutas detectadas en el repo). */
+  icons: string[]
+  /** Escribir la guía de marca (MARCA.md). */
+  guide: boolean
 }
 
-/** Archivos a escribir en el repo y el promo.yaml nuevo (si existe). */
-export async function repoFiles(app: Pick<App, 'name' | 'repo' | 'branch' | 'manifestPath'>, option: BrandOption, opts: SaveOptions) {
+/** Contenido de los archivos planeados y el promo.yaml nuevo (si existe y cambia). */
+export async function repoFiles(app: Pick<App, 'name' | 'repo' | 'branch' | 'manifestPath'>, found: Found | null, option: BrandOption, opts: SaveOptions) {
   const o = OptionSchema.parse(option.data)
-  const files: { path: string; content: Buffer | string }[] = []
-  // Logo: el SVG vectorizado si existe; si no, el generado.
-  const logoSrc = option.vectorPath ?? option.logoPath
-  let logoRepoPath: string | null = null
-  if (logoSrc && existsSync(mediaPath(logoSrc))) {
-    logoRepoPath = `${REPO_DIR}/logo${extname(logoSrc)}`
-    files.push({ path: logoRepoPath, content: await readFile(mediaPath(logoSrc)) })
-    if (option.vectorPath && option.logoPath && existsSync(mediaPath(option.logoPath))) files.push({ path: `${REPO_DIR}/logo-original${extname(option.logoPath)}`, content: await readFile(mediaPath(option.logoPath)) })
-  }
-  if (option.boardPath && existsSync(mediaPath(option.boardPath))) files.push({ path: `${REPO_DIR}/lamina.jpg`, content: await readFile(mediaPath(option.boardPath)) })
-  files.push({ path: `${REPO_DIR}/marca.json`, content: `${JSON.stringify({ generatedBy: 'Promo Studio', concept: o.conceptId, ...o, logo: logoRepoPath ? { ...o.logo, file: logoRepoPath } : o.logo }, null, 2)}\n` })
-  files.push({ path: `${REPO_DIR}/MARCA.md`, content: brandGuide(o, app.name, logoRepoPath ? `logo${extname(logoRepoPath)}` : null) })
-  // promo.yaml: sólo si existe (si no, se crea con el asistente de la pestaña promo.yaml).
   const yaml = await getFile(app.repo, app.manifestPath, app.branch)
-  const patch = brandPatch(o, opts.fields, logoRepoPath, opts.font)
+  const plan = planFiles(app, found, option, opts, !!yaml)
+  const read = (rel: string) => readFile(mediaPath(rel))
+  const out: { path: string; content: Buffer | string }[] = []
+  const logoSrc = option.vectorPath ?? option.logoPath
+  if (plan.logoRepoPath && logoSrc && existsSync(mediaPath(logoSrc))) out.push({ path: plan.logoRepoPath, content: await read(logoSrc) })
+  for (const icon of found?.icons ?? []) {
+    if (!plan.files.some((f) => f.path === icon.path)) continue
+    const src = iconSource(icon, option)
+    if ('rel' in src && existsSync(mediaPath(src.rel))) out.push({ path: icon.path, content: await read(src.rel) })
+  }
+  const patch = brandPatch(o, opts.fields, plan.logoRepoPath, opts.font)
   let yamlChanged = false
   if (yaml && Object.keys(patch).length) {
     const next = setYamlBrand(yaml.text, patch)
     if (next !== yaml.text) {
-      files.push({ path: app.manifestPath, content: next })
+      out.push({ path: app.manifestPath, content: next })
       yamlChanged = true
     }
   }
-  return { files, patch, yamlChanged, hasYaml: !!yaml, option: o }
+  if (opts.guide) out.push({ path: `${REPO_DIR}/MARCA.md`, content: brandGuide(o, app.name, plan.logoRepoPath ? `logo${extname(plan.logoRepoPath)}` : null) })
+  return { files: out, blocked: plan.blocked, patch, yamlChanged, hasYaml: !!yaml, option: o }
 }
 
 /** Guarda la alternativa en el repo y deja registrado dónde. Después sincroniza la app si cambió el promo.yaml. */
-export async function saveBrandToRepo(project: BrandProject & { app: App }, optionId: string, opts: SaveOptions): Promise<{ url?: string; written?: string; yamlChanged: boolean; hasYaml: boolean }> {
+export async function saveBrandToRepo(project: BrandProject & { app: App }, optionId: string, opts: SaveOptions): Promise<{ url?: string; written?: string; yamlChanged: boolean; hasYaml: boolean; paths: string[] }> {
   const option = await db.brandOption.findFirstOrThrow({ where: { id: optionId, projectId: project.id } })
   const { app } = project
-  const { files, yamlChanged, hasYaml, option: o } = await repoFiles(app, option, opts)
+  const found = project.found ? FoundSchema.parse(project.found) : null
+  const { files, blocked, yamlChanged, hasYaml, option: o } = await repoFiles(app, found, option, opts)
+  if (blocked.length) throw new Error(blocked.map((b) => `${b.path}: ${b.why}`).join('; '))
+  if (!files.length) throw new Error('No hay nada para guardar: marcá al menos un campo, un ícono o la guía.')
   const c = concept(o.conceptId)
   const title = `Identidad de marca: ${o.title || c?.name} (Promo Studio)`
-  const body = `Identidad elegida en Promo Studio (concepto ${c?.name ?? o.conceptId}, ronda ${option.round}).\n\n- \`${REPO_DIR}/\`: logo, lámina, guía (MARCA.md) y datos (marca.json).\n${yamlChanged ? `- \`${app.manifestPath}\`: ${Object.keys(brandPatch(o, opts.fields, 'logo', opts.font)).join(', ')} actualizados con la nueva marca.\n` : ''}`
+  const body = `Identidad elegida en Promo Studio (concepto ${c?.name ?? o.conceptId}, ronda ${option.round}). Archivos:\n\n${files.map((f) => `- \`${f.path}\``).join('\n')}\n\nNingún otro archivo cambia.${yamlChanged ? ` En \`${app.manifestPath}\` sólo cambian los valores elegidos; comentarios y formato quedan igual.` : ''}`
   let url: string | undefined
   let written: string | undefined
   if (isLocalRepo(app.repo)) written = await writeLocalFiles(app.repo, files)
@@ -137,5 +131,5 @@ export async function saveBrandToRepo(project: BrandProject & { app: App }, opti
   await db.brandProject.update({ where: { id: project.id }, data: { savedOptionId: optionId, savedAt: new Date(), savedUrl: url ?? null, chosenId: optionId } })
   // Con PR el promo.yaml cambia recién al aprobarlo; con commit o repo local, ya.
   if (yamlChanged && (written || opts.mode === 'commit')) await syncApp(app.id).catch(() => null)
-  return { url, written, yamlChanged, hasYaml }
+  return { url, written, yamlChanged, hasYaml, paths: files.map((f) => f.path) }
 }

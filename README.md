@@ -92,14 +92,20 @@ tipografías, tono de voz, frase y gráfico de apoyo), cada una con su lámina p
 - **Conceptos:** cada alternativa sale de un concepto distinto del catálogo `src/lib/brand/concepts.ts`.
   El catálogo tiene 12 escuelas y tendencias 2026: suizo, holandés, nórdico, japonés, pop coreano, cinético fluido, hecho a mano, retro pulido, micrográfico, raíces locales, sensorial 3D y clásico.
   `rankConcepts` los ordena según el brief y el modelo de texto elige 3. Las rondas siguientes prefieren conceptos nuevos y aceptan un pedido ("más minimal").
-- **Guardar en el repo** (con la alternativa elegida):
-  - escribe `.promo/marca/` con el logo (SVG si se vectorizó), la lámina, `MARCA.md` (guía) y `marca.json`.
-  - actualiza en el `promo.yaml` los campos marcados: colores, tipografía de las piezas, logo, frase, y opcionalmente tono y nombre.
-  - La edición del `promo.yaml` reemplaza sólo esos valores: comentarios y formato quedan igual.
-  - En GitHub abre un pull request (o hace un commit directo en la rama, a elección). En un repo local (`file:`) escribe los archivos.
-  - Con commit o repo local, la app se vuelve a sincronizar sola.
+- **Íconos:** cada alternativa trae, además del logo, un ícono cuadrado (sólo el símbolo o el monograma, que se lee a 16 px).
+  Con él se generan los PNG (16, 32, 48, 180, 192, 512 y los tamaños que ya use el sitio) y `favicon.ico`.
+  Al vectorizar sale el `favicon.svg`.
+- **Guardar en el repo** (con la alternativa elegida). Sólo se escriben archivos con un uso concreto, y el formulario muestra la lista exacta antes de confirmar:
+  - el logo en `.promo/marca/`, sólo si el `promo.yaml` lo va a referenciar (`brand.logo`).
+  - los íconos que el sitio ya usa (detectados al leer el repo), reemplazados en la misma ruta, formato y tamaño. No se agregan íconos nuevos ni se toca el HTML.
+  - el `promo.yaml`, con sólo los campos marcados: colores, tipografía, logo, frase, y opcionalmente tono y nombre. Se reemplaza el valor y comentarios y formato quedan igual.
+  - `MARCA.md` (guía para el equipo), sólo si se marca.
+
+  La lámina no se sube: se descarga desde la pestaña.
+  En GitHub abre un pull request (o hace un commit directo en la rama). En un repo local (`file:`) escribe los archivos.
+  Con commit o repo local la app se vuelve a sincronizar sola.
 - **Modelos:** el logo usa Recraft V4.1 Flash (~US$ 0,007, especializado en diseño) o Sunburst baja (~US$ 0,006), elegibles en cada ronda.
-  El logo se puede vectorizar con Recraft V4.1 Vector (~US$ 0,08). Una ronda completa cuesta ~US$ 0,03 y se descuenta del tope de la app.
+  El logo y el ícono se vectorizan con Recraft V4.1 Vector (~US$ 0,08 cada uno). Una ronda completa (logo e ícono de cada alternativa) cuesta ~US$ 0,05 y se descuenta del tope de la app.
 - Corre en el worker (colas `brand-round` y `brand-vector`). Los archivos quedan en `MEDIA_DIR/apps/<app>/marca/`.
 
 ## Seguridad

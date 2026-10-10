@@ -123,6 +123,8 @@ export const FoundSchema = z.object({
   logo: z.string().optional(),
   logoPath: z.string().optional(),
   tagline: z.string().optional(),
+  /** Íconos que sirve el sitio (favicon, apple-touch-icon…): se reemplazan con la misma ruta, formato y tamaño. */
+  icons: z.array(z.object({ path: z.string(), format: z.enum(['svg', 'png', 'ico']), size: z.number().optional() })).default([]),
   /** De dónde salió cada dato, para mostrarlo. */
   sources: z.array(z.string()).default([]),
 })

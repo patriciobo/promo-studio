@@ -5,6 +5,7 @@ import { getFile, getRawBytes, getRepo, listTree } from '../github'
 import { parseManifest } from '../manifest'
 import { saveMedia } from '../media'
 import { colorsFromText, fontsFromText, projectDir, type Found } from './brief'
+import { iconFormat, iconSize, isSiteIcon } from './icons'
 
 const STYLE_FILES = /(^|\/)(tokens|theme|globals|variables|colors|global|main|styles?|app|index)\.(css|scss)$|(^|\/)tailwind\.config\.(js|ts|cjs|mjs)$|(^|\/)(app\/layout|src\/app\/layout|pages\/_app|pages\/_document|src\/main|src\/layouts\/[^/]+)\.(tsx|jsx|ts|astro)$|(^|\/)index\.html$/
 const SKIP = /node_modules|\/dist\/|\/build\/|\.next\/|vendor\//
@@ -14,7 +15,7 @@ export async function readRepoBrand(repo: string, branch: string | undefined, ap
   const info = await getRepo(repo)
   const ref = branch || info.default_branch
   const tree = await listTree(repo, ref)
-  const found: Found = { colors: [], fonts: [], sources: [] }
+  const found: Found = { colors: [], fonts: [], icons: [], sources: [] }
   if (info.description) found.description = info.description
   if (info.homepage) found.homepage = info.homepage
 
@@ -62,7 +63,15 @@ export async function readRepoBrand(repo: string, branch: string | undefined, ap
     } else delete found.logo
   }
 
-  // 4. Nombre y descripción del package.json o del README.
+  // 4. Íconos del sitio, con su tamaño: son los únicos archivos del sitio que se pueden reemplazar al guardar.
+  for (const path of tree.filter(isSiteIcon).slice(0, 12)) {
+    const format = iconFormat(path)
+    const bytes = format === 'svg' ? null : await getRawBytes(repo, path, ref)
+    found.icons.push({ path, format, ...(bytes ? { size: iconSize(bytes, format) } : {}) })
+  }
+  if (found.icons.length) found.sources.push(`íconos: ${found.icons.map((i) => i.path).join(', ')}`)
+
+  // 5. Nombre y descripción del package.json o del README.
   const readme = (await getFile(repo, tree.find((p) => /^readme\.md$/i.test(p)) ?? 'README.md', ref))?.text ?? ''
   if (!found.name) {
     const title = readme.match(/^#\s+(.+)$/m)?.[1]?.trim()

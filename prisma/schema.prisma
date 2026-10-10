@@ -307,6 +307,9 @@ model BrandOption {
   logoPath   String?
   logoModel  String?
   vectorPath String? // SVG vectorizado del logo, si se pidió
+  iconPath   String? // ícono cuadrado (sólo el símbolo o monograma) para favicons
+  iconVector String? // SVG del ícono (favicon.svg), al vectorizar
+  iconFiles  Json? // { "32": ruta, "180": ruta, "ico": ruta… }: PNG e .ico listos para el sitio
   boardPath  String? // lámina con todo, para mostrar y compartir
   costUsd    Float        @default(0)
   createdAt  DateTime     @default(now())

@@ -1,17 +1,19 @@
 import { chooseBrandOption, generateBrandRound, rereadBrandRepo, resetBrand, saveBrandAction, startBrand, updateBrandProject, vectorizeBrandOption } from '@/app/actions'
 import { BrandBriefFields } from '@/components/BrandBriefFields'
+import { BrandSaveForm } from '@/components/BrandSaveForm'
 import { AutoRefresh, ConfirmButton, Progress, SubmitButton } from '@/components/client'
 import { BriefSchema, ELEMENTS, FoundSchema, missingInBrief, type ElementId } from '@/lib/brand/brief'
 import { concept } from '@/lib/brand/concepts'
 import { encodeLogoModel, LOGO_MODELS, logoPrice, OPTIONS_PER_ROUND, OptionSchema, roundCost, TEXT_ESTIMATE, VECTOR_PRICE } from '@/lib/brand/generate'
-import { availableFields, REPO_DIR, YAML_FIELDS } from '@/lib/brand/save'
+import type { YamlField } from '@/lib/brand/plan'
+import { availableFields } from '@/lib/brand/save'
 import { db } from '@/lib/db'
 import { isLocalRepo } from '@/lib/github'
 import { mediaSrc } from '@/lib/media'
 import { fmtDate, usdSmall } from '@/lib/view'
 
 /** Campos que no se pisan salvo que se marquen: el nombre y el tono suelen estar más trabajados en el yaml. */
-const OPT_IN: string[] = ['name', 'tone']
+const OPT_IN: YamlField[] = ['name', 'tone']
 
 const AVISOS: Record<string, string> = {
   repo: 'Leí el repositorio: abajo está lo que encontré. Marcá qué generar y completá el brief si falta algo.',
@@ -24,7 +26,7 @@ const AVISOS: Record<string, string> = {
 
 export default async function BrandTab({ params, searchParams }: PageProps<'/apps/[slug]/marca'>) {
   const { slug } = await params
-  const { aviso, guardado, error, sinyaml } = await searchParams
+  const { aviso, guardado, error, sinyaml, archivos } = await searchParams
   const app = await db.app.findUniqueOrThrow({ where: { slug }, include: { brand: { include: { options: { orderBy: [{ round: 'desc' }, { index: 'asc' }] } } } } })
   const p = app.brand
   const local = isLocalRepo(app.repo)
@@ -35,7 +37,7 @@ export default async function BrandTab({ params, searchParams }: PageProps<'/app
         <div className="stack-sm">
           <h2>Identidad de marca</h2>
           <p className="small muted">
-            Generá 3 alternativas de identidad (logo, paleta, tipografías, tono de voz, frase y gráfico de apoyo), elegí una y guardala en el repo: logo, lámina y guía en <code>{REPO_DIR}/</code> y el promo.yaml actualizado.
+            Generá 3 alternativas de identidad (logo, ícono, paleta, tipografías, tono de voz, frase y gráfico de apoyo), elegí una y guardala en el repo: sólo lo que tiene uso (el logo que usa el promo.yaml, los íconos que ya tiene el sitio y los campos del promo.yaml que elijas).
           </p>
         </div>
         {typeof error === 'string' && <p className="notice bad small">{error}</p>}
@@ -82,6 +84,18 @@ export default async function BrandTab({ params, searchParams }: PageProps<'/app
           </a>
           {guardado.includes('/pull/') ? '. El promo.yaml cambia cuando lo aprobás; después sincronizá la app.' : '. La app ya se volvió a sincronizar.'}
         </p>
+      )}
+      {typeof archivos === 'string' && archivos && (
+        <div className="notice small">
+          Archivos escritos (nada más cambió):
+          <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+            {archivos.split(',').map((f) => (
+              <li key={f}>
+                <code>{f}</code>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       {sinyaml === '1' && <p className="notice warn small">El repo no tiene promo.yaml: se guardaron los archivos de la marca pero no se actualizó la configuración. Crealo en la pestaña promo.yaml.</p>}
       {typeof error === 'string' && <p className="notice bad">{error}</p>}
@@ -217,6 +231,7 @@ export default async function BrandTab({ params, searchParams }: PageProps<'/app
                 const isSaved = p.savedOptionId === o.id
                 const vectorizing = running && progress?.vector === o.id
                 const fields = availableFields(d, o, elements)
+                const icons = (o.iconFiles as Record<string, string> | null) ?? null
                 return (
                   <article key={o.id} className={`card stack-sm brand-option${chosen ? ' chosen' : ''}`}>
                     {o.boardPath && (
@@ -282,15 +297,40 @@ export default async function BrandTab({ params, searchParams }: PageProps<'/app
                           Logo {o.vectorPath ? 'SVG' : o.logoPath.split('.').pop()?.toUpperCase()}
                         </a>
                       )}
+                      {icons && (
+                        <details className="downloads">
+                          <summary className="btn sm">Íconos</summary>
+                          <div className="stack-sm xs" style={{ marginTop: 6 }}>
+                            {o.iconVector && (
+                              <a href={src(o.iconVector)} download="favicon.svg">
+                                favicon.svg
+                              </a>
+                            )}
+                            {icons.ico && (
+                              <a href={src(icons.ico)} download="favicon.ico">
+                                favicon.ico (16, 32 y 48 px)
+                              </a>
+                            )}
+                            {Object.entries(icons)
+                              .filter(([k]) => k !== 'ico')
+                              .map(([k, rel]) => (
+                                <a key={k} href={src(rel)} download={`icon-${k}.png`}>
+                                  icon-{k}.png
+                                </a>
+                              ))}
+                            {!o.iconVector && <span className="muted">favicon.svg: vectorizá primero</span>}
+                          </div>
+                        </details>
+                      )}
                       {o.boardPath && (
                         <a className="btn sm" href={src(o.boardPath)} download>
                           Lámina
                         </a>
                       )}
-                      {o.logoPath && !o.vectorPath && !o.logoPath.endsWith('.svg') && (
+                      {((o.logoPath && !o.vectorPath && !o.logoPath.endsWith('.svg')) || (o.iconPath && !o.iconVector)) && (
                         <form action={vectorizeBrandOption.bind(null, slug, o.id)}>
                           <SubmitButton className="btn sm ghost" pendingText="Encolando…">
-                            {vectorizing ? 'Vectorizando…' : `Vectorizar (${usdSmall(VECTOR_PRICE)})`}
+                            {vectorizing ? 'Vectorizando…' : `Vectorizar logo e ícono (${usdSmall(VECTOR_PRICE)})`}
                           </SubmitButton>
                         </form>
                       )}
@@ -300,44 +340,18 @@ export default async function BrandTab({ params, searchParams }: PageProps<'/app
                         <summary className="small">
                           <strong>Guardar en el repo</strong>
                         </summary>
-                        <form action={saveBrandAction.bind(null, slug, o.id)} className="stack-sm" style={{ marginTop: 10 }}>
-                          <p className="xs muted">
-                            Escribe <code>{REPO_DIR}/</code> (logo{o.vectorPath ? ' SVG' : ''}, lámina, MARCA.md y marca.json) y actualiza en <code>{app.manifestPath}</code> lo que marques:
-                          </p>
-                          <div className="chips">
-                            {YAML_FIELDS.filter((y) => fields.includes(y.id)).map((y) => (
-                              <label key={y.id} className="chip" title={y.hint}>
-                                <input type="checkbox" name="fields" value={y.id} defaultChecked={!OPT_IN.includes(y.id)} /> {y.label}
-                              </label>
-                            ))}
-                          </div>
-                          {fields.includes('font') && d.fonts && d.fonts.display !== d.fonts.text && (
-                            <label>
-                              Tipografía de las piezas
-                              <select name="font" defaultValue="text">
-                                <option value="text">{d.fonts.text} (la de textos: más legible)</option>
-                                <option value="display">{d.fonts.display} (la de títulos: más personalidad)</option>
-                              </select>
-                            </label>
-                          )}
-                          {local ? (
-                            <p className="xs muted">Repo local: los archivos se escriben directo en {app.repo.slice(5)}.</p>
-                          ) : (
-                            <div className="row">
-                              <label className="check">
-                                <input type="radio" name="mode" value="pr" defaultChecked /> Pull request <span className="hint">para revisarlo antes</span>
-                              </label>
-                              <label className="check">
-                                <input type="radio" name="mode" value="commit" /> Commit directo en {app.branch}
-                              </label>
-                            </div>
-                          )}
-                          <div>
-                            <SubmitButton className="btn sm primary" pendingText="Guardando en el repo…" expect={15}>
-                              {isSaved ? 'Guardar de nuevo' : local ? 'Escribir en el repo' : 'Guardar en el repo'}
-                            </SubmitButton>
-                          </div>
-                        </form>
+                        <BrandSaveForm
+                          action={saveBrandAction.bind(null, slug, o.id)}
+                          fields={fields}
+                          optIn={OPT_IN}
+                          fonts={d.fonts}
+                          found={found}
+                          option={{ logoPath: o.logoPath, vectorPath: o.vectorPath, iconVector: o.iconVector, iconFiles: o.iconFiles }}
+                          manifestPath={app.manifestPath}
+                          local={local ? app.repo.slice(5) : null}
+                          branch={app.branch}
+                          isSaved={isSaved}
+                        />
                       </details>
                     )}
                     <p className="xs muted">Costo: {usdSmall(o.costUsd)}</p>

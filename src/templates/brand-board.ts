@@ -16,6 +16,8 @@ export interface BoardData {
   pattern: PatternId
   /** data: URI del logo (generado o del repo). Sin logo se muestra el nombre con la tipografía de títulos. */
   logo?: string
+  /** data: URI del ícono (favicon, avatar). Sin ícono, el avatar usa el logo. */
+  icon?: string
   /** Etiqueta chica arriba a la derecha (p. ej. "Alternativa 2 · ronda 1"). */
   label: string
 }
@@ -85,6 +87,8 @@ body{background:${bg};color:${ink};font-family:'${d.fonts.text}',Inter,system-ui
 /* Avatar de redes: los logos generados vienen sobre blanco, así que va en un círculo blanco con borde del color principal. */
 .avatar{border-radius:50%;background:#fff;border:8px solid ${primary};display:grid;place-items:center;overflow:hidden;width:200px;height:200px;align-self:center}
 .avatar img{max-width:78%;max-height:78%;object-fit:contain}
+.avatar.icon{border:0}
+.avatar.icon img{max-width:100%;max-height:100%;width:100%;height:100%;object-fit:cover}
 .card{border-radius:16px;background:${primary};color:${onColor(primary)};padding:26px;display:flex;flex-direction:column;justify-content:space-between}
 .card .word{color:${onColor(primary)};font-size:40px}
 .card span{font-size:16px;opacity:.85}
@@ -99,7 +103,7 @@ body{background:${bg};color:${ink};font-family:'${d.fonts.text}',Inter,system-ui
     ${d.voice ? `<div class="voice"><small>Tono de voz</small><q>${esc(d.voice.sample)}</q><p>${esc(d.voice.tone)}</p></div>` : `<div class="pattern"></div>`}
   </div>
   <div class="apps">
-    <div class="avatar">${d.logo ? `<img src="${d.logo}">` : wordmark(primary, 34)}</div>
+    ${d.icon ? `<div class="avatar icon"><img src="${d.icon}"></div>` : `<div class="avatar">${d.logo ? `<img src="${d.logo}">` : wordmark(primary, 34)}</div>`}
     <div class="card">${wordmark(onColor(primary), 40)}<span>${esc(d.tagline || d.conceptName)}</span></div>
     <div class="pattern"></div>
   </div>

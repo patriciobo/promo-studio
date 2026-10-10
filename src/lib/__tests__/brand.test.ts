@@ -8,6 +8,8 @@ import { CATALOG_FONTS, CONCEPTS } from '../brand/concepts'
 import { buildIdentityPrompt, candidates, rolesFor, logoPrompt, mockOptions, normalizeOptions, OPTIONS_PER_ROUND, parseLogoModel, roundCost, type RoundContext } from '../brand/generate'
 import { brandBoardHtml, patternCss } from '@/templates/brand-board'
 import { availableFields, brandGuide, brandPatch, yamlColors } from '../brand/save'
+import { iconSource, planFiles } from '../brand/plan'
+import { buildIco, iconFormat, iconSize, isSiteIcon } from '../brand/icons'
 import { parseManifest, setYamlBrand } from '../manifest'
 
 const brief = (b: Partial<Brief>): Brief => ({ ...emptyBrief(), ...b })
@@ -76,21 +78,21 @@ body { font-family: 'Karla', system-ui, sans-serif } code { font-family: ui-mono
     expect(colorsFromText(':root{--a:#FF5A1F;--b:#0c0b0a} .x{color:#ff5a1f}')).toEqual(['#ff5a1f', '#0c0b0a'])
   })
   it('marca para generar sólo lo que falta', () => {
-    expect(missingElements({ colors: ['#111111', '#eeeeee'], fonts: ['Inter'], logo: 'logo.svg', sources: [] })).toEqual(['voz', 'tagline', 'patron'])
-    expect(missingElements({ colors: [], fonts: [], sources: [] })).toContain('logo')
+    expect(missingElements({ colors: ['#111111', '#eeeeee'], fonts: ['Inter'], logo: 'logo.svg', icons: [], sources: [] })).toEqual(['voz', 'tagline', 'patron'])
+    expect(missingElements({ colors: [], fonts: [], icons: [], sources: [] })).toContain('logo')
   })
 })
 
 describe('alternativas', () => {
   it('el prompt incluye los candidatos y lo fijo del repo', () => {
-    const c = ctx({ name: 'Obras' }, { found: { colors: ['#123456', '#fafafa'], fonts: ['Inter'], sources: [] }, elements: ['logo', 'voz'] })
+    const c = ctx({ name: 'Obras' }, { found: { colors: ['#123456', '#fafafa'], fonts: ['Inter'], icons: [], sources: [] }, elements: ['logo', 'voz'] })
     const { system, candidates: cands } = buildIdentityPrompt(c)
     expect(cands).toHaveLength(6)
     expect(system).toContain('#123456, #fafafa')
     expect(system).toContain('fonts (keep): Inter')
   })
   it('normaliza: 3 conceptos distintos, paleta y tipografías del repo, fuentes inválidas reemplazadas', () => {
-    const c = ctx({ name: 'Obras' }, { found: { colors: ['#123456', '#fafafa', '#222222'], fonts: ['Inter'], sources: [] }, elements: ['logo', 'voz'] })
+    const c = ctx({ name: 'Obras' }, { found: { colors: ['#123456', '#fafafa', '#222222'], fonts: ['Inter'], icons: [], sources: [] }, elements: ['logo', 'voz'] })
     const cands = candidates(c)
     const raw = { options: [{ conceptId: cands[0].id, fonts: { display: 'Fuente Inexistente', text: 'Inter' }, pattern: 'rayas' }, { conceptId: cands[0].id }, { conceptId: 'no-existe' }] }
     const out = normalizeOptions(raw, c, cands)
@@ -128,7 +130,7 @@ describe('alternativas', () => {
   it('costos y modelos de logo', () => {
     expect(parseLogoModel('cualquiera').id).toBe('recraft/recraft-v4.1-flash')
     expect(roundCost(['voz'], parseLogoModel(null))).toBeLessThan(roundCost(['logo'], parseLogoModel(null)))
-    expect(roundCost(['logo'], parseLogoModel('openai/gpt-image-2.5-sunburst|low'))).toBeCloseTo(0.01 + 3 * 0.006)
+    expect(roundCost(['logo'], parseLogoModel('openai/gpt-image-2.5-sunburst|low'))).toBeCloseTo(0.01 + 6 * 0.006) // logo e ícono por alternativa
   })
 })
 
@@ -180,5 +182,58 @@ describe('guardar en el repo', () => {
     expect(md).toContain('| Brasa | `#FF5A1F` | principal |')
     expect(md).toContain('Títulos: **Fraunces**')
     expect(md).toContain('![Logo](logo.svg)')
+    expect(md).not.toContain('lamina')
+  })
+})
+
+describe('íconos del sitio', () => {
+  it('reconoce los archivos de ícono y descarta los de build o de .promo', () => {
+    for (const p of ['public/favicon.svg', 'public/favicon.ico', 'public/apple-touch-icon.png', 'app/icon.png', 'static/android-chrome-192x192.png', 'public/favicon-32x32.png']) expect(isSiteIcon(p)).toBe(true)
+    for (const p of ['node_modules/x/favicon.ico', 'dist/favicon.svg', '.promo/marca/logo.svg', 'public/logo.png', 'src/icons/arrow.svg']) expect(isSiteIcon(p)).toBe(false)
+  })
+  it('lee el tamaño de un PNG y arma un .ico que se vuelve a leer', () => {
+    const png = (w: number) => {
+      const b = Buffer.alloc(33)
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(b, 0)
+      b.writeUInt32BE(13, 8)
+      b.write('IHDR', 12)
+      b.writeUInt32BE(w, 16)
+      b.writeUInt32BE(w, 20)
+      return b
+    }
+    expect(iconSize(png(180), 'png')).toBe(180)
+    const ico = buildIco([16, 32, 48].map((size) => ({ size, data: png(size) })))
+    expect(iconSize(ico, 'ico')).toBe(48)
+    expect(ico.readUInt16LE(4)).toBe(3)
+    expect(ico.readUInt32LE(6 + 12)).toBe(6 + 3 * 16) // el primer PNG arranca después de las entradas
+    expect(iconFormat('a/favicon.ico')).toBe('ico')
+  })
+  it('el SVG sólo se reemplaza con el ícono vectorizado; los PNG, con el mismo tamaño', () => {
+    const option = { iconVector: null, iconFiles: { '32': 'a/32.png', ico: 'a/favicon.ico' } }
+    expect(iconSource({ path: 'public/favicon.svg', format: 'svg' }, option)).toHaveProperty('why')
+    expect(iconSource({ path: 'public/favicon.svg', format: 'svg' }, { ...option, iconVector: 'a/fav.svg' })).toEqual({ rel: 'a/fav.svg' })
+    expect(iconSource({ path: 'p/i.png', format: 'png', size: 32 }, option)).toEqual({ rel: 'a/32.png' })
+    expect(iconSource({ path: 'p/i.png', format: 'png', size: 64 }, option)).toHaveProperty('why')
+  })
+})
+
+describe('qué se escribe en el repo', () => {
+  const found = { colors: [], fonts: [], icons: [{ path: 'public/favicon.svg', format: 'svg' as const }, { path: 'public/apple-touch-icon.png', format: 'png' as const, size: 180 }], sources: [] }
+  const option = { logoPath: 'm/logo.png', vectorPath: 'm/logo.svg', iconVector: 'm/fav.svg', iconFiles: { '180': 'm/180.png' } }
+  it('sólo archivos con uso: logo si el yaml lo referencia, íconos existentes, promo.yaml; nunca la lámina', () => {
+    const { files, blocked } = planFiles({ manifestPath: 'promo.yaml' }, found, option, { fields: ['logo', 'colors'], icons: ['public/favicon.svg', 'public/apple-touch-icon.png'], guide: false })
+    expect(files.map((f) => f.path)).toEqual(['.promo/marca/logo.svg', 'public/favicon.svg', 'public/apple-touch-icon.png', 'promo.yaml'])
+    expect(files.filter((f) => f.path.startsWith('public/')).every((f) => f.action === 'reemplaza')).toBe(true)
+    expect(files.some((f) => /lamina|marca\.json/.test(f.path))).toBe(false)
+    expect(blocked).toEqual([])
+  })
+  it('sin el campo logo no se sube el logo, y sin campos no se toca el promo.yaml', () => {
+    const { files } = planFiles({ manifestPath: 'promo.yaml' }, found, option, { fields: [], icons: ['public/favicon.svg'], guide: true })
+    expect(files.map((f) => f.path)).toEqual(['public/favicon.svg', '.promo/marca/MARCA.md'])
+  })
+  it('un ícono que no se puede generar igual queda bloqueado, no se escribe', () => {
+    const { files, blocked } = planFiles({ manifestPath: 'promo.yaml' }, found, { ...option, iconVector: null }, { fields: [], icons: ['public/favicon.svg'], guide: false })
+    expect(files).toEqual([])
+    expect(blocked[0].path).toBe('public/favicon.svg')
   })
 })

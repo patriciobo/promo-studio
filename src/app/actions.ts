@@ -650,8 +650,14 @@ export async function saveBrandAction(slug: string, optionId: string, f: FormDat
   const fields = f.getAll('fields').map(String).filter((x): x is YamlField => YAML_FIELDS.some((y) => y.id === x))
   let to: string
   try {
-    const r = await saveBrandToRepo({ ...app.brand, app }, optionId, { fields, font: str(f, 'font') === 'display' ? 'display' : 'text', mode: str(f, 'mode') === 'commit' ? 'commit' : 'pr' })
-    to = r.url ? `guardado=${encodeURIComponent(r.url)}` : `aviso=${r.written ? 'escrito' : 'guardado-repo'}`
+    const r = await saveBrandToRepo({ ...app.brand, app }, optionId, {
+      fields,
+      font: str(f, 'font') === 'display' ? 'display' : 'text',
+      mode: str(f, 'mode') === 'commit' ? 'commit' : 'pr',
+      icons: f.getAll('icons').map(String),
+      guide: f.get('guide') === 'on',
+    })
+    to = `${r.url ? `guardado=${encodeURIComponent(r.url)}` : `aviso=${r.written ? 'escrito' : 'guardado-repo'}`}&archivos=${encodeURIComponent(r.paths.join(','))}`
     if (!r.hasYaml) to += '&sinyaml=1'
   } catch (e) {
     to = `error=${encodeURIComponent(`No se pudo guardar en el repo: ${(e as Error).message}`)}`

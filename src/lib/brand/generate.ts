@@ -6,6 +6,7 @@ import { extname } from 'node:path'
 import { z } from 'zod'
 import { lum } from '@/templates/brand'
 import { BOARD, brandBoardHtml } from '@/templates/brand-board'
+import { renderIconSet } from './icons'
 import { closeBrowser, renderHtml } from '@/render/renderer'
 import { db } from '../db'
 import { bufferDataUri, dataUri, mediaPath, saveMedia } from '../media'
@@ -49,13 +50,14 @@ export function parseLogoModel(v: string | null | undefined): Pick<LogoModel, 'i
   return hit ?? LOGO_MODELS[0]
 }
 
-/** Precio aproximado de vectorizar un logo (Recraft V4.1 Vector). */
-export const VECTOR_PRICE = 0.08
+/** Precio aproximado de vectorizar logo e ícono (Recraft V4.1 Vector, ~US$ 0,08 cada uno). */
+export const VECTOR_PRICE = 0.16
 /** Texto de las 3 alternativas: unos 6 a 10 mil tokens con Gemini Flash. */
 export const TEXT_ESTIMATE = 0.01
 
+/** Con logo: 2 imágenes por alternativa (logo e ícono). */
 export function roundCost(elements: ElementId[], logo: Pick<LogoModel, 'id' | 'quality'>) {
-  return TEXT_ESTIMATE + (elements.includes('logo') ? OPTIONS_PER_ROUND * logoPrice(logo) : 0)
+  return TEXT_ESTIMATE + (elements.includes('logo') ? OPTIONS_PER_ROUND * 2 * logoPrice(logo) : 0)
 }
 
 // --- Lo que devuelve el modelo de texto ---------------------------------------------------------------
@@ -244,24 +246,45 @@ export function logoPrompt(o: OptionData) {
   return `${o.logo?.prompt || c.logoStyle}. Concept style: ${c.logoStyle}. ${symbolOnly ? 'Symbol only, no letters.' : `The brand name "${o.brandName}" spelled exactly like that, correct letters only.`} Colors: ${colors}. Professional flat vector logo, centered, generous margin, on a plain white background. No mockup, no photo, no 3D render${c.id === 'sensorial' ? ' except soft volume in the symbol' : ''}, no tagline, no extra words, no watermark.`
 }
 
+/**
+ * Prompt del ícono: sólo el símbolo o el monograma, cuadrado y a sangre. Es la base del favicon, el avatar y los
+ * íconos de la app: un logo con el nombre completo no se lee a 16 px.
+ */
+export function iconPrompt(o: OptionData) {
+  const c = concept(o.conceptId)!
+  const main = o.palette.find((p) => p.role === 'principal')?.hex ?? o.palette[0]?.hex
+  const light = o.palette.find((p) => p.role === 'fondo')?.hex ?? '#ffffff'
+  return `App icon and favicon for the brand "${o.brandName}": ${o.logo?.type === 'symbol' || o.logo?.type === 'combination' ? `only the symbol of this logo idea: ${o.logo?.idea || c.summary}` : `a bold monogram with the initial letter "${o.brandName.trim()[0]?.toUpperCase() ?? 'A'}"`}. Concept style: ${c.logoStyle}. One simple shape that is readable at 16 pixels, centered, filling about 70% of a square ${main} background, mark in ${light}. Flat vector, no text besides the monogram letter, no gradients, no shadows, no mockup, no rounded frame, no watermark.`
+}
+
+const initialsOf = (name: string) => name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()
+
 const PLACEHOLDER_LOGO = (o: OptionData) => {
   const main = o.palette.find((p) => p.role === 'principal')?.hex ?? '#333333'
-  const initials = o.brandName.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()
-  return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"><rect width="400" height="400" fill="#ffffff"/><circle cx="200" cy="170" r="110" fill="${main}"/><text x="200" y="205" font-family="sans-serif" font-size="96" font-weight="700" text-anchor="middle" fill="#ffffff">${initials}</text><text x="200" y="350" font-family="sans-serif" font-size="40" font-weight="700" text-anchor="middle" fill="${main}">${o.brandName.replace(/[<&]/g, '')}</text></svg>`)
+  return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"><rect width="400" height="400" fill="#ffffff"/><circle cx="200" cy="170" r="110" fill="${main}"/><text x="200" y="205" font-family="sans-serif" font-size="96" font-weight="700" text-anchor="middle" fill="#ffffff">${initialsOf(o.brandName)}</text><text x="200" y="350" font-family="sans-serif" font-size="40" font-weight="700" text-anchor="middle" fill="${main}">${o.brandName.replace(/[<&]/g, '')}</text></svg>`)
+}
+
+const PLACEHOLDER_ICON = (o: OptionData) => {
+  const main = o.palette.find((p) => p.role === 'principal')?.hex ?? '#333333'
+  return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="${main}"/><text x="32" y="45" font-family="sans-serif" font-size="38" font-weight="700" text-anchor="middle" fill="#ffffff">${initialsOf(o.brandName)[0] ?? 'A'}</text></svg>`)
 }
 
 export { projectDir }
 
-async function renderBoard(o: OptionData, label: string, logo: string | undefined) {
+async function renderBoard(o: OptionData, label: string, logo: string | undefined, icon: string | undefined) {
   const c = concept(o.conceptId)!
-  const html = brandBoardHtml({ brandName: o.brandName, conceptName: c.name, tagline: o.tagline, palette: o.palette, fonts: o.fonts!, voice: o.voice ? { tone: o.voice.tone, sample: o.voice.sample } : undefined, pattern: o.pattern, logo, label })
+  const html = brandBoardHtml({ brandName: o.brandName, conceptName: c.name, tagline: o.tagline, palette: o.palette, fonts: o.fonts!, voice: o.voice ? { tone: o.voice.tone, sample: o.voice.sample } : undefined, pattern: o.pattern, logo, icon, label })
   return renderHtml(html, BOARD.w, BOARD.h)
 }
 
 const setProgress = (id: string, data: { status?: string; error?: string | null; progress?: object | null }) => db.brandProject.update({ where: { id }, data: data as never })
 
+/** Tamaños de los íconos que ya usa el sitio (para generarlos exactos). */
+const siteSizes = (found: { icons: { size?: number }[] } | null) => (found?.icons ?? []).flatMap((i) => (i.size ? [i.size] : []))
+
 /**
- * Una ronda: 3 alternativas con su logo (si se pidió) y su lámina. Deja el estado en el proyecto para la web.
+ * Una ronda: 3 alternativas con su logo, su ícono y los archivos de ícono del sitio (si se pidió el logo)
+ * y su lámina. Deja el estado en el proyecto para la web.
  * Sin reintentos: si falla, el error queda en el proyecto y se pide otra vez desde la web.
  */
 export async function generateRound(projectId: string, opts: { logoModel?: string; notes?: string } = {}) {
@@ -269,7 +292,7 @@ export async function generateRound(projectId: string, opts: { logoModel?: strin
   const started = new Date().toISOString()
   const elements = p.elements as ElementId[]
   const withLogo = elements.includes('logo')
-  const total = 1 + OPTIONS_PER_ROUND * (withLogo ? 2 : 1)
+  const total = 1 + OPTIONS_PER_ROUND * (withLogo ? 3 : 1)
   let done = 0
   const step = () => setProgress(p.id, { progress: { started, done: ++done, total } })
   await setProgress(p.id, { status: 'running', error: null, progress: { started, done: 0, total } })
@@ -295,24 +318,40 @@ export async function generateRound(projectId: string, opts: { logoModel?: strin
     const dir = projectDir(p.app.slug)
     const logoModel = parseLogoModel(opts.logoModel)
     const repoLogo = !withLogo && ctx.found?.logoPath && existsSync(mediaPath(ctx.found.logoPath)) ? await dataUri(ctx.found.logoPath) : undefined
+    const mock = process.env.OPENROUTER_MOCK === '1'
     for (const [i, o] of options.entries()) {
+      const base = `${dir}/r${round}-${i + 1}`
       let cost = textCost / OPTIONS_PER_ROUND
       let logoPath: string | undefined
+      let iconPath: string | undefined
+      let iconFiles: Record<string, string> | undefined
       let logo = repoLogo
+      let icon: string | undefined
       if (withLogo) {
-        if (process.env.OPENROUTER_MOCK === '1') {
-          logoPath = await saveMedia(`${dir}/r${round}-${i + 1}-logo.svg`, PLACEHOLDER_LOGO(o))
+        if (mock) {
+          logoPath = await saveMedia(`${base}-logo.svg`, PLACEHOLDER_LOGO(o))
           logo = await dataUri(logoPath)
         } else {
           const img = await generateImage({ appId: p.appId, model: logoModel.id, quality: logoModel.quality, prompt: logoPrompt(o), aspectRatio: '1:1', purpose: `logo ${p.app.name} (${o.conceptId})`, withText: true })
-          logoPath = await saveMedia(`${dir}/r${round}-${i + 1}-logo${img.mime === 'image/png' ? '.png' : '.jpg'}`, img.data)
+          logoPath = await saveMedia(`${base}-logo${img.mime === 'image/png' ? '.png' : '.jpg'}`, img.data)
           logo = bufferDataUri(img.data, img.mime)
           cost += img.cost
         }
         await step()
+        if (mock) {
+          iconPath = await saveMedia(`${base}-icono.svg`, PLACEHOLDER_ICON(o))
+          icon = await dataUri(iconPath)
+        } else {
+          const img = await generateImage({ appId: p.appId, model: logoModel.id, quality: logoModel.quality, prompt: iconPrompt(o), aspectRatio: '1:1', purpose: `ícono ${p.app.name} (${o.conceptId})`, withText: true })
+          iconPath = await saveMedia(`${base}-icono${img.mime === 'image/png' ? '.png' : '.jpg'}`, img.data)
+          icon = bufferDataUri(img.data, img.mime)
+          cost += img.cost
+        }
+        iconFiles = await renderIconSet(icon, `${base}-iconos`, siteSizes(ctx.found))
+        await step()
       }
-      const boardPath = await saveMedia(`${dir}/r${round}-${i + 1}.jpg`, await renderBoard(o, `Alternativa ${i + 1} · ronda ${round}`, logo))
-      await db.brandOption.create({ data: { projectId: p.id, round, index: i, conceptId: o.conceptId, data: o as object, logoPath, logoModel: withLogo ? encodeLogoModel(logoModel) : null, boardPath, costUsd: cost } })
+      const boardPath = await saveMedia(`${base}.jpg`, await renderBoard(o, `Alternativa ${i + 1} · ronda ${round}`, logo, icon))
+      await db.brandOption.create({ data: { projectId: p.id, round, index: i, conceptId: o.conceptId, data: o as object, logoPath, iconPath, iconFiles, logoModel: withLogo ? encodeLogoModel(logoModel) : null, boardPath, costUsd: cost } })
       await step()
     }
     await setProgress(p.id, { status: 'idle', progress: null })
@@ -328,14 +367,15 @@ export async function generateRound(projectId: string, opts: { logoModel?: strin
 export async function redrawBoard(option: BrandOption, project: Pick<BrandProject, 'found'> & { app: { slug: string } }) {
   const o = OptionSchema.parse(option.data)
   const found = project.found ? FoundSchema.parse(project.found) : null
-  const logoRel = option.vectorPath ?? option.logoPath ?? found?.logoPath
-  const logo = logoRel && existsSync(mediaPath(logoRel)) ? await dataUri(logoRel) : undefined
-  const path = await saveMedia(`${projectDir(project.app.slug)}/r${option.round}-${option.index + 1}.jpg`, await renderBoard(o, `Alternativa ${option.index + 1} · ronda ${option.round}`, logo))
+  const uri = async (rel: string | null | undefined) => (rel && existsSync(mediaPath(rel)) ? dataUri(rel) : undefined)
+  const logo = await uri(option.vectorPath ?? option.logoPath ?? found?.logoPath)
+  const icon = await uri(option.iconVector ?? option.iconPath)
+  const path = await saveMedia(`${projectDir(project.app.slug)}/r${option.round}-${option.index + 1}.jpg`, await renderBoard(o, `Alternativa ${option.index + 1} · ronda ${option.round}`, logo, icon))
   await closeBrowser()
   return path
 }
 
-/** Logo de una alternativa a SVG con Recraft V4.1 Vector (~US$ 0,08). El estado queda en el proyecto. */
+/** Logo e ícono de una alternativa a SVG con Recraft V4.1 Vector (~US$ 0,08 cada uno). El estado queda en el proyecto. */
 export async function vectorizeOption(optionId: string) {
   const option = await db.brandOption.findUniqueOrThrow({ where: { id: optionId }, include: { project: { include: { app: { select: { slug: true, name: true } } } } } })
   try {
@@ -348,20 +388,22 @@ export async function vectorizeOption(optionId: string) {
 }
 
 async function vectorize(option: BrandOption & { project: BrandProject & { app: { slug: string; name: string } } }) {
-  const optionId = option.id
   if (!option.logoPath || !existsSync(mediaPath(option.logoPath))) throw new Error('La alternativa no tiene logo generado')
   const o = OptionSchema.parse(option.data)
-  let svg: Buffer
+  const base = `${projectDir(option.project.app.slug)}/r${option.round}-${option.index + 1}`
   let cost = 0
-  if (process.env.OPENROUTER_MOCK === '1' || extname(option.logoPath) === '.svg') svg = PLACEHOLDER_LOGO(o)
-  else {
-    const r = await vectorizeImage({ appId: option.project.appId, image: await dataUri(option.logoPath), prompt: `Faithful vector redraw of this logo for "${o.brandName}": same shapes, same letters, same flat colors, clean geometry, no background.`, purpose: `vectorizar logo ${option.project.app.name}` })
-    svg = r.data
-    cost = r.cost
+  /** Un SVG por imagen: si ya es SVG (modo demo) se copia; si no, Recraft lo redibuja. */
+  const toSvg = async (rel: string, what: string, placeholder: Buffer) => {
+    if (process.env.OPENROUTER_MOCK === '1' || extname(rel) === '.svg') return placeholder
+    const r = await vectorizeImage({ appId: option.project.appId, image: await dataUri(rel), prompt: `Faithful vector redraw of this ${what} for "${o.brandName}": same shapes, same letters, same flat colors, clean geometry.`, purpose: `vectorizar ${what} ${option.project.app.name}` })
+    cost += r.cost
+    return r.data
   }
-  const vectorPath = await saveMedia(`${projectDir(option.project.app.slug)}/r${option.round}-${option.index + 1}-logo.svg`, svg)
-  const updated = await db.brandOption.update({ where: { id: optionId }, data: { vectorPath, costUsd: option.costUsd + cost } })
-  await db.brandOption.update({ where: { id: optionId }, data: { boardPath: await redrawBoard(updated, option.project) } })
+  const data: { vectorPath?: string; iconVector?: string } = {}
+  if (!option.vectorPath) data.vectorPath = await saveMedia(`${base}-logo.svg`, await toSvg(option.logoPath, 'logo', PLACEHOLDER_LOGO(o)))
+  if (!option.iconVector && option.iconPath && existsSync(mediaPath(option.iconPath))) data.iconVector = await saveMedia(`${base}-favicon.svg`, await toSvg(option.iconPath, 'app icon', PLACEHOLDER_ICON(o)))
+  const updated = await db.brandOption.update({ where: { id: option.id }, data: { ...data, costUsd: option.costUsd + cost } })
+  await db.brandOption.update({ where: { id: option.id }, data: { boardPath: await redrawBoard(updated, option.project) } })
 }
 
 export { VECTOR_MODEL }
