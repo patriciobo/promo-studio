@@ -59,6 +59,7 @@ model Batch {
   status    BatchStatus @default(PLANNING)
   error     String?
   notes     String?
+  brief     String? // consigna del usuario para la semana ("Generar semana")
   imageIds  String[]    @default([]) // imágenes subidas en las que se basa la semana
   createdAt DateTime    @default(now())
   posts     Post[]

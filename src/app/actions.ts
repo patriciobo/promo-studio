@@ -137,7 +137,10 @@ export async function generateWeek(slug: string, f: FormData) {
   const existing = await db.batch.findUnique({ where: { appId_weekStart: { appId: app.id, weekStart } } })
   if (existing?.status === 'READY' && !existing.error) redirect(`/apps/${slug}?aviso=ya-generada&semana=${day}`)
   // El lote aparece enseguida en el Calendario ("Planificando") aunque el worker tarde unos segundos en tomarlo.
-  if (!existing) await db.batch.create({ data: { appId: app.id, weekStart, status: 'PLANNING' } })
+  // La consigna queda en el lote: si hay que retomarlo, se planifica con la misma.
+  const brief = str(f, 'brief').slice(0, 1000) || null
+  if (!existing) await db.batch.create({ data: { appId: app.id, weekStart, status: 'PLANNING', brief } })
+  else if (brief) await db.batch.update({ where: { id: existing.id }, data: { brief } })
   const imageIds = await requestImages(app, f)
   // Un lote fallido de esa semana se retoma (planBatch lo detecta).
   await enqueue(QUEUES.runWeekly, { appId: app.id, weekStart: weekStart.toISOString(), image: parseImageChoice(str(f, 'imageChoice'), str(f, 'imageKind')), imageIds }, { singletonKey: `${app.id}-${weekStart.toISOString()}` })

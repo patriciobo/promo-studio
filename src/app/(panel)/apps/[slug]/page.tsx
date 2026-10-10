@@ -55,6 +55,10 @@ export default async function Calendar({ params, searchParams }: PageProps<'/app
             </form>
           </div>
         </div>
+        <label>
+          Consigna para la semana <span className="hint">Opcional. Qué querés comunicar: un lanzamiento, una fecha, una promo, un tema o un enfoque. Si la dejás vacía, el plan reparte los pilares del promo.yaml como siempre.</span>
+          <textarea name="brief" form="generar-semana" rows={2} maxLength={1000} placeholder="Ej.: semana del Día del Padre, enfocada en regalos; mostrar la nueva función de reservas y cerrar con una promo del 20%." />
+        </label>
         <ImagePicker images={images} slug={slug} form="generar-semana" hint="El plan reparte estas imágenes entre los posts de la semana." />
       </div>
       {daily && (
@@ -103,6 +107,11 @@ export default async function Calendar({ params, searchParams }: PageProps<'/app
             <p className="notice small">
               <span className="spinner" aria-hidden /> Generando ilustraciones y piezas: {b.posts.filter((p) => p.status !== 'DRAFT').length} de {b.posts.length} listas…
               <Progress since={b.posts[0]?.createdAt ?? b.createdAt} value={b.posts.length ? b.posts.filter((p) => p.status !== 'DRAFT').length / b.posts.length : 0} steps={b.posts.length} expect={60 * Math.max(1, b.posts.length)} delay={0} />
+            </p>
+          )}
+          {b.brief && (
+            <p className="small">
+              <span className="muted">Consigna:</span> {b.brief}
             </p>
           )}
           {b.error && <p className="notice bad small">{b.error}</p>}

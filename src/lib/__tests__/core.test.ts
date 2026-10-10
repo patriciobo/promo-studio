@@ -509,3 +509,13 @@ describe('muestras de estilo', () => {
     expect(allItems()).toHaveLength(DESIGN_STYLES.length * 3)
   })
 })
+
+describe('consigna de la semana', () => {
+  const m = (parseManifest(YAML) as unknown as { manifest: never }).manifest
+  const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 1, reels: 0, stories: 1 }, '10:00', 'UTC')
+  const ctx = { feed: [], texts: [], releases: [], recent: [], bestPillars: [] }
+  it('el plan sigue la consigna del usuario cuando la hay', () => {
+    expect(JSON.parse(buildPlanPrompt(m, slots, { ...ctx, brief: 'Semana del Día del Padre' }).user).instructions).toContain('brief from the user for the week: "Semana del Día del Padre"')
+    expect(JSON.parse(buildPlanPrompt(m, slots, ctx).user).instructions).toMatch(/Balance the pillars/)
+  })
+})

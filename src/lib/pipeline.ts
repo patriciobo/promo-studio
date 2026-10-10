@@ -144,7 +144,7 @@ export const styleFor = (m: Manifest, kind: ImageKind, design?: string | null) =
 /** Tipo de imagen de una generación: el elegido junto al botón o el de Ajustes. */
 const kindOf = (app: Pick<App, 'imageKind'>, image?: ImageChoice): ImageKind => image?.kind ?? parseImageKind(app.imageKind) ?? 'illustration'
 
-export function buildPlanPrompt(m: Manifest, slots: Slot[], ctx: { feed: Feed['items']; texts: string[]; releases: { name: string; body: string }[]; recent: { pillar: string | null; hook: string | null }[]; bestPillars: string[]; topic?: string; daily?: { date: string; report: string }; images?: PromptImage[]; kind?: ImageKind; design?: string | null }) {
+export function buildPlanPrompt(m: Manifest, slots: Slot[], ctx: { feed: Feed['items']; texts: string[]; releases: { name: string; body: string }[]; recent: { pillar: string | null; hook: string | null }[]; bestPillars: string[]; topic?: string; daily?: { date: string; report: string }; images?: PromptImage[]; kind?: ImageKind; design?: string | null; brief?: string | null }) {
   const images = ctx.images ?? []
   const photo = ctx.kind === 'photo'
   const focus = images.filter((i) => i.focus)
@@ -176,6 +176,8 @@ Answer only with JSON: {"posts":[{"slot":number,"pillar":string,"hook":string,"c
       ? `Create exactly one post per slot about TODAY's edition (${ctx.daily.date}) in todaysEdition. Use ONLY facts stated in that report: no other news, no opinions, no predictions, no invented figures; attribute claims to the sources as the report does. CAROUSEL: slide 1 is a cover with the date as eyebrow and the day's main story as title; then 3-5 slides with the most relevant regions or the trade/commodities climate (title + up to 4 short items each); last slide invites to read the full edition and subscribe. STORY: the 3 main headlines of the day, very short. Captions summarize the day in 2-4 lines and invite to read the full edition.`
       : ctx.topic
       ? `Create exactly one post about this topic chosen by the user: "${ctx.topic}". Stay on that topic, connect it to the app naturally and do not repeat hooks from doNotRepeat.`
+      : ctx.brief
+      ? `Create exactly one post per slot following this brief from the user for the week: "${ctx.brief}". The brief has priority over balancing pillars and over ideasFromApp (use them only when they fit it); keep each slot's type and slideRules, stay true to the app (never invent features) and do not repeat hooks from doNotRepeat.`
       : 'Create exactly one post per slot. Balance the pillars (favor the best performing ones), use ideasFromApp when relevant (set sourceId), announce recent releases if any, and do not repeat hooks from doNotRepeat.') + focusRule,
   })
   return { system, user }
@@ -198,7 +200,7 @@ export async function planBatch(appId: string, weekStart: Date, imageIds: string
     ? await db.batch.update({ where: { id: existing.id }, data: { status: 'PLANNING', error: null, imageIds: focus } })
     : await db.batch.create({ data: { appId, weekStart, status: 'PLANNING', imageIds: focus } })
   try {
-    return await planPosts(app, m, batch.id, weekStart, focus, kind ?? kindOf(app))
+    return await planPosts(app, m, batch.id, weekStart, focus, kind ?? kindOf(app), batch.brief)
   } catch (e) {
     await db.batch.update({ where: { id: batch.id }, data: { status: 'FAILED', error: `No se pudo planificar: ${(e as Error).message}` } })
     await notify(`⚠️ ${app.name}: falló la planificación de la semana del ${weekStart.toISOString().slice(0, 10)}: ${(e as Error).message}`)
@@ -206,7 +208,7 @@ export async function planBatch(appId: string, weekStart: Date, imageIds: string
   }
 }
 
-async function planPosts(app: App, m: Manifest, batchId: string, weekStart: Date, imageIds: string[], kind: ImageKind) {
+async function planPosts(app: App, m: Manifest, batchId: string, weekStart: Date, imageIds: string[], kind: ImageKind, brief: string | null) {
   const appId = app.id
   const batch = { id: batchId }
 
@@ -224,7 +226,7 @@ async function planPosts(app: App, m: Manifest, batchId: string, weekStart: Date
     .sort((a, b) => (b._avg.score ?? 0) - (a._avg.score ?? 0))
     .slice(0, 3)
     .map((s) => s.pillar!)
-  const { system, user } = buildPlanPrompt(m, slots, { ...src, releases: releases.filter((r) => Date.now() - Date.parse(r.date) < 30 * 864e5), recent, bestPillars, images: images.prompt, kind, design: app.designStyle })
+  const { system, user } = buildPlanPrompt(m, slots, { ...src, releases: releases.filter((r) => Date.now() - Date.parse(r.date) < 30 * 864e5), recent, bestPillars, images: images.prompt, kind, design: app.designStyle, brief })
   let textCost = 0
   const raw = process.env.OPENROUTER_MOCK === '1' ? mockPlan(m, slots, src.feed, imageIds) : await completeJson({ appId, model: app.textModel, system, user, images: images.shown, purpose: `plan ${weekStart.toISOString().slice(0, 10)}`, onCost: (c) => (textCost = c) })
   const plan = keepKnownImages(PlanSchema.parse(raw), images.prompt)
