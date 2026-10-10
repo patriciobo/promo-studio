@@ -4,7 +4,7 @@ import { BrandSaveForm } from '@/components/BrandSaveForm'
 import { AutoRefresh, ConfirmButton, Progress, SubmitButton } from '@/components/client'
 import { BriefSchema, ELEMENTS, FoundSchema, missingInBrief, type ElementId } from '@/lib/brand/brief'
 import { concept } from '@/lib/brand/concepts'
-import { encodeLogoModel, LOGO_MODELS, logoPrice, OPTIONS_PER_ROUND, OptionSchema, roundCost, TEXT_ESTIMATE, VECTOR_PRICE } from '@/lib/brand/generate'
+import { encodeLogoModel, LOGO_MODELS, logoPrice, OPTIONS_PER_ROUND, OptionSchema, roundCost, TEXT_ESTIMATE, VECTOR_EACH, VECTOR_PRICE } from '@/lib/brand/generate'
 import type { YamlField } from '@/lib/brand/plan'
 import { availableFields } from '@/lib/brand/save'
 import { db } from '@/lib/db'
@@ -164,7 +164,7 @@ export default async function BrandTab({ params, searchParams }: PageProps<'/app
       ) : (
         <form action={rereadBrandRepo.bind(null, slug)} className="row">
           <span className="small muted">Identidad desde cero: no se toma nada del repo.</span>
-          <SubmitButton className="btn sm ghost" pendingText="Leyendo…">
+          <SubmitButton className="btn sm" pendingText="Leyendo…">
             Leer el repo igual
           </SubmitButton>
         </form>
@@ -213,7 +213,7 @@ export default async function BrandTab({ params, searchParams }: PageProps<'/app
             )}
           </div>
           <p className="xs muted">
-            Costo aproximado por ronda: texto {usdSmall(TEXT_ESTIMATE)} + {OPTIONS_PER_ROUND} logos (si está marcado). Con el modelo recomendado: {usdSmall(roundCost(['logo'], LOGO_MODELS[0]))}. Vectorizar un logo a SVG: {usdSmall(VECTOR_PRICE)}. Se descuenta del tope mensual de la app.
+            Costo aproximado por ronda: texto {usdSmall(TEXT_ESTIMATE)} + {OPTIONS_PER_ROUND} logos (si está marcado). Con el modelo recomendado: {usdSmall(roundCost(['logo'], LOGO_MODELS[0]))}. Logo SVG y favicon.svg: {usdSmall(VECTOR_PRICE)} los dos. Se descuenta del tope mensual de la app.
           </p>
         </form>
       </section>
@@ -232,6 +232,9 @@ export default async function BrandTab({ params, searchParams }: PageProps<'/app
                 const vectorizing = running && progress?.vector === o.id
                 const fields = availableFields(d, o, elements)
                 const icons = (o.iconFiles as Record<string, string> | null) ?? null
+                // Qué falta vectorizar: el logo (si es raster) y el ícono (de ahí sale el favicon.svg).
+                const needsLogoSvg = !!o.logoPath && !o.vectorPath && !o.logoPath.endsWith('.svg')
+                const needsFavicon = !!o.iconPath && !o.iconVector
                 return (
                   <article key={o.id} className={`card stack-sm brand-option${chosen ? ' chosen' : ''}`}>
                     {o.boardPath && (
@@ -327,14 +330,21 @@ export default async function BrandTab({ params, searchParams }: PageProps<'/app
                           Lámina
                         </a>
                       )}
-                      {((o.logoPath && !o.vectorPath && !o.logoPath.endsWith('.svg')) || (o.iconPath && !o.iconVector)) && (
+                      {(needsLogoSvg || needsFavicon) && (
                         <form action={vectorizeBrandOption.bind(null, slug, o.id)}>
-                          <SubmitButton className="btn sm ghost" pendingText="Encolando…">
-                            {vectorizing ? 'Vectorizando…' : `Vectorizar logo e ícono (${usdSmall(VECTOR_PRICE)})`}
+                          <SubmitButton className="btn sm" pendingText="Encolando…">
+                            {vectorizing ? 'Vectorizando…' : `${needsFavicon ? 'Crear favicon.svg' : 'Logo a SVG'}${needsFavicon && needsLogoSvg ? ' y logo SVG' : ''} (${usdSmall(VECTOR_EACH * (Number(needsFavicon) + Number(needsLogoSvg)))})`}
                           </SubmitButton>
                         </form>
                       )}
                     </div>
+                    {o.logoPath && !o.iconPath && <p className="xs muted">Esta alternativa es anterior a los íconos: no tiene favicon. Generá una ronda nueva para tenerlo.</p>}
+                    {(needsLogoSvg || needsFavicon) && !vectorizing && (
+                      <p className="xs muted">
+                        {needsFavicon ? 'El favicon.svg (y el ícono del sitio en SVG) sale de vectorizar el ícono. ' : ''}
+                        {needsLogoSvg ? 'El logo en SVG se ve nítido en cualquier tamaño. ' : ''}Lo redibuja Recraft V4.1 Vector (~{usdSmall(VECTOR_EACH)} cada uno); los PNG y el favicon.ico ya están listos en Íconos.
+                      </p>
+                    )}
                     {chosen && (
                       <details className="save-repo" open={!isSaved}>
                         <summary className="small">

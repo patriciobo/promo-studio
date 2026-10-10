@@ -50,8 +50,10 @@ export function parseLogoModel(v: string | null | undefined): Pick<LogoModel, 'i
   return hit ?? LOGO_MODELS[0]
 }
 
-/** Precio aproximado de vectorizar logo e ícono (Recraft V4.1 Vector, ~US$ 0,08 cada uno). */
-export const VECTOR_PRICE = 0.16
+/** Precio aproximado de vectorizar una imagen con Recraft V4.1 Vector. */
+export const VECTOR_EACH = 0.08
+/** Logo e ícono juntos. */
+export const VECTOR_PRICE = 2 * VECTOR_EACH
 /** Texto de las 3 alternativas: unos 6 a 10 mil tokens con Gemini Flash. */
 export const TEXT_ESTIMATE = 0.01
 
