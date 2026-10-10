@@ -1,18 +1,19 @@
 import { saveSecrets } from '@/app/actions'
-import { SubmitButton } from '@/components/client'
+import { CopyButton, SubmitButton } from '@/components/client'
 import { spentThisMonth } from '@/lib/budget'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { getSecret, mask, type SecretKey } from '@/lib/settings'
+import { webhookUrl } from '@/lib/whatsapp'
 import { usd } from '@/lib/view'
 
 const FIELDS: { key: SecretKey; label: string; hint: string }[] = [
   { key: 'META_TOKEN', label: 'Token de Meta (usuario de sistema)', hint: 'Paso A.5 de la guía. No vence.' },
   { key: 'OPENROUTER_API_KEY', label: 'API key de OpenRouter', hint: 'openrouter.ai/keys — poné un límite de crédito a la key.' },
   { key: 'GITHUB_TOKEN', label: 'Token de GitHub (fine-grained)', hint: 'Lectura de Contents y Metadata en los repos; para abrir PRs, escritura en Contents y Pull requests.' },
-  { key: 'WAHA_URL', label: 'WAHA: URL', hint: 'Avisos por WhatsApp (opcional), p. ej. http://waha:3000' },
+  { key: 'WAHA_URL', label: 'WAHA: URL', hint: 'WhatsApp (opcional): aprobación de los clientes y avisos, p. ej. http://waha:3000' },
   { key: 'WAHA_API_KEY', label: 'WAHA: API key', hint: 'Si tu WAHA la pide.' },
-  { key: 'WAHA_CHAT_ID', label: 'WAHA: chat de destino', hint: 'Tu número, p. ej. 5493511234567@c.us' },
+  { key: 'WAHA_CHAT_ID', label: 'WAHA: número de origen', hint: 'El número conectado a WAHA, p. ej. 5493511234567: desde ahí salen los mensajes a los clientes y ahí llegan sus respuestas. Los avisos para vos van al chat con vos mismo de ese número.' },
 ]
 
 export default async function Config() {
@@ -41,6 +42,16 @@ export default async function Config() {
           <SubmitButton pendingText="Guardando…">Guardar claves</SubmitButton>
         </div>
       </form>
+      <section className="card stack-sm">
+        <h2>Respuestas de los clientes por WhatsApp</h2>
+        <p className="small">
+          Para que las respuestas aprueben las publicaciones, en la sesión de WAHA del número de origen agregá un webhook con el evento <code>message</code> y esta URL (o poné <code>WHATSAPP_HOOK_URL</code> y <code>WHATSAPP_HOOK_EVENTS=message</code> en el WAHA):
+        </p>
+        <p className="row" style={{ gap: 8 }}>
+          <code style={{ overflowWrap: 'anywhere' }}>{webhookUrl()}</code> <CopyButton text={webhookUrl()} />
+        </p>
+        <p className="xs muted">El WhatsApp de cada cliente se carga en los Ajustes de su app. Lo que el cliente escriba y no sea una aprobación te llega como aviso.</p>
+      </section>
       <section className="card stack">
         <h2>Gasto en OpenRouter este mes</h2>
         <p>

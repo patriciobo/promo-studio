@@ -12,6 +12,7 @@ import { imagesForPlan, importFlowScreens, slideImages, type PromptImage } from 
 import { DEFAULT_IMAGE_STYLE, DEFAULT_PHOTO_STYLE, FeedSchema, parseManifest, type Feed, type Manifest } from './manifest'
 import { bufferDataUri, dataUri, mediaPath, saveMedia } from './media'
 import { notify } from './notify'
+import { sendForReview } from './whatsapp'
 import { parseImageKind, type ImageChoice, type ImageKind } from './models'
 import { designStyle, parseDesignStyle } from './styles'
 import { completeJson, generateImage } from './openrouter'
@@ -419,7 +420,20 @@ export async function generateBatch(batchId: string, image?: ImageChoice) {
   const error = failed.length ? `${failed.length} de ${todo.length} publicaciones no se pudieron generar (${failed[0]}). Tocá "Generar semana" para reintentar sólo esas.` : null
   await db.batch.update({ where: { id: batchId }, data: { status: failed.length && !ok ? 'FAILED' : 'READY', error } })
   if (ok) await notify(`📸 ${batch.app.name}: ${ok} publicaciones de la semana listas para revisar. Se aprueban solas en ${reviewHours} h.`)
+  if (ok) await toClient(batch.app.id)
   if (failed.length) await notify(`⚠️ ${batch.app.name}: ${error}`)
+}
+
+/** Manda al WhatsApp del cliente lo que quedó para aprobar. Si falla, avisa y sigue: la revisión en la web no depende de esto. */
+export async function toClient(appId: string) {
+  try {
+    const r = await sendForReview(appId)
+    if (r.sent) console.log(`[whatsapp] ${r.sent} publicaciones mandadas al cliente`)
+    return r
+  } catch (e) {
+    await notify(`⚠️ No se pudieron mandar las publicaciones al WhatsApp del cliente: ${(e as Error).message}`)
+    return { sent: 0, error: (e as Error).message }
+  }
 }
 
 /** Sincronizar + planificar + generar la semana que empieza en `weekStart`. */
@@ -466,6 +480,7 @@ export async function createOnDemand(postId: string, topic: string, image?: Imag
     await db.post.update({ where: { id: postId }, data: { pillar: post.pillar ?? pillar, hook, caption, altText, slides, imagePrompt, textCostUsd: textCost } })
     await renderPost(postId, { image })
     await db.post.update({ where: { id: postId }, data: { status: 'PENDING_REVIEW', reviewDueAt: null, error: null } })
+    await toClient(app.id)
   } catch (e) {
     await db.post.update({ where: { id: postId }, data: { status: 'FAILED', error: `No se pudo generar: ${(e as Error).message}` } })
   }
@@ -547,6 +562,7 @@ export async function runDaily(appId: string, now = new Date()) {
     }
     const hora = new Intl.DateTimeFormat('es-AR', { timeZone: app.timezone, hour: '2-digit', minute: '2-digit' }).format(publishAt)
     await notify(`📰 ${app.name}: edición del ${date} lista para revisar. Se publica sola a las ${hora}.`)
+    await toClient(app.id)
     return 'lista'
   } catch (e) {
     await db.post.updateMany({ where: { appId, dailyDate: date, status: 'DRAFT' }, data: { status: 'FAILED', error: `No se pudo generar la edición: ${(e as Error).message}` } })

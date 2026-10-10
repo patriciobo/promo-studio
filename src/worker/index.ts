@@ -6,7 +6,7 @@ import { getBoss, QUEUES } from '@/lib/jobs'
 import { autoApprove, collectInsights, publishDue } from '@/lib/publisher'
 import { describeImage } from '@/lib/images'
 import { pushCampaign, syncActiveCampaigns } from '@/lib/meta-ads'
-import { createOnDemand, renderPost, runDaily, runWeekly, syncApp } from '@/lib/pipeline'
+import { createOnDemand, renderPost, runDaily, runWeekly, syncApp, toClient } from '@/lib/pipeline'
 import { nextMonday } from '@/lib/schedule'
 import { closeBrowser, renderHtml } from '@/render/renderer'
 import { mediaPath, saveMedia } from '@/lib/media'
@@ -82,7 +82,12 @@ async function main() {
   })
 
   await boss.work<{ postId: string; regenerateImage?: boolean; image?: ImageChoice }>(QUEUES.renderPost, async (jobs: Job<{ postId: string; regenerateImage?: boolean; image?: ImageChoice }>[]) => {
-    for (const j of jobs) await renderPost(j.data.postId, { regenerateImage: j.data.regenerateImage, image: j.data.image })
+    for (const j of jobs) {
+      await renderPost(j.data.postId, { regenerateImage: j.data.regenerateImage, image: j.data.image })
+      // Si el cliente ya la había visto, se le manda la versión nueva.
+      const p = await db.post.findUnique({ where: { id: j.data.postId }, select: { appId: true, status: true, waNumber: true } })
+      if (p?.status === 'PENDING_REVIEW' && p.waNumber === null) await toClient(p.appId)
+    }
   })
 
   type CreateJob = { postId: string; topic: string; image?: ImageChoice; imageIds?: string[] }

@@ -42,6 +42,7 @@ model App {
   autoApproveHours Int       @default(48)
   dryRun           Boolean   @default(true)
   paused           Boolean   @default(false)
+  whatsapp         String? // número del cliente (sólo dígitos, con código de país): recibe lo pendiente y aprueba respondiendo
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -102,6 +103,8 @@ model Post {
   dailyDate   String? // AAAA-MM-DD si es de la edición diaria
   textCostUsd Float? // su parte del costo del modelo de texto (las imágenes suman Asset.costUsd)
   adOnly      Boolean    @default(false) // pieza sólo para anuncios: nunca se publica en el feed
+  waNumber    Int? // número con el que se le mandó al cliente por WhatsApp para aprobar (null = sin mandar)
+  waSentAt    DateTime?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 

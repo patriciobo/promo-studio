@@ -29,6 +29,7 @@ import { readRepoBrand } from '@/lib/brand/repo'
 import { saveBrandToRepo, YAML_FIELDS, type YamlField } from '@/lib/brand/save'
 import { mediaPath, saveMedia } from '@/lib/media'
 import { TEXT_MODELS } from '@/lib/models'
+import { digits, sendForReview } from '@/lib/whatsapp'
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').replace(/\r\n/g, '\n').trim()
 
@@ -71,6 +72,7 @@ export async function updateSettings(slug: string, f: FormData) {
       autoApproveHours: Number(str(f, 'autoApproveHours') || 48),
       dryRun: f.get('dryRun') === 'on',
       paused: f.get('paused') === 'on',
+      whatsapp: digits(str(f, 'whatsapp')) || null,
     },
   })
   revalidatePath(`/apps/${slug}`, 'layout')
@@ -227,7 +229,10 @@ export async function publishNow(postId: string) {
 export async function savePost(postId: string, f: FormData) {
   await requireUser()
   const slides = JSON.parse(str(f, 'slides') || '[]')
-  const post = await db.post.update({ where: { id: postId }, data: { caption: str(f, 'caption'), altText: str(f, 'altText'), slides, imagePrompt: str(f, 'imagePrompt') || undefined }, include: { app: true } })
+  const before = await db.post.findUniqueOrThrow({ where: { id: postId }, select: { status: true, waNumber: true } })
+  // Si el cliente ya la vio y sigue en revisión, al terminar de renderizar se le manda de nuevo con otro número.
+  const resend = before.status === 'PENDING_REVIEW' && before.waNumber !== null
+  const post = await db.post.update({ where: { id: postId }, data: { caption: str(f, 'caption'), altText: str(f, 'altText'), slides, imagePrompt: str(f, 'imagePrompt') || undefined, ...(resend ? { waNumber: null, error: null } : {}) }, include: { app: true } })
   await enqueue(QUEUES.renderPost, { postId, regenerateImage: f.get('regenerateImage') === 'on', image: parseImageChoice(str(f, 'imageChoice'), str(f, 'imageKind')) })
   revalidatePath(`/apps/${post.app.slug}/revision`)
 }
@@ -664,4 +669,22 @@ export async function saveBrandAction(slug: string, optionId: string, f: FormDat
   }
   revalidatePath(`/apps/${slug}`, 'layout')
   redirect(brandBack(slug, to))
+}
+
+// --- Aprobación por WhatsApp -------------------------------------------------
+
+/** Manda ya al cliente lo que está en revisión y todavía no vio. Con `postId`, vuelve a mandar esa (con número nuevo). */
+export async function sendReviewAction(slug: string, postId?: string) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  if (postId) await db.post.updateMany({ where: { id: postId, appId: app.id, status: 'PENDING_REVIEW' }, data: { waNumber: null, error: null } })
+  let r: { sent: number; error?: string }
+  try {
+    r = await sendForReview(app.id)
+  } catch (e) {
+    r = { sent: 0, error: (e as Error).message }
+  }
+  revalidatePath(`/apps/${slug}`, 'layout')
+  const q = r.error ? `whatsapp-error=${encodeURIComponent(r.error)}` : `whatsapp=${r.sent}`
+  redirect(`/apps/${slug}/revision?${q}`)
 }

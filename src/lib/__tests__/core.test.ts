@@ -21,6 +21,7 @@ import { DESIGN_STYLES, designStyle, parseDesignStyle } from '../styles'
 import { TEMPLATES } from '@/templates/styles'
 import { buildStylePrompt, cleanSuggestions } from '../style-suggest'
 import { allItems, parseSampleItems } from '../style-samples'
+import { digits, parseReply } from '../whatsapp'
 
 const YAML = `
 name: Mi Tenis
@@ -517,5 +518,26 @@ describe('consigna de la semana', () => {
   it('el plan sigue la consigna del usuario cuando la hay', () => {
     expect(JSON.parse(buildPlanPrompt(m, slots, { ...ctx, brief: 'Semana del Día del Padre' }).user).instructions).toContain('brief from the user for the week: "Semana del Día del Padre"')
     expect(JSON.parse(buildPlanPrompt(m, slots, ctx).user).instructions).toMatch(/Balance the pillars/)
+  })
+})
+
+describe('aprobación por WhatsApp', () => {
+  it('entiende aprobar todo o algunas', () => {
+    expect(parseReply('Ok, gracias!')).toEqual({ kind: 'approve', nums: null, note: 'gracias!' })
+    expect(parseReply('Sí')).toMatchObject({ kind: 'approve', nums: null })
+    expect(parseReply('dale la 1 y la 3')).toMatchObject({ kind: 'approve', nums: [1, 3] })
+    expect(parseReply('ok 2, 4')).toMatchObject({ kind: 'approve', nums: [2, 4] })
+    expect(parseReply('👍')).toMatchObject({ kind: 'approve', nums: null })
+  })
+  it('cambios y descartes necesitan el número, y guardan el pedido', () => {
+    expect(parseReply('Cambios 2: una foto más clara')).toEqual({ kind: 'changes', nums: [2], note: 'una foto más clara' })
+    expect(parseReply('no 3')).toEqual({ kind: 'reject', nums: [3], note: '' })
+    expect(parseReply('no me gusta')).toEqual({ kind: 'other' })
+    expect(parseReply('¿Cuándo sale?')).toEqual({ kind: 'other' })
+    expect(parseReply('sino mañana')).toEqual({ kind: 'other' })
+  })
+  it('normaliza los números', () => {
+    expect(digits('+54 9 351 123-4567')).toBe('5493511234567')
+    expect(digits('5493511234567@c.us')).toBe('5493511234567')
   })
 })

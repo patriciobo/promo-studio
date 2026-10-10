@@ -91,6 +91,13 @@ export default async function Settings({ params, searchParams }: PageProps<'/app
             <input name="autoApproveHours" type="number" min={1} max={168} defaultValue={app.autoApproveHours} />
           </label>
         </div>
+        <label>
+          WhatsApp del cliente{' '}
+          <span className="hint">
+            Opcional. Con código de país, p. ej. 5493511234567. Lo que quede para revisar se le manda desde el número de WAHA (Configuración) y lo aprueba respondiendo: ok, ok 1 3, cambios 2: …, no 2. Lo que no se aprueba igual se aprueba solo a las horas de arriba.
+          </span>
+          <input name="whatsapp" type="tel" inputMode="tel" defaultValue={app.whatsapp ?? ''} placeholder="5493511234567" />
+        </label>
         <label className="check">
           <input type="checkbox" name="dryRun" defaultChecked={app.dryRun} /> Simulación: genera y &quot;publica&quot; sin tocar Instagram
         </label>
