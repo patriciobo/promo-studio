@@ -1,5 +1,5 @@
 import { ErrorsTable, StepsList } from '@/components/GuideBlocks'
-import { STEPS_ONCE, STEPS_PER_APP } from '@/lib/guide'
+import { STEPS_CLIENT, STEPS_ONCE, STEPS_PER_APP } from '@/lib/guide'
 
 export default function Guide() {
   return (
@@ -17,6 +17,15 @@ export default function Guide() {
       <section className="card stack">
         <h2>B. Por cada app</h2>
         <StepsList steps={STEPS_PER_APP} />
+      </section>
+      <section className="card stack" id="clientes">
+        <div className="stack-sm">
+          <h2>C. Cuentas de otras personas (clientes)</h2>
+          <p className="small muted">
+            El cliente sigue siendo dueño de su Instagram, su página y su cuenta publicitaria, y le da acceso a tu portfolio como socio. Se usa el mismo usuario de sistema y el mismo token de los pasos A; en Promo Studio sus apps aparecen aparte, en Clientes.
+          </p>
+        </div>
+        <StepsList steps={STEPS_CLIENT} />
       </section>
       <section className="card stack">
         <h2>Errores frecuentes</h2>

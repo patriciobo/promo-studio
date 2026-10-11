@@ -14,6 +14,7 @@ export default async function AppLayout({ children, params }: LayoutProps<'/apps
           <h1>{app.name}</h1>
           <p>
             {app.igUsername ? `@${app.igUsername}` : 'Instagram sin conectar'} · <a href={`https://github.com/${app.repo}`} target="_blank" rel="noreferrer">{app.repo}</a>
+            {app.owner === 'client' && <span className="badge" style={{ marginLeft: 8 }}>Cliente{app.clientName ? `: ${app.clientName}` : ''}</span>}
             {app.dryRun && <span className="badge info" style={{ marginLeft: 8 }}>Simulación: no publica en Instagram</span>}
             {app.paused && <span className="badge" style={{ marginLeft: 8 }}>Pausada</span>}
           </p>

@@ -44,11 +44,14 @@ async function requestImages(app: { id: string; slug: string }, f: FormData) {
 
 // --- Apps -------------------------------------------------------------------
 
+/** De quién es la cuenta: propia o de un cliente (con su nombre). */
+const ownerOf = (f: FormData) => (str(f, 'owner') === 'client' ? { owner: 'client', clientName: str(f, 'clientName').slice(0, 80) || null } : { owner: 'own', clientName: null })
+
 export async function createApp(f: FormData) {
   await requireUser()
   const repo = normalizeRepo(str(f, 'repo'))
   const slug = (str(f, 'slug') || repo.split('/')[1]).toLowerCase().replace(/[^a-z0-9-]+/g, '-')
-  const app = await db.app.create({ data: { slug, repo, name: str(f, 'name') || repo.split('/')[1], branch: str(f, 'branch') || 'main', imageModel: str(f, 'imageModel') || null, imageQuality: str(f, 'imageQuality') || null, imageKind: parseImageKind(str(f, 'imageKind')) ?? null, designStyle: parseDesignStyle(str(f, 'designStyle')) ?? null } })
+  const app = await db.app.create({ data: { slug, repo, name: str(f, 'name') || repo.split('/')[1], branch: str(f, 'branch') || 'main', ...ownerOf(f), imageModel: str(f, 'imageModel') || null, imageQuality: str(f, 'imageQuality') || null, imageKind: parseImageKind(str(f, 'imageKind')) ?? null, designStyle: parseDesignStyle(str(f, 'designStyle')) ?? null } })
   await syncApp(app.id).catch(() => null)
   redirect(`/apps/${app.slug}/manifiesto`)
 }
@@ -74,6 +77,7 @@ export async function updateSettings(slug: string, f: FormData) {
       dryRun: f.get('dryRun') === 'on',
       paused: f.get('paused') === 'on',
       whatsapp: digits(str(f, 'whatsapp')) || null,
+      ...ownerOf(f),
     },
   })
   revalidatePath(`/apps/${slug}`, 'layout')

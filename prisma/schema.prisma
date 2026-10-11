@@ -42,6 +42,8 @@ model App {
   autoApproveHours Int       @default(48)
   dryRun           Boolean   @default(true)
   paused           Boolean   @default(false)
+  owner            String    @default("own") // own = cuenta propia | client = de otra persona (se ve aparte, en Clientes)
+  clientName       String? // nombre del cliente, si es de otra persona
   whatsapp         String? // número del cliente (sólo dígitos, con código de país): recibe lo pendiente y aprueba respondiendo
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt

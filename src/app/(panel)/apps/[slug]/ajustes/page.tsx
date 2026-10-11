@@ -1,5 +1,6 @@
 import { suggestStylesAction, updateSettings } from '@/app/actions'
 import { SubmitButton } from '@/components/client'
+import { OwnerFields } from '@/components/OwnerFields'
 import { ImageModelPicker, TextModelPicker } from '@/components/ModelPicker'
 import { spentThisMonth } from '@/lib/budget'
 import { db } from '@/lib/db'
@@ -52,6 +53,7 @@ export default async function Settings({ params, searchParams }: PageProps<'/app
             <input name="branch" defaultValue={app.branch} />
           </label>
         </div>
+        <OwnerFields owner={app.owner} clientName={app.clientName} />
       </section>
       <section className="card stack">
         <h2>Modelos de OpenRouter</h2>

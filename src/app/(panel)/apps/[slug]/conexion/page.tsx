@@ -1,7 +1,7 @@
 import { ErrorsTable, StepsList } from '@/components/GuideBlocks'
 import { ConnectionPanel } from '@/components/panels'
 import { db } from '@/lib/db'
-import { STEPS_PER_APP } from '@/lib/guide'
+import { STEPS_CLIENT, STEPS_PER_APP } from '@/lib/guide'
 
 export default async function ConnectionPage({ params }: PageProps<'/apps/[slug]/conexion'>) {
   const { slug } = await params
@@ -21,6 +21,14 @@ export default async function ConnectionPage({ params }: PageProps<'/apps/[slug]
         </p>
         <ConnectionPanel slug={slug} current={{ igUserId: app.igUserId, adAccountId: app.adAccountId }} />
       </section>
+      {app.owner === 'client' && (
+        <details className="card" open={!app.igUserId}>
+          <summary>Cuenta de un cliente: cómo te la comparte (C.1 a C.6)</summary>
+          <div style={{ marginTop: 16 }}>
+            <StepsList steps={STEPS_CLIENT} />
+          </div>
+        </details>
+      )}
       <details className="card">
         <summary>Paso a paso para esta app (B.1 a B.8)</summary>
         <div style={{ marginTop: 16 }}>

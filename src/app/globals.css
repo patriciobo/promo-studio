@@ -299,3 +299,6 @@ details summary { cursor: pointer; font-weight: 560; }
 .segmented button { background: transparent; border: 0; padding: 7px 14px; font: inherit; font-size: 14px; color: inherit; cursor: pointer; }
 .segmented button + button { border-left: 1px solid var(--border-strong); }
 .segmented button.on { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+
+/* Barra lateral: el nombre del cliente debajo de su app */
+.side-app { display: grid; line-height: 1.25; }

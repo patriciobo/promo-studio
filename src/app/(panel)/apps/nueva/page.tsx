@@ -1,17 +1,20 @@
 import { createApp } from '@/app/actions'
 import { SubmitButton } from '@/components/client'
+import { OwnerFields } from '@/components/OwnerFields'
 import { ImageModelPicker } from '@/components/ModelPicker'
 import { imagesPerMonth } from '@/lib/models'
 import { listSamples } from '@/lib/style-samples'
 import { imageModels } from '@/lib/openrouter'
 
-export default async function NewApp() {
+export default async function NewApp({ searchParams }: PageProps<'/apps/nueva'>) {
+  const { de } = await searchParams
+  const client = de === 'cliente'
   const images = await imageModels().catch(() => [])
   return (
     <>
       <div className="page-head">
         <div>
-          <h1>Conectar app</h1>
+          <h1>{client ? 'Conectar cuenta de un cliente' : 'Conectar app'}</h1>
           <p>Paso 1 de 3: el repositorio. Después el asistente arma el promo.yaml y conectás la cuenta de Instagram.</p>
         </div>
       </div>
@@ -21,6 +24,7 @@ export default async function NewApp() {
           <input name="repo" required placeholder="https://github.com/usuario/mi-app" />
           <span className="hint">El token de GitHub (Configuración) tiene que tener acceso a este repo.</span>
         </label>
+        <OwnerFields owner={client ? 'client' : 'own'} clientName={null} />
         <div className="form-grid">
           <label>
             Nombre
