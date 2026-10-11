@@ -98,7 +98,7 @@ export const STEPS_ONCE: GuideStep[] = [
           'En "Permisos y funciones", ads_management y ads_read tienen que figurar como agregados; si no, "Agregar".',
         ],
       },
-      'La app puede quedar en modo "Desarrollo": como sólo usa cuentas de tu propio portfolio, no hace falta la revisión de apps (App Review). Para cuentas de clientes, ver C.6.',
+      'La app puede quedar en modo "Desarrollo": como sólo usa cuentas de tu propio portfolio, no hace falta la revisión de apps (App Review). Para cuentas de clientes, ver C.1.',
     ],
   },
   {
@@ -283,111 +283,92 @@ export const STEPS_PER_APP: GuideStep[] = [
 ]
 
 // Cuentas de otras personas: el cliente sigue siendo dueño de su Instagram, su página y su cuenta publicitaria,
-// y le da acceso a tu portfolio como socio. El usuario de sistema y el token son los mismos de los pasos A.
+// y le da acceso a tu portfolio de clientes (separado del tuyo), que tiene su propia app, usuario de sistema y token.
 export const STEPS_CLIENT: GuideStep[] = [
   {
     id: 'C.1',
-    title: 'Lo que tiene que tener el cliente',
+    title: 'Una sola vez: el portfolio de clientes',
     items: [
-      'Su cuenta de Instagram de tipo Empresa (B.1), su página de Facebook (B.2) y las dos vinculadas (B.3). Lo hace el cliente con sus cuentas, o vos con él al lado.',
+      'Un portfolio comercial aparte para clientes (A.1), con el nombre que van a ver en las solicitudes (por ejemplo, el de tu empresa).',
       {
-        text: 'Su propio portfolio comercial con la página y la cuenta de Instagram adentro (B.4, pero en el portfolio del cliente).',
+        text: 'Una app de Meta de ese portfolio. Una app es de un solo portfolio: la de tus apps propias no se puede usar acá ("no es de tu propiedad").',
         steps: [
-          'Si no tiene: business.facebook.com → "Crear una cuenta" con el nombre de su negocio, su nombre y su email (A.1, pero con los datos del cliente).',
-          'business.facebook.com/settings del cliente → "Cuentas" → "Páginas" → "+ Agregar" → "Agregar una página" → su página.',
-          '"Cuentas" → "Cuentas de Instagram" → "+ Agregar" → iniciar sesión con su Instagram.',
+          'developers.facebook.com → "Crear app" → nombre (por ejemplo "Promo Studio Clientes") → los mismos casos de uso de A.3.',
+          'En "Portfolio comercial" elegí el de clientes.',
+          'Casos de uso → Instagram → "Personalizar" → "Configuración de API con inicio de sesión con Facebook" → agregá los permisos de A.3 (y los de anuncios).',
         ],
       },
-      'Para anuncios: una cuenta publicitaria en su portfolio con su medio de pago (A.2, en el portfolio del cliente). Así los anuncios se cobran a su tarjeta, no a la tuya.',
+      {
+        text: 'Un usuario de sistema del portfolio de clientes con la app asignada, y su token.',
+        steps: [
+          'Portfolio de clientes → "Usuarios" → "Usuarios del sistema" → "+ Agregar" → "promo-studio-clientes", rol Administrador.',
+          '"Asignar activos" → "Apps" → la app nueva → "Administrar app" / "Control total". Sin esto, al generar el token dice "No hay permisos disponibles".',
+          '"Generar nuevo token" → la app nueva → vencimiento "Nunca" → los permisos de A.5 → copialo.',
+          'Promo Studio → "Configuración" → "Token de Meta para clientes" → pegalo → "Guardar claves".',
+        ],
+      },
+      {
+        text: 'Acceso avanzado para esa app: Meta lo exige para publicar en cuentas que no son tuyas. Tarda días: empezalo antes del primer cliente.',
+        steps: [
+          'Verificación del negocio del portfolio de clientes: business.facebook.com/settings → "Centro de seguridad" → "Verificación del negocio".',
+          'developers.facebook.com → la app → "Revisión de la app" → "Permisos y funciones" → "Acceso avanzado" para instagram_basic, instagram_content_publish, instagram_manage_insights, instagram_manage_comments, pages_show_list, pages_read_engagement, business_management, ads_management y ads_read. Por cada uno, Meta pide para qué lo usás y un video corto (elegir la cuenta en Promo Studio y publicar una prueba).',
+          'Aprobado: pasá la app de "Desarrollo" a "Activo" (Live) con el selector de arriba del panel.',
+        ],
+      },
     ],
   },
   {
     id: 'C.2',
-    title: 'Pasarle tu identificador de portfolio',
+    title: 'Lo que hace el cliente',
     items: [
-      {
-        text: 'El cliente necesita el identificador de TU portfolio para compartirte sus cuentas.',
-        steps: [
-          'business.facebook.com/settings (tu portfolio) → "Información del negocio" (Business info), o el ícono de engranaje → "Información del portfolio comercial".',
-          'Copiá el "Identificador del portfolio comercial" (Business portfolio ID): un número largo. Mandáselo al cliente.',
-        ],
-      },
+      'Mandale la guía para clientes (PDF): pasa su Instagram a Empresa, lo conecta a su página de Facebook y te manda el link de la página, su @ de Instagram, el WhatsApp para aprobar y, si hay anuncios, el número de su cuenta publicitaria.',
     ],
   },
   {
     id: 'C.3',
-    title: 'El cliente te comparte sus activos como socio',
+    title: 'Pedir el acceso (lo hacés vos) y que el cliente lo apruebe',
     items: [
       {
-        text: 'En el portfolio del cliente, tu portfolio queda como socio con acceso a la página, el Instagram y la cuenta publicitaria.',
+        text: 'Con los datos del cliente, pedí acceso desde el portfolio de clientes.',
         steps: [
-          'business.facebook.com/settings del cliente → "Usuarios" → "Socios" (Partners) → "+ Agregar" → "Dar a un socio acceso a tus activos" (Give a partner access to your assets).',
-          'Pega tu identificador del paso C.2 → "Siguiente".',
-          '"Páginas" → su página → "Control total" (todo encendido).',
-          '"Cuentas de Instagram" → su cuenta → "Control total".',
-          '"Cuentas publicitarias" → su cuenta → "Administrar campañas" (o "Control total") → "Guardar cambios".',
-          'Si la cuenta publicitaria no aparece ahí: "Cuentas" → "Cuentas publicitarias" → su cuenta → "Asignar socio" (Assign partner) → tu identificador.',
+          'business.facebook.com/settings (portfolio de clientes) → "Cuentas" → "Páginas" → "+ Agregar" → "Solicitar acceso a una página" → el link de su página → permisos de control total (incluido Instagram, si lo ofrece) → "Solicitar acceso".',
+          'Si hay anuncios: "Cuentas publicitarias" → "+ Agregar" → "Solicitar acceso a una cuenta publicitaria" → su número → "Administrar campañas".',
+          'Avisale al cliente que la mandaste: la aprueba desde la notificación de Facebook o en business.facebook.com → "Configuración" → "Solicitudes".',
         ],
       },
-      {
-        text: 'Al revés también se puede: pedís acceso vos y el cliente lo aprueba.',
-        steps: [
-          'Tu portfolio → "Cuentas" → "Páginas" → "+ Agregar" → "Solicitar acceso a una página" → nombre o URL de su página → permisos de control total.',
-          'Lo mismo en "Cuentas publicitarias" → "+ Agregar" → "Solicitar acceso a una cuenta publicitaria" → el identificador de su cuenta.',
-          'El cliente lo aprueba en su portfolio ("Solicitudes" o la notificación que le llega).',
-        ],
-      },
-      'Verificá en TU portfolio, "Cuentas" → "Páginas" / "Cuentas de Instagram" / "Cuentas publicitarias", que aparezcan sus activos marcados como compartidos por un socio.',
+      'Si no le llega o su Instagram no aparece después: plan B del PDF. El cliente te da acceso como socio con el identificador del portfolio de clientes ("Usuarios" → "Socios" → "Dar a un socio acceso a tus activos"), marcando página, Instagram y cuenta publicitaria.',
+      'Verificá en el portfolio de clientes ("Cuentas" → "Páginas" / "Cuentas de Instagram" / "Cuentas publicitarias") que aparezcan sus activos.',
     ],
   },
   {
     id: 'C.4',
-    title: 'Instagram autorizado en su cuenta publicitaria',
+    title: 'Asignarlos al usuario de sistema de clientes',
     items: [
       {
-        text: 'Igual que B.6, pero en el portfolio del cliente (el dueño de las dos cuentas). Sin esto no se pueden crear anuncios con sus posts.',
+        text: 'Igual que B.5, en el portfolio de clientes y con "promo-studio-clientes".',
         steps: [
-          'business.facebook.com/settings del cliente → "Cuentas" → "Cuentas de Instagram" → su cuenta → "Activos conectados" → "Conectar activos" → "Cuentas publicitarias" → su cuenta → "Agregar".',
+          'Portfolio de clientes → "Usuarios del sistema" → "promo-studio-clientes" → "Asignar activos".',
+          '"Páginas" → la del cliente → "Control total". Repetí con "Cuentas de Instagram" y "Cuentas publicitarias".',
+          'No hace falta otro token: el de C.1 llega a cada cliente nuevo que asignes.',
         ],
       },
+      'Para anuncios, su Instagram tiene que estar autorizado en su cuenta publicitaria (B.6). Eso se hace en el portfolio del cliente; si al crear un anuncio da error, pedíselo o hacelo vos si te dio control total.',
     ],
   },
   {
     id: 'C.5',
-    title: 'Asignarlos a tu usuario de sistema',
+    title: 'Conectarla en Promo Studio',
     items: [
-      {
-        text: 'Igual que B.5: los activos compartidos aparecen en tu portfolio y se asignan a "promo-studio".',
-        steps: [
-          'Tu portfolio → "Usuarios" → "Usuarios del sistema" → "promo-studio" → "Asignar activos".',
-          '"Páginas" → la página del cliente → "Control total" → "Asignar activos". Repetí con "Cuentas de Instagram" y "Cuentas publicitarias".',
-          'No hace falta otro token: el de A.5 llega a los activos nuevos.',
-        ],
-      },
-    ],
-  },
-  {
-    id: 'C.6',
-    title: 'Elegir la cuenta, probar y, si Meta lo pide, acceso avanzado',
-    items: [
-      'En Promo Studio: "+ Conectar cuenta de cliente" (o, en Ajustes de la app, "De un cliente") y después B.7 y B.8 como siempre.',
-      {
-        text: 'Si "Buscar cuentas" no muestra la cuenta del cliente o "Probar conexión" da error 10 o 200 de permisos, la app de Meta necesita acceso avanzado: Meta lo exige para cuentas que no son de tu portfolio.',
-        steps: [
-          'Verificá tu negocio: business.facebook.com/settings → "Centro de seguridad" (Security center) → "Verificación del negocio" → datos y documentación de tu negocio. Tarda unos días.',
-          'developers.facebook.com → tu app → "Revisión de la app" (App review) → "Permisos y funciones": pedí "Acceso avanzado" para instagram_basic, instagram_content_publish, instagram_manage_insights, instagram_manage_comments, pages_show_list, pages_read_engagement, business_management, ads_management y ads_read.',
-          'Meta pide, por permiso, para qué lo usás y un video corto mostrando el uso (por ejemplo: elegir la cuenta en Promo Studio y publicar un post de prueba).',
-          'Cuando lo aprueben, pasá la app de "Desarrollo" a "Activo" (Live) con el selector de arriba del panel de la app.',
-        ],
-      },
-      'Antes de publicar, acordá con el cliente cómo aprueba: cargá su WhatsApp en Ajustes de la app y dejá la simulación activa hasta la primera prueba con una story.',
+      '"+ Conectar cuenta de cliente" (o, en Ajustes de una app, "De un cliente"): esas apps usan el token para clientes.',
+      'Ajustes: el WhatsApp del cliente para que apruebe, y la simulación activa hasta la primera prueba con una story.',
+      'Pestaña "Instagram" → "Buscar cuentas" → elegí la del cliente → "Probar conexión" (B.7 y B.8). Si no aparece o da error 10 o 200: revisá C.3 y C.4, y que el acceso avanzado de C.1 esté aprobado.',
     ],
   },
 ]
 
 export const ERRORS: [string, string, string][] = [
   ['"Buscar cuentas" no muestra la cuenta', 'No es Empresa, no está vinculada a la página o la página no está asignada al usuario de sistema', 'Repetir B.1, B.3 y B.5'],
-  ['Cuenta de un cliente: no aparece o da 10 / 200', 'El cliente no compartió los activos, no están asignados al usuario de sistema o la app de Meta no tiene acceso avanzado', 'Repetir C.3 y C.5; si sigue, C.6 (verificación del negocio y revisión de la app)'],
+  ['Cuenta de un cliente: no aparece o da 10 / 200', 'El cliente no compartió los activos, no están asignados al usuario de sistema o la app de Meta no tiene acceso avanzado', 'Repetir C.3 y C.4; si sigue, el acceso avanzado de C.1 (verificación del negocio y revisión de la app)'],
   ['190 OAuthException / token inválido', 'Token revocado, cambio de contraseña o usuario de sistema eliminado', 'Generar un token nuevo (A.5) y cargarlo'],
   ['10 o 200: permiso denegado', 'Falta un permiso o un activo sin asignar', 'Regenerar el token con todos los permisos; revisar B.5'],
   ['Stories: error de tipo de cuenta', 'La cuenta es Creador', 'Cambiarla a Empresa (B.1)'],

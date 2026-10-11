@@ -22,7 +22,7 @@ export default function Guide() {
         <div className="stack-sm">
           <h2>C. Cuentas de otras personas (clientes)</h2>
           <p className="small muted">
-            El cliente sigue siendo dueño de su Instagram, su página y su cuenta publicitaria, y le da acceso a tu portfolio como socio. Se usa el mismo usuario de sistema y el mismo token de los pasos A; en Promo Studio sus apps aparecen aparte, en Clientes.
+            El cliente sigue siendo dueño de su Instagram, su página y su cuenta publicitaria y le da acceso a tu portfolio de clientes, que tiene su propia app de Meta, usuario de sistema y token. En Promo Studio sus apps aparecen aparte, en Clientes, y usan el token para clientes.
           </p>
         </div>
         <StepsList steps={STEPS_CLIENT} />

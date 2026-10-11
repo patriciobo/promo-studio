@@ -86,7 +86,7 @@ export function ConnectionPanel({ slug, current }: { slug: string; current: { ig
   return (
     <div className="stack">
       <div className="row">
-        <button type="button" className="btn" disabled={pending} onClick={() => start(async () => setFound(await discover()))}>
+        <button type="button" className="btn" disabled={pending} onClick={() => start(async () => setFound(await discover(slug)))}>
           Buscar cuentas
         </button>
         <button type="button" className="btn" disabled={pending} onClick={() => start(async () => setChecks(await runHealthCheck(slug, false)))}>

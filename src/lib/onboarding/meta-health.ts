@@ -19,9 +19,9 @@ export async function healthCheck(appId: string, opts: { createTestContainer?: b
 
   let t: string
   try {
-    t = await token()
+    t = await token(app)
   } catch {
-    add({ id: 'token', label: 'Token de Meta cargado', ok: false, detail: 'No hay token.', fix: 'Paso A.5: generá el token del usuario de sistema y cargalo en Configuración → Claves.' })
+    add({ id: 'token', label: 'Token de Meta cargado', ok: false, detail: 'No hay token.', fix: app.owner === 'client' ? 'Generá el token del usuario de sistema del portfolio de clientes y cargalo en Configuración → Claves → Token de Meta para clientes.' : 'Paso A.5: generá el token del usuario de sistema y cargalo en Configuración → Claves.' })
     return checks
   }
   const g = graph(t)

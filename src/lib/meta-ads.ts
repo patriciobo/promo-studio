@@ -140,7 +140,7 @@ type Ctx = { g: GraphClient; act: string; sim: boolean }
 async function context(app: App): Promise<Ctx> {
   if (!app.adAccountId || !app.pageId || !app.igUserId) throw new Error('Falta conectar Instagram, la página y la cuenta publicitaria (pestaña Instagram)')
   const sim = app.dryRun
-  return { g: sim ? dryGraph((l) => console.log(`[simulación anuncios ${app.slug}] ${l}`)) : graph(await token()), act: actId(app.adAccountId), sim }
+  return { g: sim ? dryGraph((l) => console.log(`[simulación anuncios ${app.slug}] ${l}`)) : graph(await token(app)), act: actId(app.adAccountId), sim }
 }
 
 /** Moneda y presupuesto mínimo diario (en centavos) de la cuenta publicitaria. */

@@ -23,7 +23,7 @@ export default async function ConnectionPage({ params }: PageProps<'/apps/[slug]
       </section>
       {app.owner === 'client' && (
         <details className="card" open={!app.igUserId}>
-          <summary>Cuenta de un cliente: cómo te la comparte (C.1 a C.6)</summary>
+          <summary>Cuenta de un cliente: cómo te la comparte (C.1 a C.5)</summary>
           <div style={{ marginTop: 16 }}>
             <StepsList steps={STEPS_CLIENT} />
           </div>

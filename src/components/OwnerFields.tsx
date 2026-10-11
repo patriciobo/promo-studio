@@ -26,7 +26,7 @@ export function OwnerFields({ owner, clientName }: { owner: string; clientName: 
       )}
       {client && (
         <span className="xs muted">
-          La cuenta sigue siendo del cliente: te la comparte como socio. Pasos en la <Link href="/guia#clientes">Guía de conexión, sección C</Link>.
+          La cuenta sigue siendo del cliente: te da acceso a tu portfolio de clientes y la app usa el token para clientes. Pasos en la <Link href="/guia#clientes">Guía de conexión, sección C</Link>.
         </span>
       )}
     </fieldset>

@@ -8,7 +8,8 @@ import { webhookUrl } from '@/lib/whatsapp'
 import { usd } from '@/lib/view'
 
 const FIELDS: { key: SecretKey; label: string; hint: string }[] = [
-  { key: 'META_TOKEN', label: 'Token de Meta (usuario de sistema)', hint: 'Paso A.5 de la guía. No vence.' },
+  { key: 'META_TOKEN', label: 'Token de Meta (usuario de sistema)', hint: 'Paso A.5 de la guía. No vence. Lo usan tus apps.' },
+  { key: 'META_TOKEN_CLIENTS', label: 'Token de Meta para clientes', hint: 'El del usuario de sistema del portfolio de clientes (guía, sección C). Lo usan las apps marcadas "De un cliente"; si está vacío, usan el de arriba.' },
   { key: 'OPENROUTER_API_KEY', label: 'API key de OpenRouter', hint: 'openrouter.ai/keys — poné un límite de crédito a la key.' },
   { key: 'GITHUB_TOKEN', label: 'Token de GitHub (fine-grained)', hint: 'Lectura de Contents y Metadata en los repos; para abrir PRs, escritura en Contents y Pull requests.' },
   { key: 'WAHA_URL', label: 'WAHA: URL', hint: 'WhatsApp (opcional): aprobación de los clientes y avisos, p. ej. http://waha:3000' },

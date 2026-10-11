@@ -11,9 +11,14 @@ export interface GraphClient {
   post<T = Record<string, unknown>>(path: string, params?: Params): Promise<T>
 }
 
-export async function token() {
-  const t = await getSecret('META_TOKEN')
-  if (!t) throw new MetaError(190, undefined, 'Falta el token de Meta (Configuración → Claves).', 'token')
+/**
+ * Token del usuario de sistema. Las apps de clientes usan el del portfolio de clientes (META_TOKEN_CLIENTS);
+ * si no está cargado, el principal (por si los clientes comparten con el portfolio principal).
+ */
+export async function token(app?: { owner?: string | null }) {
+  const client = app?.owner === 'client'
+  const t = (client ? await getSecret('META_TOKEN_CLIENTS') : null) ?? (await getSecret('META_TOKEN'))
+  if (!t) throw new MetaError(190, undefined, `Falta el token de Meta${client ? ' para clientes' : ''} (Configuración → Claves).`, 'token')
   return t
 }
 

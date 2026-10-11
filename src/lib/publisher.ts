@@ -24,7 +24,7 @@ export function publishInput(post: Post & { assets: Asset[] }, igUserId: string)
 
 export async function publishDue(now = new Date(), log: (s: string) => void = console.log) {
   const due = await db.post.findMany({ where: { status: 'APPROVED', scheduledAt: { lte: now }, adOnly: false }, include: { app: true, assets: true }, orderBy: { scheduledAt: 'asc' }, take: 10 })
-  let realToken: string | null = null
+  const tokens = new Map<string, string>() // uno por portfolio: propio o de clientes
   for (const post of due) {
     const app = post.app
     if (app.paused) continue
@@ -35,8 +35,8 @@ export async function publishDue(now = new Date(), log: (s: string) => void = co
       if (app.dryRun) g = dryGraph((l) => log(`[simulación ${app.slug}] ${l}`))
       else {
         if (!app.igUserId) throw new Error('La app no tiene cuenta de Instagram conectada')
-        realToken ??= await token()
-        g = graph(realToken)
+        if (!tokens.has(app.owner)) tokens.set(app.owner, await token(app))
+        g = graph(tokens.get(app.owner)!)
       }
       const r = await publish(g, publishInput(post, app.igUserId ?? 'sim'), app.dryRun ? { tries: 1, everyMs: 0 } : undefined)
       await db.post.update({ where: { id: post.id }, data: { status: 'PUBLISHED', igMediaId: app.dryRun ? null : r.mediaId, permalink: app.dryRun ? null : r.permalink, publishedAt: new Date(), error: app.dryRun ? 'Simulación: no se publicó en Instagram' : null } })
@@ -63,9 +63,11 @@ export async function collectInsights(now = new Date()) {
     include: { insights: true, app: true },
   })
   if (!posts.length) return 0
-  const g = graph(await token())
+  const graphs = new Map<string, GraphClient>()
   let n = 0
   for (const p of posts) {
+    if (!graphs.has(p.app.owner)) graphs.set(p.app.owner, graph(await token(p.app)))
+    const g = graphs.get(p.app.owner)!
     const age = (now.getTime() - p.publishedAt!.getTime()) / 3600e3
     for (const h of SNAPSHOTS) {
       if (age < h || p.insights.some((s) => s.hoursAfter === h)) continue

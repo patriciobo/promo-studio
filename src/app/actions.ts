@@ -327,10 +327,11 @@ export async function retryPost(postId: string) {
 
 export type DiscoverResult = { ok: true; accounts: Awaited<ReturnType<typeof discoverAccounts>>; ads: AdAccount[]; adErrors: string[] } | { ok: false; title: string; cause: string; fix: string }
 
-export async function discover(): Promise<DiscoverResult> {
+export async function discover(slug: string): Promise<DiscoverResult> {
   await requireUser()
   try {
-    const g = graph(await token())
+    const app = await db.app.findUniqueOrThrow({ where: { slug }, select: { owner: true } })
+    const g = graph(await token(app))
     const [accounts, ads] = await Promise.all([discoverAccounts(g), adAccounts(g)])
     return { ok: true, accounts, ads: ads.accounts, adErrors: ads.errors }
   } catch (e) {
@@ -579,7 +580,7 @@ export async function estimateAction(slug: string, t: Targeting, placements: str
 
 export async function saveSecrets(f: FormData) {
   await requireUser()
-  for (const k of ['META_TOKEN', 'OPENROUTER_API_KEY', 'GITHUB_TOKEN', 'WAHA_URL', 'WAHA_API_KEY', 'WAHA_CHAT_ID'] as SecretKey[]) {
+  for (const k of ['META_TOKEN', 'META_TOKEN_CLIENTS', 'OPENROUTER_API_KEY', 'GITHUB_TOKEN', 'WAHA_URL', 'WAHA_API_KEY', 'WAHA_CHAT_ID'] as SecretKey[]) {
     const v = str(f, k)
     if (v === '__borrar__') await setSecret(k, '')
     else if (v) await setSecret(k, v)
