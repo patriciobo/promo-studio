@@ -31,6 +31,7 @@ import { mediaPath, saveMedia } from '@/lib/media'
 import { TEXT_MODELS } from '@/lib/models'
 import { digits, sendForReview } from '@/lib/whatsapp'
 import { starterRedoable } from '@/lib/starter'
+import { MAX_CAROUSEL, parsePhotoMode } from '@/lib/photos'
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '').replace(/\r\n/g, '\n').trim()
 
@@ -77,6 +78,8 @@ export async function updateSettings(slug: string, f: FormData) {
       dryRun: f.get('dryRun') === 'on',
       paused: f.get('paused') === 'on',
       whatsapp: digits(str(f, 'whatsapp')) || null,
+      photoMode: parsePhotoMode(str(f, 'photoMode')) ?? 'fondo',
+      starterDismissed: f.get('offerStarter') !== 'on',
       ...ownerOf(f),
     },
   })
@@ -207,6 +210,13 @@ export async function generateStarter(slug: string, f: FormData) {
   redirect(`/apps/${slug}?aviso=kit-generando`)
 }
 
+/** No ofrecer el kit inicial: la cuenta ya tiene contenido. Se vuelve a activar desde Ajustes. */
+export async function dismissStarter(slug: string) {
+  await requireUser()
+  await db.app.update({ where: { slug }, data: { starterDismissed: true } })
+  revalidatePath(`/apps/${slug}`)
+}
+
 // --- A pedido ----------------------------------------------------------------
 
 const POST_TYPES: PostType[] = ['IMAGE', 'CAROUSEL', 'REEL', 'STORY']
@@ -214,14 +224,19 @@ const POST_TYPES: PostType[] = ['IMAGE', 'CAROUSEL', 'REEL', 'STORY']
 export async function createPostNow(slug: string, f: FormData) {
   await requireUser()
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
-  const type = str(f, 'type') as PostType
+  // Carrusel de fotos: un carrusel con una diapositiva por imagen elegida, en orden.
+  const photoSet = str(f, 'type') === 'PHOTOS'
+  const type = (photoSet ? 'CAROUSEL' : str(f, 'type')) as PostType
   if (!POST_TYPES.includes(type) || !app.manifest) return
-  const imageIds = await requestImages(app, f)
+  const all = await requestImages(app, f)
+  if (photoSet && all.length < 2) redirect(`/apps/${slug}/crear?aviso=faltan-fotos`)
+  const imageIds = photoSet ? all.slice(0, MAX_CAROUSEL) : all
   // Con imágenes el tema es opcional: el post cuenta lo que muestran.
   const topic = str(f, 'topic').slice(0, 500) || (imageIds.length ? 'Lo que muestran las imágenes elegidas' : '')
   if (!topic) return
-  const post = await db.post.create({ data: { appId: app.id, type, status: 'DRAFT', hook: topic.slice(0, 200), pillar: str(f, 'pillar') || null } })
-  await enqueue(QUEUES.createPost, { postId: post.id, topic, image: parseImageChoice(str(f, 'imageChoice'), str(f, 'imageKind')), imageIds })
+  const post = await db.post.create({ data: { appId: app.id, type, status: 'DRAFT', hook: topic.slice(0, 200), pillar: str(f, 'pillar') || null, photoMode: parsePhotoMode(str(f, 'photoMode')) ?? null } })
+  await enqueue(QUEUES.createPost, { postId: post.id, topic, image: parseImageChoice(str(f, 'imageChoice'), str(f, 'imageKind')), imageIds, photoSet })
+  if (photoSet && all.length > MAX_CAROUSEL) redirect(`/apps/${slug}/crear?aviso=fotos-recortadas&n=${all.length}`)
   revalidatePath(`/apps/${slug}`, 'layout')
 }
 
@@ -283,7 +298,7 @@ export async function savePost(postId: string, f: FormData) {
   const before = await db.post.findUniqueOrThrow({ where: { id: postId }, select: { status: true, waNumber: true } })
   // Si el cliente ya la vio y sigue en revisión, al terminar de renderizar se le manda de nuevo con otro número.
   const resend = before.status === 'PENDING_REVIEW' && before.waNumber !== null
-  const post = await db.post.update({ where: { id: postId }, data: { caption: str(f, 'caption'), altText: str(f, 'altText'), slides, imagePrompt: str(f, 'imagePrompt') || undefined, ...(resend ? { waNumber: null, error: null } : {}) }, include: { app: true } })
+  const post = await db.post.update({ where: { id: postId }, data: { caption: str(f, 'caption'), altText: str(f, 'altText'), slides, imagePrompt: str(f, 'imagePrompt') || undefined, photoMode: f.has('photoMode') ? (parsePhotoMode(str(f, 'photoMode')) ?? null) : undefined, ...(resend ? { waNumber: null, error: null } : {}) }, include: { app: true } })
   await enqueue(QUEUES.renderPost, { postId, regenerateImage: f.get('regenerateImage') === 'on', image: parseImageChoice(str(f, 'imageChoice'), str(f, 'imageKind')) })
   revalidatePath(`/apps/${post.app.slug}/revision`)
 }

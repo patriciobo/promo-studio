@@ -23,6 +23,7 @@ import { buildStylePrompt, cleanSuggestions } from '../style-suggest'
 import { allItems, parseSampleItems } from '../style-samples'
 import { digits, parseReply } from '../whatsapp'
 import { localDay, starterRedoable, starterSlots, STARTER_TOPICS } from '../starter'
+import { MAX_CAROUSEL, parsePhotoMode, photoSetSlides, photoTreatment } from '../photos'
 
 const YAML = `
 name: Mi Tenis
@@ -287,6 +288,32 @@ describe('planificación', () => {
     const none = buildPlanPrompt(m, slots, { feed: [], texts: [], releases: [], recent: [], bestPillars: [] })
     expect(JSON.parse(none.user).appImages).toBeUndefined()
     expect(none.system).not.toMatch(/imageId/)
+  })
+  it('carrusel de fotos: una diapositiva por foto, en orden, y el texto según el tratamiento', () => {
+    const slot = { type: 'CAROUSEL' as const, day: 0, at: new Date() }
+    const images = ['a', 'b', 'c'].map((id) => ({ id, kind: 'PHOTO' as const, description: `foto ${id}`, note: null, focus: true }))
+    const p = buildPlanPrompt(m, [slot], { feed: [], texts: [], releases: [], recent: [], bestPillars: [], images, topic: 'x', photoSet: ['a', 'b', 'c'], photoMode: 'marco' })
+    expect(JSON.parse(p.user).week[0].slideRules).toMatch(/^3 slides, exactly one per focus appImage/)
+    expect(p.system).toMatch(/framed inside the design/)
+    expect(p.system).not.toMatch(/never on the last call-to-action slide/)
+    const fondo = buildPlanPrompt(m, [slot], { feed: [], texts: [], releases: [], recent: [], bestPillars: [], images, topic: 'x' })
+    expect(fondo.system).toMatch(/fills the whole slide/)
+    expect(fondo.system).toMatch(/never on the last call-to-action slide/)
+    // Sobran o faltan diapositivas: siempre una por foto, con la foto forzada.
+    expect(photoSetSlides([{ title: '1', imageId: 'z' }, { title: '2' }, { title: '3' }, { title: '4' }], ['a', 'b', 'c'], 'gancho')).toEqual([
+      { title: '1', imageId: 'a' },
+      { title: '2', imageId: 'b' },
+      { title: '3', imageId: 'c' },
+    ])
+    expect(photoSetSlides([{ title: '1' }], ['a', 'b'], 'gancho')).toEqual([{ title: '1', imageId: 'a' }, { title: 'gancho', imageId: 'b' }])
+    expect(photoSetSlides([], Array.from({ length: 14 }, (_, i) => String(i)), 'g')).toHaveLength(MAX_CAROUSEL)
+  })
+  it('tratamiento de las fotos: de fondo, enmarcadas o alternando desde la portada', () => {
+    expect([0, 1, 2, 3].map((i) => photoTreatment('fondo', i))).toEqual(['hero', 'hero', 'hero', 'hero'])
+    expect([0, 1, 2].map((i) => photoTreatment('marco', i))).toEqual(['frame', 'frame', 'frame'])
+    expect([0, 1, 2, 3].map((i) => photoTreatment('mezcla', i))).toEqual(['hero', 'frame', 'hero', 'frame'])
+    expect(parsePhotoMode('marco')).toBe('marco')
+    expect(parsePhotoMode('alta')).toBeUndefined()
   })
   it('descarta imageId inventados y el modo demo reparte las imágenes elegidas', () => {
     const plan = { posts: [{ slot: 0, pillar: 'x', hook: 'h', caption: 'c', hashtags: [], altText: '', imagePrompt: 'p', slides: [{ title: '1', imageId: 'a' }, { title: '2', imageId: 'inventada' }] }] }

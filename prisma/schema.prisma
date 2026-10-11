@@ -30,6 +30,8 @@ model App {
   imageModel       String?
   imageQuality     String? // low | medium | high, para modelos que cobran según la calidad
   imageKind        String? // illustration | photo (null = illustration)
+  photoMode        String   @default("fondo") // fotos elegidas: fondo | marco | mezcla
+  starterDismissed Boolean  @default(false) // no ofrecer el kit inicial (la cuenta ya tiene contenido)
   designStyle      String? // estilo de las piezas (src/lib/styles.ts; null = clasico). brand.style del promo.yaml lo pisa al cambiar el yaml
   profileKit       Json? // último kit de perfil generado (textos y rutas de las imágenes)
   profileKitDone   Json? // qué partes del kit ya se aplicaron en Instagram
@@ -108,6 +110,7 @@ model Post {
   adOnly      Boolean    @default(false) // pieza sólo para anuncios: nunca se publica en el feed
   waNumber    Int? // número con el que se le mandó al cliente por WhatsApp para aprobar (null = sin mandar)
   waSentAt    DateTime?
+  photoMode   String? // tratamiento de las fotos elegidas (null = el de la app)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 

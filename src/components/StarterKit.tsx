@@ -1,5 +1,5 @@
 // Kit de publicaciones iniciales: se ofrece en el Calendario mientras la app no tenga lotes.
-import { generateStarter } from '@/app/actions'
+import { dismissStarter, generateStarter } from '@/app/actions'
 import { db } from '@/lib/db'
 import { ILLUSTRATIONS_PER_POST, IMAGE_MODELS, imagePrice } from '@/lib/models'
 import { starterSlots, starterStart, STARTER_DAYS, STARTER_TOPICS } from '@/lib/starter'
@@ -19,7 +19,14 @@ export async function StarterKit({ app, redo = false }: { app: NonNullable<Await
   return (
     <section className="card stack">
       <div className="stack-sm">
-        <h2>{redo ? 'Generar otro kit inicial' : 'Kit de publicaciones iniciales'}</h2>
+        <div className="row between" style={{ flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          <h2>{redo ? 'Generar otro kit inicial' : 'Kit de publicaciones iniciales'}</h2>
+          <form action={dismissStarter.bind(null, app.slug)}>
+            <SubmitButton className="btn sm" pendingText="Ocultando…">
+              No hace falta: la cuenta ya tiene contenido
+            </SubmitButton>
+          </form>
+        </div>
         {redo && <p className="notice small">El kit anterior quedó rechazado o falló entero. Al generar el nuevo se vuelve a leer el repo (con lo que hayas cambiado) y se borra el anterior con sus piezas.</p>}
         <p className="small">
           Antes del ritmo semanal: 9 publicaciones que presentan el negocio. Llenan las 3 primeras filas del perfil, así quien llega entiende en segundos qué es, para quién y cómo empezar, y le muestran a Instagram de qué

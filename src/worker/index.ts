@@ -90,11 +90,11 @@ async function main() {
     }
   })
 
-  type CreateJob = { postId: string; topic: string; image?: ImageChoice; imageIds?: string[] }
+  type CreateJob = { postId: string; topic: string; image?: ImageChoice; imageIds?: string[]; photoSet?: boolean }
   await boss.work<CreateJob>(QUEUES.createPost, async (jobs: Job<CreateJob>[]) => {
     for (const j of jobs) {
       console.log(`[a pedido] ${j.data.postId}: ${j.data.topic}`)
-      await createOnDemand(j.data.postId, j.data.topic, j.data.image, j.data.imageIds)
+      await createOnDemand(j.data.postId, j.data.topic, j.data.image, j.data.imageIds, j.data.photoSet)
       await closeBrowser()
     }
   })

@@ -1,6 +1,7 @@
 import { approveAll, publishNow, reschedulePost, savePost, sendReviewAction, setPostStatus } from '@/app/actions'
 import { ConfirmButton, SubmitButton } from '@/components/client'
 import { ModelSelect } from '@/components/ModelSelect'
+import { PhotoModePicker } from '@/components/PhotoModePicker'
 import { PostMeta, PostThumbs } from '@/components/PostPreview'
 import { db } from '@/lib/db'
 import { toLocalInput } from '@/lib/schedule'
@@ -132,6 +133,7 @@ export default async function Review({ params, searchParams }: PageProps<'/apps/
               Prompt de la imagen
               <textarea name="imagePrompt" defaultValue={p.imagePrompt ?? ''} rows={3} />
             </label>
+            {((p.slides as { imageId?: string | null }[] | null) ?? []).some((s) => s.imageId) && <PhotoModePicker current={p.photoMode} inherit={app.photoMode} legend="Tus fotos en esta publicación (cambiarlo no gasta: sólo se vuelve a armar)" />}
             <label className="check">
               <input type="checkbox" name="regenerateImage" /> Generar una imagen nueva (consume crédito de OpenRouter)
             </label>

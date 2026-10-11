@@ -302,3 +302,16 @@ details summary { cursor: pointer; font-weight: 560; }
 
 /* Barra lateral: el nombre del cliente debajo de su app */
 .side-app { display: grid; line-height: 1.25; }
+
+/* Tratamiento de las fotos elegidas: opciones con boceto */
+.photo-modes { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.photo-mode { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; font-weight: 400; }
+.photo-mode:has(input:checked) { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.photo-mode input { position: absolute; opacity: 0; pointer-events: none; }
+.photo-mock { position: relative; width: 44px; height: 55px; border-radius: 4px; overflow: hidden; background: #f3efe6; border: 1px solid var(--border-strong); display: block; flex: none; }
+.photo-mock .ph { position: absolute; inset: 0; background: radial-gradient(circle at 70% 28%, #ffe7a8 0 12%, transparent 13%), linear-gradient(160deg, #8fb6cf 0%, #6f9a7c 55%, #4f6b52 100%); }
+.photo-mock .txt { position: absolute; left: 5px; right: 5px; bottom: 5px; display: grid; gap: 3px; }
+.photo-mock .txt i { display: block; height: 4px; border-radius: 2px; background: #fff; }
+.photo-mock .txt i + i { width: 65%; opacity: .8; }
+.photo-mock.frame .ph { inset: 5px 5px auto; height: 28px; border-radius: 2px; }
+.photo-mock.frame .txt i { background: #2b2722; }

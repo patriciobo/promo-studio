@@ -54,14 +54,15 @@ export type PromptImage = { id: string; kind: AppImageKind; description: string 
  * Imágenes para planificar: las elegidas (`focusIds`, se le muestran al modelo) y las de la biblioteca (sólo texto).
  * Las que todavía no tienen descripción se describen ahora.
  */
-export async function imagesForPlan(appId: string, focusIds: string[] = []) {
+/** `shown`: cuántas de las elegidas se le adjuntan al modelo para que las vea (el carrusel de fotos las manda todas). */
+export async function imagesForPlan(appId: string, focusIds: string[] = [], shown = FOCUS_SHOWN) {
   const focus = focusIds.length ? inOrder(focusIds, await db.appImage.findMany({ where: { appId, id: { in: focusIds } } })) : []
   const library = await db.appImage.findMany({ where: { appId, archived: false, id: { notIn: focusIds } }, orderBy: { createdAt: 'desc' }, take: LIBRARY_IN_PROMPT })
   const all = [...focus, ...library].filter((i) => existsSync(mediaPath(i.path)))
   const described = await Promise.all(all.map((i) => (i.description ? i : describeImage(i.id).catch(() => i))))
   const prompt: PromptImage[] = described.map((i) => ({ id: i.id, kind: i.kind, description: i.description, note: i.note, focus: focusIds.includes(i.id) }))
-  const shown = await Promise.all(described.filter((i) => focusIds.includes(i.id)).slice(0, FOCUS_SHOWN).map((i) => dataUri(i.path)))
-  return { prompt, shown }
+  const seen = await Promise.all(described.filter((i) => focusIds.includes(i.id)).slice(0, shown).map((i) => dataUri(i.path)))
+  return { prompt, shown: seen }
 }
 
 /** Imágenes de la app usadas por las diapositivas del post (id → tipo y data URI). Las borradas se omiten. */

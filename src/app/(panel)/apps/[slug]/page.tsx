@@ -26,9 +26,10 @@ export default async function Calendar({ params, searchParams }: PageProps<'/app
   const images = await db.appImage.findMany({ where: { appId: app.id, archived: false }, orderBy: { createdAt: 'desc' }, take: 24 })
   const nm = nextMonday().toISOString().slice(0, 10)
   const starter = await db.batch.findFirst({ where: { appId: app.id, kind: 'STARTER' }, include: { posts: { select: { status: true } } } })
-  // El kit se ofrece mientras no haya semanas generadas, y de nuevo si el anterior falló o se rechazó entero.
+  // El kit se ofrece mientras no haya semanas generadas, y de nuevo si el anterior falló o se rechazó entero;
+  // nunca si se descartó (la cuenta ya tiene contenido).
   const redo = !!starter && starterRedoable(starter)
-  const offerStarter = redo || (!starter && !batches.some((b) => b.kind === 'WEEK'))
+  const offerStarter = !app.starterDismissed && (redo || (!starter && !batches.some((b) => b.kind === 'WEEK')))
   const working = batches.some((b) => b.status === 'PLANNING' || b.status === 'GENERATING')
   const daily = (app.manifest as unknown as Manifest | null)?.daily
   const dailyPosts = daily ? await db.post.findMany({ where: { appId: app.id, dailyDate: { not: null } }, orderBy: [{ dailyDate: 'desc' }, { type: 'asc' }], take: 14, include: { assets: true } }) : []

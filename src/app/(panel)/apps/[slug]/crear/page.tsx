@@ -7,17 +7,21 @@ import { ModelSelect } from '@/components/ModelSelect'
 import { StyleReminder } from '@/components/StyleReminder'
 import { PostMeta, PostThumbs } from '@/components/PostPreview'
 import { db } from '@/lib/db'
+import { MAX_CAROUSEL } from '@/lib/photos'
+import { PhotoModePicker } from '@/components/PhotoModePicker'
 import type { Manifest } from '@/lib/manifest'
 
-const TYPES: { value: PostType; label: string; hint: string }[] = [
+const TYPES: { value: PostType | 'PHOTOS'; label: string; hint: string }[] = [
   { value: 'IMAGE', label: 'Imagen', hint: '1 pieza 4:5 para el feed' },
   { value: 'CAROUSEL', label: 'Carrusel', hint: '4 a 7 diapositivas que enseñan algo' },
+  { value: 'PHOTOS', label: 'Carrusel de fotos', hint: `una diapositiva por foto elegida, en orden, de 2 a ${MAX_CAROUSEL}` },
   { value: 'REEL', label: 'Reel', hint: 'video vertical de ~15 s' },
   { value: 'STORY', label: 'Story', hint: '1 pieza vertical, dura 24 h' },
 ]
 
-export default async function CreateNow({ params }: PageProps<'/apps/[slug]/crear'>) {
+export default async function CreateNow({ params, searchParams }: PageProps<'/apps/[slug]/crear'>) {
   const { slug } = await params
+  const { aviso, n } = await searchParams
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
   const pillars = (app.manifest as unknown as Manifest | null)?.pillars ?? []
   const posts = await db.post.findMany({ where: { appId: app.id, batchId: null, dailyDate: null, adOnly: false }, orderBy: { createdAt: 'desc' }, take: 10, include: { assets: true } })
@@ -31,6 +35,8 @@ export default async function CreateNow({ params }: PageProps<'/apps/[slug]/crea
           <h2>Crear una publicación ahora</h2>
           <p className="small muted">Elegí el tipo y el tema (o subí capturas y el post cuenta lo que muestran). Se genera en un minuto o dos, la revisás y la publicás en el momento desde Revisión. No se aprueba sola.</p>
         </div>
+        {aviso === 'faltan-fotos' && <p className="notice warn small">Para el carrusel de fotos elegí o subí al menos 2 imágenes (en “Basar en imágenes”).</p>}
+        {aviso === 'fotos-recortadas' && <p className="notice warn small">Elegiste {String(n)} fotos: el carrusel usa las primeras {MAX_CAROUSEL}. La app de Instagram deja hasta 20, pero la API con la que publicamos corta en {MAX_CAROUSEL}.</p>}
         {!app.manifest && <p className="notice bad small">Primero hace falta un promo.yaml válido: sincronizá la app.</p>}
         <form action={createPostNow.bind(null, slug)} className="stack">
           <fieldset className="stack-sm" style={{ border: 0, padding: 0, margin: 0 }}>
@@ -58,7 +64,8 @@ export default async function CreateNow({ params }: PageProps<'/apps/[slug]/crea
               </select>
             </label>
           )}
-          <ImagePicker images={images} slug={slug} hint="Por ejemplo, las pantallas de un flujo en orden para un carrusel paso a paso." />
+          <ImagePicker images={images} slug={slug} hint={`Por ejemplo, las pantallas de un flujo en orden para un carrusel paso a paso. Para el carrusel de fotos, entre 2 y ${MAX_CAROUSEL} (van en este orden: primero las que subas, en el orden del archivo, y después las marcadas, como aparecen en la grilla).`} />
+          <PhotoModePicker current={app.photoMode} legend="Cómo se muestran tus fotos (si elegís alguna)" />
           <StyleReminder app={app} />
           <div className="row">
             <ModelSelect app={app} />

@@ -1,6 +1,7 @@
 import { suggestStylesAction, updateSettings } from '@/app/actions'
 import { SubmitButton } from '@/components/client'
 import { OwnerFields } from '@/components/OwnerFields'
+import { PhotoModePicker } from '@/components/PhotoModePicker'
 import { ImageModelPicker, TextModelPicker } from '@/components/ModelPicker'
 import { spentThisMonth } from '@/lib/budget'
 import { db } from '@/lib/db'
@@ -62,6 +63,7 @@ export default async function Settings({ params, searchParams }: PageProps<'/app
           <span className="hint">Lo usa el lote semanal de cada domingo y es el que aparece preseleccionado junto a los botones de generar (Calendario, Crear ahora, Revisión), donde lo podés cambiar para esa vez. Genera una ilustración por diapositiva o escena; el texto lo pone la plantilla.</span>
           <ImageModelPicker current={app.imageModel} quality={app.imageQuality} kind={app.imageKind} imagesPerMonth={imagesPerMonth(cadence, (app.manifest as unknown as Manifest | null)?.daily)} budget={app.monthlyBudgetUsd} available={images} designStyle={app.designStyle} samples={generic} styleApp={styleApp} />
         </div>
+        <PhotoModePicker current={app.photoMode} legend="Cómo se muestran las fotos que elegís (de la biblioteca o subidas) en las piezas. Se puede cambiar en cada publicación desde Crear ahora o Revisión." />
         <div className="stack-sm">
           <strong>Modelo de texto</strong>
           <span className="hint">Planifica la semana (1 llamada por semana por app), sugiere estilos y campañas y describe las imágenes subidas.</span>
@@ -99,6 +101,9 @@ export default async function Settings({ params, searchParams }: PageProps<'/app
             Opcional. Con código de país, p. ej. 5493511234567. Lo que quede para revisar se le manda desde el número de WAHA (Configuración) y lo aprueba respondiendo: ok, ok 1 3, cambios 2: …, no 2. Lo que no se aprueba igual se aprueba solo a las horas de arriba.
           </span>
           <input name="whatsapp" type="tel" inputMode="tel" defaultValue={app.whatsapp ?? ''} placeholder="5493511234567" />
+        </label>
+        <label className="check">
+          <input type="checkbox" name="offerStarter" defaultChecked={!app.starterDismissed} /> Ofrecer el kit de publicaciones iniciales en el Calendario (desmarcalo si la cuenta ya tiene contenido)
         </label>
         <label className="check">
           <input type="checkbox" name="dryRun" defaultChecked={app.dryRun} /> Simulación: genera y &quot;publica&quot; sin tocar Instagram
