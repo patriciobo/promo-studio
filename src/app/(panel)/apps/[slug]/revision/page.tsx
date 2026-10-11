@@ -53,6 +53,7 @@ export default async function Review({ params, searchParams }: PageProps<'/apps/
             <PostMeta post={p} tz={app.timezone} />
             <PostThumbs post={p} />
             {p.error && p.status === 'PENDING_REVIEW' && <p className="notice warn small">{p.error}</p>}
+            {p.revisions > 0 && <p className="xs muted">Corregida sola {p.revisions === 1 ? 'una vez' : `${p.revisions} veces`} por pedido del cliente.</p>}
             {app.whatsapp && p.waNumber !== null && p.status === 'PENDING_REVIEW' && (
               <div className="row xs muted" style={{ gap: 8 }}>
                 <span>

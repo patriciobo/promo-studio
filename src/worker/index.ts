@@ -7,6 +7,7 @@ import { autoApprove, collectInsights, publishDue } from '@/lib/publisher'
 import { describeImage } from '@/lib/images'
 import { pushCampaign, syncActiveCampaigns } from '@/lib/meta-ads'
 import { createOnDemand, renderPost, runDaily, runWeekly, syncApp, toClient, type BatchKind } from '@/lib/pipeline'
+import { reviseFromClient } from '@/lib/revise'
 import { nextMonday } from '@/lib/schedule'
 import { closeBrowser, renderHtml } from '@/render/renderer'
 import { mediaPath, saveMedia } from '@/lib/media'
@@ -87,6 +88,14 @@ async function main() {
       // Si el cliente ya la había visto, se le manda la versión nueva.
       const p = await db.post.findUnique({ where: { id: j.data.postId }, select: { appId: true, status: true, waNumber: true } })
       if (p?.status === 'PENDING_REVIEW' && p.waNumber === null) await toClient(p.appId)
+    }
+  })
+
+  await boss.work<{ postId: string; note: string }>(QUEUES.revisePost, async (jobs: Job<{ postId: string; note: string }>[]) => {
+    for (const j of jobs) {
+      console.log(`[cambios] ${j.data.postId}: ${j.data.note}`)
+      await reviseFromClient(j.data.postId, j.data.note)
+      await closeBrowser()
     }
   })
 

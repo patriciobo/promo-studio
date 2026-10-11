@@ -80,6 +80,7 @@ export async function updateSettings(slug: string, f: FormData) {
       whatsapp: digits(str(f, 'whatsapp')) || null,
       photoMode: parsePhotoMode(str(f, 'photoMode')) ?? 'fondo',
       starterDismissed: f.get('offerStarter') !== 'on',
+      autoRevise: f.get('autoRevise') === 'on',
       ...ownerOf(f),
     },
   })

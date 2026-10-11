@@ -32,6 +32,7 @@ model App {
   imageKind        String? // illustration | photo (null = illustration)
   photoMode        String   @default("fondo") // fotos elegidas: fondo | marco | mezcla
   starterDismissed Boolean  @default(false) // no ofrecer el kit inicial (la cuenta ya tiene contenido)
+  autoRevise       Boolean  @default(true) // aplicar solos (con el modelo de texto) los cambios que pide el cliente por WhatsApp
   designStyle      String? // estilo de las piezas (src/lib/styles.ts; null = clasico). brand.style del promo.yaml lo pisa al cambiar el yaml
   profileKit       Json? // último kit de perfil generado (textos y rutas de las imágenes)
   profileKitDone   Json? // qué partes del kit ya se aplicaron en Instagram
@@ -111,6 +112,7 @@ model Post {
   waNumber    Int? // número con el que se le mandó al cliente por WhatsApp para aprobar (null = sin mandar)
   waSentAt    DateTime?
   photoMode   String? // tratamiento de las fotos elegidas (null = el de la app)
+  revisions   Int       @default(0) // correcciones automáticas por pedidos del cliente
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 

@@ -24,6 +24,7 @@ import { allItems, parseSampleItems } from '../style-samples'
 import { digits, parseReply } from '../whatsapp'
 import { localDay, starterRedoable, starterSlots, STARTER_TOPICS } from '../starter'
 import { MAX_CAROUSEL, parsePhotoMode, photoSetSlides, photoTreatment } from '../photos'
+import { applyRevision, buildRevisePrompt, reviewDue, RevisionSchema } from '../revise'
 
 const YAML = `
 name: Mi Tenis
@@ -604,5 +605,34 @@ describe('kit inicial', () => {
     expect(u.week[3].pinnedOnProfile).toBeUndefined()
     expect(u.instructions).toMatch(/STARTER KIT/)
     expect(u.instructions).toMatch(/never invent figures/)
+  })
+})
+
+describe('cambios pedidos por el cliente', () => {
+  const m = (parseManifest(YAML) as unknown as { manifest: never }).manifest
+  it('el prompt lleva el pedido, la publicación y las imágenes de la biblioteca', () => {
+    const post = { type: 'CAROUSEL' as const, caption: 'Hola', altText: 'alt', imagePrompt: 'court', slides: [{ title: 'Portada' }] }
+    const p = buildRevisePrompt(m, post, 'título más corto', [{ id: 'img1', kind: 'PHOTO', description: 'Cancha', note: null, focus: false }])
+    const u = JSON.parse(p.user)
+    expect(u.clientRequest).toBe('título más corto')
+    expect(u.post.slides).toEqual([{ title: 'Portada' }])
+    expect(u.appImages).toEqual([{ id: 'img1', kind: 'PHOTO', shows: 'Cancha' }])
+    expect(p.system).toMatch(/needsHuman/)
+    expect(p.system).toMatch(/max 10 for this CAROUSEL/)
+  })
+  it('recorta diapositivas, saca imágenes inventadas y sólo regenera las que no tienen foto', () => {
+    const rev = RevisionSchema.parse({ caption: ' Nuevo ', slides: [{ title: 'a', imageId: 'real' }, { title: 'b', imageId: 'inventada' }, { title: 'c' }], regenerate: [0, 1, 1, 7] })
+    const fix = applyRevision('CAROUSEL', rev, new Set(['real']))
+    expect(fix.caption).toBe('Nuevo')
+    expect(fix.slides.map((s) => s.imageId ?? null)).toEqual(['real', null, null])
+    expect(fix.regenerate).toEqual([1])
+    expect(applyRevision('IMAGE', rev, new Set()).slides).toHaveLength(1)
+  })
+  it('la aprobación automática no queda en el pasado aunque la fecha ya esté encima', () => {
+    const now = Date.parse('2026-10-11T12:00:00Z')
+    expect(reviewDue(48, new Date('2026-10-20T12:00:00Z'), now).toISOString()).toBe('2026-10-13T12:00:00.000Z')
+    expect(reviewDue(48, new Date('2026-10-12T00:00:00Z'), now).toISOString()).toBe('2026-10-11T23:00:00.000Z')
+    expect(reviewDue(48, new Date('2026-10-11T12:30:00Z'), now).toISOString()).toBe('2026-10-13T12:00:00.000Z')
+    expect(reviewDue(48, null, now).toISOString()).toBe('2026-10-13T12:00:00.000Z')
   })
 })

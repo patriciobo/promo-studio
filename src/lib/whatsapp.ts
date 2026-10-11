@@ -2,6 +2,7 @@
 // Cada app puede tener el WhatsApp de su cliente: ahí van las publicaciones para aprobar, y se aprueban respondiendo.
 import { createHmac } from 'node:crypto'
 import { db } from './db'
+import { enqueue, QUEUES } from './jobs'
 import { env } from './env'
 import { mediaUrl } from './media'
 import { getSecret } from './settings'
@@ -82,7 +83,7 @@ const TYPE_LABEL = { IMAGE: 'Imagen', CAROUSEL: 'Carrusel', REEL: 'Reel', STORY:
 
 const fmt = (d: Date, tz: string) => new Intl.DateTimeFormat('es-AR', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(d)
 
-export const REPLY_HELP = 'Respondé:\n• *ok* para aprobar todas\n• *ok 1 3* para aprobar sólo esas\n• *cambios 2: …* para pedir cambios en una\n• *no 2* para descartarla'
+export const REPLY_HELP = 'Respondé:\n• *ok* para aprobar todas\n• *ok 1 3* para aprobar sólo esas\n• *cambios 2: qué cambiar* (p. ej. "cambios 2: título más corto") y la corregimos\n• *no 2* para descartarla'
 
 /**
  * Manda al cliente las publicaciones en revisión que todavía no vio, numeradas a continuación de las que tiene pendientes.
@@ -191,10 +192,15 @@ export async function handleClientMessage(phone: string, text: string, notify: (
     answer = picked.length ? `🗑️ Descartada${picked.length > 1 ? 's' : ''}: ${list(picked)}.` : ''
     if (picked.length) await notify(`🗑️ ${names}: el cliente descartó ${list(picked)}${reply.note ? `: ${reply.note}` : ''}.`)
   } else {
-    // Pide cambios: queda en revisión sin aprobación automática, con el pedido a la vista en Revisión.
+    // Pide cambios: queda en revisión sin aprobación automática, con el pedido a la vista en Revisión. Si la app lo permite
+    // y el pedido dice qué cambiar, el worker lo aplica solo y se la manda de nuevo; si no, lo hace el dueño.
     await db.post.updateMany({ where: { id: { in: ids } }, data: { reviewDueAt: null, error: `El cliente pidió cambios: ${reply.note || '(sin detalle)'}` } })
-    answer = picked.length ? `✏️ Anotado el pedido de cambios en ${list(picked)}. Te la mando de nuevo cuando esté.` : ''
-    if (picked.length) await notify(`✏️ ${names}: el cliente pidió cambios en ${list(picked)}: ${reply.note || '(sin detalle)'}`)
+    const auto = reply.note ? picked.filter((p) => apps.find((a) => a.id === p.appId)?.autoRevise) : []
+    for (const p of auto) await enqueue(QUEUES.revisePost, { postId: p.id, note: reply.note }, { singletonKey: `revise-${p.id}` })
+    const byHand = picked.filter((p) => !auto.includes(p))
+    answer = [auto.length ? `✏️ Anotado: corrijo ${auto.length > 1 ? 'las' : 'la'} ${list(auto)} y te ${auto.length > 1 ? 'las' : 'la'} mando de nuevo en unos minutos.` : '', byHand.length ? `✏️ Anotado el pedido de cambios en ${list(byHand)}. Te la mando de nuevo cuando esté.` : ''].filter(Boolean).join(' ')
+    if (byHand.length) await notify(`✏️ ${names}: el cliente pidió cambios en ${list(byHand)}: ${reply.note || '(sin detalle)'}`)
+    if (auto.length) await notify(`✏️ ${names}: el cliente pidió cambios en ${list(auto)} ("${reply.note}"). Los aplico solo y te aviso.`)
   }
   if (unknown.length) answer = `${answer} No encontré ${unknown.length > 1 ? 'las' : 'la'} ${unknown.join(', ')} entre las pendientes.`.trim()
   const left = await db.post.count({ where: { appId: { in: apps.map((a) => a.id) }, status: 'PENDING_REVIEW', waNumber: { not: null }, error: null } })

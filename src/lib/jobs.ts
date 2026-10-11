@@ -10,6 +10,7 @@ export const QUEUES = {
   runWeekly: 'run-weekly', // { appId, weekStart, image?, imageIds?, batchKind? }: lote semanal o kit inicial
   renderPost: 'render-post', // { postId, regenerateImage?, image? }
   syncApp: 'sync-app', // { appId }
+  revisePost: 'revise-post', // { postId, note }: aplicar el cambio que pidió el cliente por WhatsApp
   createPost: 'create-post', // { postId, topic, image?, imageIds?, photoSet? }: publicación a pedido (photoSet: carrusel de fotos)
   describeImage: 'describe-image', // { imageId }: descripción de una imagen subida
   pushCampaign: 'push-campaign', // { campaignId }: crear (o completar) la campaña en Meta, en pausa

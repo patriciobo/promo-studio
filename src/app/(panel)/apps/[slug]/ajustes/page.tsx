@@ -103,6 +103,9 @@ export default async function Settings({ params, searchParams }: PageProps<'/app
           <input name="whatsapp" type="tel" inputMode="tel" defaultValue={app.whatsapp ?? ''} placeholder="5493511234567" />
         </label>
         <label className="check">
+          <input type="checkbox" name="autoRevise" defaultChecked={app.autoRevise} /> Aplicar solos los cambios que pide el cliente por WhatsApp (“cambios 2: …”): el modelo de texto corrige la publicación, se vuelve a armar y se le manda de nuevo. Lo que no puede resolver solo (una foto que va a mandar, algo confuso) te queda a vos en Revisión.
+        </label>
+        <label className="check">
           <input type="checkbox" name="offerStarter" defaultChecked={!app.starterDismissed} /> Ofrecer el kit de publicaciones iniciales en el Calendario (desmarcalo si la cuenta ya tiene contenido)
         </label>
         <label className="check">

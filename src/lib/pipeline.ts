@@ -362,7 +362,7 @@ async function background(app: App, post: Post, position: number, scene: string 
  * Renderiza las piezas finales del post (JPEG o MP4) y las guarda como assets publicables.
  * `image`: modelo elegido junto al botón; si no viene, el de la app (Ajustes).
  */
-export async function renderPost(postId: string, opts: { regenerateImage?: boolean; image?: ImageChoice } = {}) {
+export async function renderPost(postId: string, opts: { regenerateImage?: boolean; regenerate?: number[]; image?: ImageChoice } = {}) {
   const post = await db.post.findUniqueOrThrow({ where: { id: postId }, include: { app: true } })
   const app = post.app
   const brand = await brandOf(app)
@@ -396,7 +396,7 @@ export async function renderPost(postId: string, opts: { regenerateImage?: boole
       continue
     }
     const scene = s.imagePrompt ?? (i === 0 ? post.imagePrompt ?? undefined : post.imagePrompt ? `${post.imagePrompt}. Scene about: ${s.title}` : undefined)
-    const img = await background(app, post, i, scene, { force: opts.regenerateImage, references: refs.slice(0, 1), image })
+    const img = await background(app, post, i, scene, { force: opts.regenerateImage || opts.regenerate?.includes(i), references: refs.slice(0, 1), image })
     if (img && !refs.length) refs.push(img)
     html.push(layout === 'cover' ? t.cover(brand, { ...d, background: img }, size) : t.text(brand, { ...d, illustration: img }, size))
   }
