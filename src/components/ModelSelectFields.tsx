@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { encodeImageChoice, IMAGE_KINDS, IMAGE_MODELS, parseImageChoice, SUGGESTED, TIERS, type ImageKind, type ImageQuality } from '@/lib/models'
 
 const QUALITY_LABEL: Record<ImageQuality, string> = { low: 'baja', medium: 'media' }
@@ -9,6 +9,7 @@ export function ModelSelectFields({ imageModel, imageQuality, imageKind, label }
   const current = encodeImageChoice({ model: imageModel, quality: imageModel ? (imageQuality ?? IMAGE_MODELS.find((m) => m.id === imageModel)?.defaultQuality ?? null) : null })
   const [value, setValue] = useState(current)
   const [kind, setKind] = useState(imageKind)
+  const [kindRef, ownImages] = useOwnImages()
   const tag = (v: string) => (v === current ? ' · Ajustes' : '')
   const custom = imageModel && !IMAGE_MODELS.some((m) => m.id === imageModel) ? imageModel : null
   const selected = IMAGE_MODELS.find((m) => m.id === parseImageChoice(value)?.model)
@@ -17,7 +18,7 @@ export function ModelSelectFields({ imageModel, imageQuality, imageKind, label }
   const useSuggested = () => setValue(encodeImageChoice({ model: suggested.id, quality: suggested.defaultQuality ?? null }))
   return (
     <>
-      <select name="imageKind" value={kind} onChange={(e) => setKind(e.target.value as ImageKind)} aria-label="Tipo de imagen" title="Tipo de imagen" className="model-select">
+      <select ref={kindRef} name="imageKind" value={kind} onChange={(e) => setKind(e.target.value as ImageKind)} disabled={ownImages} aria-label="Tipo de imagen" title={ownImages ? 'Con imágenes tuyas no hace falta elegirlo: las piezas usan tus fotos (si alguna diapositiva queda sin foto, se usa el tipo de Ajustes).' : 'Tipo de imagen'} className="model-select">
         {IMAGE_KINDS.map((k) => (
           <option key={k.id} value={k.id}>
             {k.label}
@@ -62,4 +63,32 @@ export function ModelSelectFields({ imageModel, imageQuality, imageKind, label }
       )}
     </>
   )
+}
+
+/**
+ * ¿El formulario lleva imágenes propias (subidas o marcadas de la biblioteca)? Mira los campos del mismo formulario,
+ * también los que están fuera de él con el atributo `form`. Con imágenes propias el tipo de imagen no hace falta.
+ */
+function useOwnImages() {
+  const ref = useRef<HTMLSelectElement>(null)
+  const [on, setOn] = useState(false)
+  useEffect(() => {
+    const form = ref.current?.form
+    if (!form) return
+    const check = () => {
+      const fields = [...form.elements] as HTMLInputElement[]
+      setOn(fields.some((e) => (e.name === 'imageIds' && e.checked) || (e.name === 'images' && (e.files?.length ?? 0) > 0)))
+    }
+    const onChange = (e: Event) => {
+      if ((e.target as HTMLInputElement).form === form) check()
+    }
+    check()
+    document.addEventListener('change', onChange)
+    form.addEventListener('reset', check)
+    return () => {
+      document.removeEventListener('change', onChange)
+      form.removeEventListener('reset', check)
+    }
+  }, [])
+  return [ref, on] as const
 }

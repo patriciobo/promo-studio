@@ -1,5 +1,6 @@
 import { setImageArchived, updateImage, uploadImages } from '@/app/actions'
 import { AutoRefresh, Progress, SubmitButton } from '@/components/client'
+import { ImageShrinker } from '@/components/ImageShrinker'
 import { db } from '@/lib/db'
 import { mediaSrc } from '@/lib/media'
 
@@ -22,8 +23,9 @@ export default async function Images({ params }: PageProps<'/apps/[slug]/imagene
           </p>
         </div>
         <form action={uploadImages.bind(null, slug)} className="stack">
+          <ImageShrinker />
           <label>
-            Imágenes <span className="hint">JPG, PNG o WebP, hasta 8 MB cada una</span>
+            Imágenes <span className="hint">JPG, PNG o WebP; las grandes se achican solas antes de subir</span>
             <input type="file" name="images" accept="image/jpeg,image/png,image/webp" multiple required />
           </label>
           <label>

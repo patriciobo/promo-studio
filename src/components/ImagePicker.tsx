@@ -3,15 +3,17 @@
 import Link from 'next/link'
 import type { AppImage } from '@prisma/client'
 import { mediaSrc } from '@/lib/media'
+import { ImageShrinker } from './ImageShrinker'
 
 export function ImagePicker({ images, slug, hint, form }: { images: Pick<AppImage, 'id' | 'path' | 'description' | 'note'>[]; slug: string; hint: string; form?: string }) {
   return (
     <details className="image-picker">
+      <ImageShrinker />
       <summary>Basar en imágenes <span className="hint">opcional</span></summary>
       <div className="stack" style={{ marginTop: 12 }}>
-        <p className="small muted">{hint} Cada diapositiva que usa una imagen tuya no genera ilustración con IA (es más barata).</p>
+        <p className="small muted">{hint} Cada diapositiva que usa una imagen tuya no genera ilustración con IA (es más barata), y con imágenes tuyas no hace falta elegir ilustración o foto realista.</p>
         <label>
-          Subir capturas o fotos <span className="hint">JPG, PNG o WebP, hasta 8 MB cada una</span>
+          Subir capturas o fotos <span className="hint">JPG, PNG o WebP; las grandes se achican solas antes de subir</span>
           <input type="file" name="images" form={form} accept="image/jpeg,image/png,image/webp" multiple />
         </label>
         <label>
