@@ -10,6 +10,8 @@ export interface StyleTemplates {
   cover: Render
   text: Render
   cta: Render
+  /** Imagen elegida por el usuario como protagonista: a sangre de fondo (o, si es una captura, grande al centro) con el texto y los adornos delante. */
+  hero: Render
 }
 
 const counter = (d: SlideData) => (d.total && d.total > 1 ? `${(d.index ?? 0) + 1} / ${d.total}` : '')
@@ -39,7 +41,7 @@ h1{font-family:'Anton',sans-serif;font-weight:400;text-transform:uppercase;lette
 .hl{color:${p}}`
 }
 
-const poster: StyleTemplates = {
+const poster: Omit<StyleTemplates, 'hero'> = {
   cover(b, d, size = SIZES.feed) {
     const tall = size.h > 1500
     const p = bright(b)
@@ -118,7 +120,7 @@ figure img{width:100%;height:100%;object-fit:cover;display:block}
 figcaption{font-family:'Fraunces',serif;font-style:italic;font-size:24px;color:#6b665c;margin-top:12px}`
 const mast = (b: Brand, d: SlideData) => `<div class="mast">${brandRow(b)}<span>Nº ${pad2((d.index ?? 0) + 1)}</span></div>`
 
-const editorial: StyleTemplates = {
+const editorial: Omit<StyleTemplates, 'hero'> = {
   cover(b, d, size = SIZES.feed) {
     const tall = size.h > 1500
     return shell(
@@ -184,7 +186,7 @@ h1{font-weight:650;letter-spacing:-.035em;line-height:1.06}
 .card{border-radius:32px;overflow:hidden;background:#f4f5f7}
 .card img{width:100%;height:100%;object-fit:cover;display:block}`
 
-const papel: StyleTemplates = {
+const papel: Omit<StyleTemplates, 'hero'> = {
   cover(b, d, size = SIZES.feed) {
     const tall = size.h > 1500
     return shell(
@@ -253,7 +255,7 @@ h1 span{background:#fffdf7;padding:2px 18px;box-decoration-break:clone;-webkit-b
 const words = (t: string) => `<span>${esc(t)}</span>`
 const tapes = `<div class="tape" style="top:-22px;left:-40px;transform:rotate(-28deg)"></div><div class="tape" style="top:-22px;right:-40px;transform:rotate(26deg)"></div>`
 
-const collage: StyleTemplates = {
+const collage: Omit<StyleTemplates, 'hero'> = {
   cover(b, d, size = SIZES.feed) {
     const tall = size.h > 1500
     return shell(
@@ -325,7 +327,7 @@ h1{font-weight:800;letter-spacing:-.035em;line-height:1.05}
 .top .n{padding:14px 26px;font-size:26px;font-weight:700}
 .body{font-size:36px;line-height:1.42;margin-top:24px;color:#4a4863}`
 
-const suave3d: StyleTemplates = {
+const suave3d: Omit<StyleTemplates, 'hero'> = {
   cover(b, d, size = SIZES.feed) {
     const tall = size.h > 1500
     return shell(
@@ -396,7 +398,7 @@ h1{font-weight:750;letter-spacing:-.035em;line-height:1.05}
 .pic img{width:100%;height:100%;object-fit:cover;display:block}`
 }
 
-const bento: StyleTemplates = {
+const bento: Omit<StyleTemplates, 'hero'> = {
   cover(b, d, size = SIZES.feed) {
     const tall = size.h > 1500
     const p = bright(b)
@@ -464,7 +466,7 @@ h1{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;letter-spacing:-
 .arch{border:8px solid ${INK};overflow:hidden;background:#fff;box-shadow:14px 14px 0 ${INK}}
 .arch img{width:100%;height:100%;object-fit:cover;display:block}`
 
-const retro: StyleTemplates = {
+const retro: Omit<StyleTemplates, 'hero'> = {
   cover(b, d, size = SIZES.feed) {
     const tall = size.h > 1500
     return shell(
@@ -538,7 +540,7 @@ h1 span{background:linear-gradient(transparent 58%, ${b.primary}66 58%, ${b.prim
 .img{border:4px solid #1f2430;border-radius:255px 18px 225px 18px/18px 225px 18px 255px;overflow:hidden;background:#fff}
 .img img{width:100%;height:100%;object-fit:cover;display:block}`
 
-const amano: StyleTemplates = {
+const amano: Omit<StyleTemplates, 'hero'> = {
   cover(b, d, size = SIZES.feed) {
     const tall = size.h > 1500
     return shell(
@@ -590,6 +592,181 @@ h1{font-size:${fit(d.title, [116, 96, 80, 68])}px}
   },
 }
 
-const clasico: StyleTemplates = { cover: coverSlide, text: textSlide, cta: ctaSlide }
+const clasico: Omit<StyleTemplates, 'hero'> = { cover: coverSlide, text: textSlide, cta: ctaSlide }
 
-export const TEMPLATES: Record<DesignStyleId, StyleTemplates> = { clasico, poster, editorial, papel, collage, suave3d, bento, retro, amano }
+// ---------------------------------------------------------------------------
+// Imagen protagonista: la imagen que eligió el usuario ocupa toda la pieza y el estilo pone delante
+// su tipografía, sus adornos y, en los estilos claros, un panel propio para que el texto se lea.
+// ---------------------------------------------------------------------------
+const heroCss = (tall: boolean) => `body{background:#111}
+.hero{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.hero.blur{filter:blur(46px) saturate(1.25) brightness(.85);transform:scale(1.2)}
+.shotbig{position:absolute;left:0;right:0;top:${tall ? 150 : 90}px;height:${tall ? 66 : 60}%;display:flex;justify-content:center}
+.shotbig img{height:100%;width:auto;max-width:84%;object-fit:contain;border-radius:44px;box-shadow:0 40px 90px -30px rgba(0,0,0,.65)}
+.veil{position:absolute;inset:0}
+.wrap{position:relative;z-index:1}
+.spacer{margin-top:auto}`
+/** La imagen de fondo: la foto a sangre o, si es una captura, la misma desenfocada detrás y la captura grande al centro. */
+const heroMedia = (d: SlideData) =>
+  d.screenshot ? `<img class="hero blur" src="${d.screenshot}"><div class="shotbig"><img src="${d.screenshot}"></div>` : d.background ? `<img class="hero" src="${d.background}">` : ''
+/** Lista numerada compacta para el panel. */
+const heroList = (d: SlideData, color: string, fg: string, size = 36) =>
+  items(d, (x, i) => `<li style="display:flex;gap:18px;align-items:flex-start;font-size:${size}px;line-height:1.3;margin-top:16px"><b style="flex:none;width:${Math.round(size * 1.3)}px;height:${Math.round(size * 1.3)}px;border-radius:50%;background:${color};color:${fg};display:grid;place-items:center;font-size:${Math.round(size * 0.66)}px">${i + 1}</b><span>${x}</span></li>`).replace('<ol>', '<ol style="list-style:none;margin-top:12px">')
+const heroTitle = (d: SlideData, big: [number, number, number, number], small: [number, number, number, number]) => fit(d.title, d.items?.length || d.body ? small : big)
+
+const HERO: Record<DesignStyleId, Render> = {
+  clasico(b, d, size = SIZES.feed) {
+    const tall = size.h > 1500
+    return shell(
+      b,
+      size.w,
+      size.h,
+      `${heroCss(tall)}
+.veil{background:linear-gradient(180deg,rgba(0,0,0,.45) 0%,rgba(0,0,0,0) 26%,rgba(0,0,0,0) 40%,rgba(0,0,0,.86) 100%)}
+.wrap{height:100%;display:flex;flex-direction:column;padding:${tall ? '140px 88px 200px' : '80px 88px 80px'};color:#fff}
+.wrap .eyebrow{color:#fff;opacity:.92;margin-bottom:20px}
+h1{font-size:${heroTitle(d, [96, 84, 72, 62], [80, 70, 60, 52])}px}
+.body{font-size:36px;line-height:1.35;margin-top:22px;opacity:.94}
+.foot{display:flex;justify-content:space-between;margin-top:36px;font-size:28px;font-weight:600;opacity:.85}`,
+      `${heroMedia(d)}<div class="veil"></div><div class="wrap">${brandRow(b, '#fff')}<div class="spacer"></div>${opt(d.eyebrow, (s) => `<p class="eyebrow">${s}</p>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, b.primary, onColor(b.primary))}<div class="foot"><span>${esc(b.url)}</span><span>${counter(d)}</span></div></div>`,
+    )
+  },
+  poster(b, d, size = SIZES.feed) {
+    const tall = size.h > 1500
+    const p = bright(b)
+    return shell(
+      b,
+      size.w,
+      size.h,
+      `${posterBase(b, tall)}
+${heroCss(tall)}
+.veil{background:linear-gradient(180deg,rgba(14,14,14,.6) 0%,rgba(14,14,14,0) 24%,rgba(14,14,14,.15) 45%,rgba(14,14,14,.93) 82%)}
+.wrap{position:relative}
+h1{font-size:${heroTitle(d, tall ? [190, 150, 120, 98] : [170, 136, 110, 92], [130, 110, 92, 78])}px;color:#f4f2ec}
+.bar{z-index:2}`,
+      `${heroMedia(d)}<div class="veil"></div><div class="wrap"><div class="top">${brandRow(b, '#f4f2ec')}<span>${counter(d)}</span></div><div class="spacer"></div>${opt(d.eyebrow, (s) => `<span class="tag" style="align-self:flex-start">${s}</span>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, p, onColor(p))}</div><div class="bar"></div>`,
+      ['Anton'],
+    )
+  },
+  editorial(b, d, size = SIZES.feed) {
+    const tall = size.h > 1500
+    return shell(
+      b,
+      size.w,
+      size.h,
+      `${editorialBase(b, tall)}
+${heroCss(tall)}
+.veil{background:linear-gradient(180deg,rgba(0,0,0,.5) 0%,rgba(0,0,0,0) 22%)}
+.mast{color:#fff;border-bottom-color:#fff}
+.mast .brand{color:#fff}
+.sheet{background:#f2ede3;padding:40px 46px 34px;box-shadow:0 30px 70px -30px rgba(0,0,0,.6)}
+.sheet .kicker{margin:0 0 14px}
+h1{font-size:${heroTitle(d, [96, 82, 70, 60], [78, 68, 58, 50])}px}
+.foot{margin-top:26px}`,
+      `${heroMedia(d)}<div class="veil"></div><div class="wrap">${mast(b, d)}<div class="spacer"></div><div class="sheet">${opt(d.eyebrow, (s) => `<p class="kicker">${s}</p>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, '#1b1a17', '#f2ede3', 32)}<div class="foot"><span>${esc(b.url)}</span><span>${counter(d)}</span></div></div></div>`,
+      [SERIF],
+    )
+  },
+  papel(b, d, size = SIZES.feed) {
+    const tall = size.h > 1500
+    return shell(
+      b,
+      size.w,
+      size.h,
+      `${papelBase(b, tall)}
+${heroCss(tall)}
+.veil{background:linear-gradient(180deg,rgba(0,0,0,.35) 0%,rgba(0,0,0,0) 20%)}
+.top,.top .brand{color:#fff}
+.sheet{background:#fff;border-radius:40px;padding:44px 48px 38px;box-shadow:0 30px 70px -30px rgba(0,0,0,.45)}
+h1{font-size:${heroTitle(d, [92, 80, 68, 58], [76, 66, 56, 50])}px}
+.foot{margin-top:28px}`,
+      `${heroMedia(d)}<div class="veil"></div><div class="wrap"><div class="top">${brandRow(b, '#fff')}<span>${counter(d)}</span></div><div class="spacer"></div><div class="sheet">${opt(d.eyebrow, (s) => `<span class="pill">${s}</span>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, b.primary, onColor(b.primary), 32)}<div class="foot"><span>${esc(b.url)}</span><span class="arrow">→</span></div></div></div>`,
+    )
+  },
+  collage(b, d, size = SIZES.feed) {
+    const tall = size.h > 1500
+    return shell(
+      b,
+      size.w,
+      size.h,
+      `${collageBase(b, tall)}
+${heroCss(tall)}
+.veil{background:linear-gradient(180deg,rgba(0,0,0,.3) 0%,rgba(0,0,0,0) 18%,rgba(0,0,0,0) 55%,rgba(0,0,0,.35) 100%)}
+.top{color:#fff}
+.top .brand{background:#fffdf7;color:#1d1a16;padding:8px 18px;transform:rotate(-2deg);box-shadow:4px 6px 0 rgba(0,0,0,.15)}
+.marker{background:#fffdf7;padding:4px 18px;box-shadow:4px 6px 0 rgba(0,0,0,.12)}
+h1{font-size:${heroTitle(d, [86, 74, 62, 54], [70, 62, 54, 46])}px}
+.note{background:#fffdf7;padding:18px 26px;margin-top:22px;transform:rotate(-.6deg);box-shadow:4px 6px 0 rgba(0,0,0,.12);position:relative}
+.note .body{background:none;box-shadow:none;padding:0;margin:0;transform:none}`,
+      `${heroMedia(d)}<div class="veil"></div><div class="tape" style="top:${tall ? 110 : 40}px;left:-30px;transform:rotate(-24deg);z-index:2"></div><div class="tape" style="bottom:${tall ? 120 : 50}px;right:-36px;transform:rotate(-20deg);z-index:2"></div><div class="wrap"><div class="top">${brandRow(b)}${counter(d) ? `<span style="background:#fffdf7;color:#1d1a16;padding:6px 14px">${counter(d)}</span>` : ''}</div><div class="spacer"></div>${opt(d.eyebrow, (s) => `<span class="marker" style="align-self:flex-start">${s}</span>`)}<h1>${words(d.title)}</h1>${d.body || d.items?.length ? `<div class="note">${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, b.primary, onColor(b.primary), 32)}</div>` : ''}</div>`,
+      ['Archivo Black', 'Permanent Marker'],
+    )
+  },
+  suave3d(b, d, size = SIZES.feed) {
+    const tall = size.h > 1500
+    return shell(
+      b,
+      size.w,
+      size.h,
+      `${suaveBase(b, tall)}
+${heroCss(tall)}
+.card{padding:46px 52px}
+h1{font-size:${heroTitle(d, [92, 80, 68, 58], [76, 66, 56, 50])}px}`,
+      `${heroMedia(d)}<div class="wrap"><div class="top"><div class="glass">${brandRow(b)}</div>${counter(d) ? `<div class="glass n">${counter(d)}</div>` : ''}</div><div class="spacer"></div><div class="glass card">${opt(d.eyebrow, (s) => `<span class="chip">${s}</span>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, b.primary, onColor(b.primary), 32)}</div></div>`,
+      ['Plus Jakarta Sans:wght@500;700;800'],
+    )
+  },
+  bento(b, d, size = SIZES.feed) {
+    const tall = size.h > 1500
+    const p = bright(b)
+    return shell(
+      b,
+      size.w,
+      size.h,
+      `${bentoBase(b, tall)}
+${heroCss(tall)}
+.veil{background:linear-gradient(180deg,rgba(10,11,15,.35) 0%,rgba(10,11,15,0) 25%,rgba(10,11,15,0) 50%,rgba(10,11,15,.55) 100%)}
+.c{background:#14161dd9;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+h1{font-size:${heroTitle(d, [88, 76, 64, 56], [72, 64, 56, 48])}px}`,
+      `${heroMedia(d)}<div class="veil"></div><div class="wrap"><div class="row"><div class="c">${brandRow(b)}</div><div class="c" style="gap:16px"><span class="mono">${esc(d.eyebrow ? `// ${d.eyebrow}` : '// nuevo')}</span><span class="mono muted" style="white-space:nowrap">${counter(d)}</span></div></div><div class="spacer"></div><div class="c"><h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, p, onColor(p), 32)}</div></div>`,
+      ['JetBrains Mono:wght@500;700'],
+    )
+  },
+  retro(b, d, size = SIZES.feed) {
+    const tall = size.h > 1500
+    return shell(
+      b,
+      size.w,
+      size.h,
+      `${retroBase(b, tall)}
+${heroCss(tall)}
+.veil{background:linear-gradient(180deg,rgba(42,29,20,.35) 0%,rgba(42,29,20,0) 22%)}
+.top{color:#fbf0dc}
+.sheet{background:#fbf0dc;border:8px solid ${INK};box-shadow:14px 14px 0 ${INK};padding:40px 44px}
+h1{font-size:${heroTitle(d, [96, 82, 70, 60], [78, 68, 58, 50])}px}
+.star{width:240px;height:240px;padding:52px;font-size:22px}`,
+      `${heroMedia(d)}<div class="veil"></div>${opt(d.eyebrow, (s) => `<div class="star" style="right:${tall ? 50 : 40}px;top:${tall ? 230 : 150}px">${s}</div>`)}<div class="wrap"><div class="top">${brandRow(b, '#fbf0dc')}<span>${counter(d)}</span></div><div class="spacer"></div><div class="sheet"><h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, b.primary, onColor(b.primary), 32)}</div></div>`,
+      ['Bricolage Grotesque:opsz,wght@12..96,500..800'],
+    )
+  },
+  amano(b, d, size = SIZES.feed) {
+    const tall = size.h > 1500
+    return shell(
+      b,
+      size.w,
+      size.h,
+      `${amanoBase(b, tall)}
+${heroCss(tall)}
+.veil{background:linear-gradient(180deg,rgba(0,0,0,.35) 0%,rgba(0,0,0,0) 20%)}
+.top,.top .n{color:#fff}
+.sheet{background:linear-gradient(#e6ecf6 2px, transparent 2px) 0 0/54px 54px, linear-gradient(90deg, #e6ecf6 2px, transparent 2px) 0 0/54px 54px, #fffdf7;border:4px solid #1f2430;border-radius:255px 18px 225px 18px/18px 225px 18px 255px;padding:44px 50px;position:relative;box-shadow:0 26px 60px -28px rgba(0,0,0,.55)}
+h1{font-size:${heroTitle(d, [90, 78, 66, 56], [74, 64, 56, 48])}px}
+.ar{right:70px;top:-120px}`,
+      `${heroMedia(d)}<div class="veil"></div><div class="wrap"><div class="top">${brandRow(b, '#fff')}<span class="n">${counter(d)}</span></div><div class="spacer"></div><div class="sheet">${arrow('#fff')}${opt(d.eyebrow, (s) => `<span class="hand">${s}</span>`)}<h1><span>${esc(d.title)}</span></h1>${squiggle(b.primary)}${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, b.primary, onColor(b.primary), 32)}</div></div>`,
+      [HAND],
+    )
+  },
+}
+
+const BASE: Record<DesignStyleId, Omit<StyleTemplates, 'hero'>> = { clasico, poster, editorial, papel, collage, suave3d, bento, retro, amano }
+export const TEMPLATES = Object.fromEntries(Object.entries(BASE).map(([id, t]) => [id, { ...t, hero: HERO[id as DesignStyleId] }])) as Record<DesignStyleId, StyleTemplates>

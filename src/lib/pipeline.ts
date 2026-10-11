@@ -155,7 +155,7 @@ Write ALL user-facing text in ${m.languages[0]} with this tone: ${m.tone}.
 Never mention: ${m.avoid.join('; ') || 'nothing in particular'}.
 Image prompts are in English and describe ${photo ? 'a realistic photo' : 'an illustration'} in this style: ${styleFor(m, ctx.kind ?? 'illustration', ctx.design)}. Show people using the app or the problem it solves, ${photo ? 'with screens angled or out of focus' : 'with simplified UI shapes'} but WITHOUT any readable text, letters, numbers or logos; fit the brand colors ${m.brand.colors.join(', ')} and leave calm space for overlaid text.
 Every slide (or reel scene) also gets its own imagePrompt: the same ${photo ? 'people, setting' : 'characters'} and style, showing that slide's idea.${images.length ? `
-appImages are real images of the app uploaded by the user (SCREENSHOT = a screen of the app, PHOTO = a photo). A slide can show one instead of a generated image: set its "imageId" and write that slide's text about what the image really shows (never invent features that are not visible). Use each image at most once per post and never on the last call-to-action slide.` : ''}
+appImages are real images of the app uploaded by the user (SCREENSHOT = a screen of the app, PHOTO = a photo). A slide can show one instead of a generated image: set its "imageId" and write that slide's text about what the image really shows (never invent features that are not visible). The chosen image fills the whole slide and the text goes on top of it, so keep those slides short (a title plus a short body or up to 3 short items) to leave the image visible. Use each image at most once per post and never on the last call-to-action slide.` : ''}
 Captions: first line is a hook, 2-5 short lines of value, then the CTA "${m.cta}", then 3-5 specific hashtags (from: ${m.hashtags.join(' ') || 'choose relevant ones'}).
 altText describes the image for accessibility and includes keywords people would search.
 Answer only with JSON: {"posts":[{"slot":number,"pillar":string,"hook":string,"caption":string,"hashtags":string[],"altText":string,"imagePrompt":string,"sourceId":string|null,"slides":[{"eyebrow"?:string,"title":string,"body"?:string,"items"?:string[],"imagePrompt":string${images.length ? ',"imageId"?:string|null' : ''}}]}]}`
@@ -372,13 +372,13 @@ export async function renderPost(postId: string, opts: { regenerateImage?: boole
       html.push(t.cta(brand, d, size))
       continue
     }
-    if (layout === 'text-shot') {
-      html.push(t.text(brand, { ...d, screenshot: mine?.src ?? shots[0] }, size))
+    // Imagen elegida por el usuario: es la protagonista (a sangre, o la captura grande) y el texto va delante. No se genera nada.
+    if (mine) {
+      html.push(t.hero(brand, mine.kind === 'SCREENSHOT' ? { ...d, screenshot: mine.src } : { ...d, background: mine.src }, size))
       continue
     }
-    // Foto subida: ocupa el lugar de la ilustración, sin generar nada.
-    if (mine) {
-      html.push(layout === 'cover' ? t.cover(brand, { ...d, background: mine.src }, size) : t.text(brand, { ...d, illustration: mine.src }, size))
+    if (layout === 'text-shot') {
+      html.push(t.text(brand, { ...d, screenshot: shots[0] }, size))
       continue
     }
     const scene = s.imagePrompt ?? (i === 0 ? post.imagePrompt ?? undefined : post.imagePrompt ? `${post.imagePrompt}. Scene about: ${s.title}` : undefined)
