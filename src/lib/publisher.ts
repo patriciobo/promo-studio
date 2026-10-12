@@ -6,8 +6,16 @@ import { mediaUrl } from './media'
 import { explain } from './meta-errors'
 import { notify } from './notify'
 import { engagement, median, relativeScore } from './score'
+import { sendText } from './whatsapp'
 
 const MAX_ATTEMPTS = 3
+
+/** El aviso de publicado va al WhatsApp del cliente; si la app no tiene, al dueño. Que falle no hace fallar la publicación. */
+async function announce(app: { whatsapp: string | null }, text: string) {
+  if (!app.whatsapp) return notify(text)
+  console.log(`[aviso cliente] ${text}`)
+  await sendText(app.whatsapp, text).catch((e) => console.error('[aviso cliente] WAHA no respondió:', (e as Error).message))
+}
 
 export async function autoApprove(now = new Date()) {
   const r = await db.post.updateMany({ where: { status: 'PENDING_REVIEW', reviewDueAt: { lte: now } }, data: { status: 'APPROVED' } })
@@ -40,7 +48,7 @@ export async function publishDue(now = new Date(), log: (s: string) => void = co
       }
       const r = await publish(g, publishInput(post, app.igUserId ?? 'sim'), app.dryRun ? { tries: 1, everyMs: 0 } : undefined)
       await db.post.update({ where: { id: post.id }, data: { status: 'PUBLISHED', igMediaId: app.dryRun ? null : r.mediaId, permalink: app.dryRun ? null : r.permalink, publishedAt: new Date(), error: app.dryRun ? 'Simulación: no se publicó en Instagram' : null } })
-      if (!app.dryRun && post.type !== 'STORY') await notify(`✅ ${app.name}: publicado ${r.permalink ?? ''}\nRespondé los comentarios en la primera hora: es cuando más se distribuye.`)
+      if (!app.dryRun && post.type !== 'STORY') await announce(app, `✅ ${app.name}: publicado ${r.permalink ?? ''}\nRespondé los comentarios en la primera hora: es cuando más se distribuye.`)
     } catch (e) {
       const x = explain(e)
       const attempts = post.attempts + 1
