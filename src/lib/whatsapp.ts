@@ -166,7 +166,7 @@ export async function senderPhone(payload: { from?: string; _data?: { key?: { re
   }
 }
 
-/** Aplica la respuesta del cliente a sus publicaciones pendientes y le contesta. Lo que no se entiende le llega al dueño. */
+/** Aplica la respuesta del cliente a sus publicaciones pendientes y le contesta. Lo que no se entiende se ignora. */
 export async function handleClientMessage(phone: string, text: string, notify: (s: string) => Promise<void>) {
   if (!phone) return
   const apps = await db.app.findMany({ where: { whatsapp: phone } })
@@ -174,10 +174,8 @@ export async function handleClientMessage(phone: string, text: string, notify: (
   const names = apps.map((a) => a.name).join(', ')
   const reply = parseReply(text)
   const pending = await db.post.findMany({ where: { appId: { in: apps.map((a) => a.id) }, status: 'PENDING_REVIEW', waNumber: { not: null } }, orderBy: { waNumber: 'asc' } })
-  if (reply.kind === 'other' || !pending.length) {
-    await notify(`💬 Cliente de ${names}: ${text}`)
-    return
-  }
+  // Lo que no es una respuesta a lo pendiente no se reenvía: el dueño ya lo ve en el chat con el cliente.
+  if (reply.kind === 'other' || !pending.length) return
   const picked = reply.nums ? pending.filter((p) => reply.nums!.includes(p.waNumber!)) : pending
   const unknown = reply.nums?.filter((n) => !pending.some((p) => p.waNumber === n)) ?? []
   const ids = picked.map((p) => p.id)
