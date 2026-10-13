@@ -1,0 +1,2 @@
+ALTER TABLE "Post" ADD COLUMN "imageKind" TEXT;
+ALTER TABLE "Post" ADD COLUMN "imageStyle" TEXT;

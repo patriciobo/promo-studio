@@ -139,7 +139,7 @@ export default async function Review({ params, searchParams }: PageProps<'/apps/
               <input type="checkbox" name="regenerateImage" /> Generar una imagen nueva (consume crédito de OpenRouter)
             </label>
             <div className="row">
-              <ModelSelect app={app} label="Modelo para imágenes nuevas" />
+              <ModelSelect app={app} kind={p.imageKind} label="Modelo para imágenes nuevas" />
               <SubmitButton className="btn" pendingText="Guardando…">
                 Guardar y volver a renderizar
               </SubmitButton>

@@ -9,7 +9,7 @@ export const DEFAULT_IMAGE_STYLE =
 
 /** Estilo de las fotos realistas si el promo.yaml no define brand.photoStyle. */
 export const DEFAULT_PHOTO_STYLE =
-  'photorealistic lifestyle photography, natural light, shallow depth of field, real people in everyday settings, candid, phone or laptop screens angled or out of focus, not an illustration'
+  'candid everyday smartphone photo, available natural light, ordinary real people in real lived-in places, unposed and slightly imperfect, phone or laptop screens angled or out of focus, not an illustration'
 
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'color en formato #rrggbb')
 

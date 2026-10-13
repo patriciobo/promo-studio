@@ -1,6 +1,6 @@
 // Recordatorio, junto a los botones de generar, del estilo y la imagen que se usan por defecto (los de Ajustes).
 import Link from 'next/link'
-import { IMAGE_KINDS, IMAGE_MODELS, parseImageKind, type ImageQuality } from '@/lib/models'
+import { IMAGE_MODELS, KIND_CHOICES, parseKindChoice, type ImageQuality } from '@/lib/models'
 import { listSamples } from '@/lib/style-samples'
 import { designStyle, SAMPLE_QUALITIES, sampleKey } from '@/lib/styles'
 
@@ -9,10 +9,10 @@ const QUALITY: Record<ImageQuality, string> = { low: 'baja', medium: 'media' }
 export async function StyleReminder({ app }: { app: { slug: string; designStyle: string | null; imageModel: string | null; imageQuality: string | null; imageKind: string | null } }) {
   const style = designStyle(app.designStyle)
   const model = IMAGE_MODELS.find((m) => m.id === app.imageModel)
-  const kind = IMAGE_KINDS.find((k) => k.id === (parseImageKind(app.imageKind) ?? 'illustration'))!
+  const kind = KIND_CHOICES.find((k) => k.id === (parseKindChoice(app.imageKind) ?? 'illustration'))!
   const q = (app.imageQuality ?? model?.defaultQuality) as ImageQuality | undefined
   const [mine, generic] = await Promise.all([listSamples(app.slug), listSamples()])
-  const key = sampleKey(style.id, q && SAMPLE_QUALITIES.includes(q) ? q : 'medium', kind.id)
+  const key = sampleKey(style.id, q && SAMPLE_QUALITIES.includes(q) ? q : 'medium', kind.id === 'mix' ? 'illustration' : kind.id)
   const thumb = mine[key] ?? generic[key]
   return (
     <div className="style-reminder">

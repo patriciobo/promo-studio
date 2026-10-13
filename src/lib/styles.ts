@@ -37,7 +37,7 @@ export const DESIGN_STYLES: DesignStyle[] = [
     feelings: ['impacto', 'energía', 'audacia', 'urgencia'],
     image: {
       illustration: 'bold graphic poster art, high contrast, strong simple silhouettes, dramatic shapes, minimal detail, large negative space, not a photo',
-      photo: 'high-contrast black and white editorial photo, dramatic hard light, deep shadows, strong silhouette, film grain',
+      photo: 'high-contrast black and white street snapshot, harsh sun or direct flash, deep shadows, strong silhouette, heavy film grain',
     },
   },
   {
@@ -49,7 +49,7 @@ export const DESIGN_STYLES: DesignStyle[] = [
     feelings: ['autoridad', 'sofisticación', 'credibilidad', 'curiosidad'],
     image: {
       illustration: 'risograph print illustration, grainy texture, limited muted palette, elegant editorial magazine art, considered composition, not a photo',
-      photo: 'editorial magazine photography, medium format film look, soft window light, muted natural tones, fine grain, considered composition',
+      photo: 'documentary-style 35mm film photo, window light, muted natural tones, fine grain, quiet real moment',
     },
   },
   {
@@ -60,7 +60,7 @@ export const DESIGN_STYLES: DesignStyle[] = [
     feelings: ['calma', 'claridad', 'orden', 'simplicidad'],
     image: {
       illustration: 'minimal line illustration, thin consistent strokes, flat pastel fills, mostly white background, airy and simple, few objects, not a photo',
-      photo: 'bright minimal photography, white seamless background, soft diffused light, clean composition, lots of negative space',
+      photo: 'bright minimal everyday photo at home by a window, white walls, few simple objects, soft daylight, lots of empty space',
     },
   },
   {
@@ -82,7 +82,7 @@ export const DESIGN_STYLES: DesignStyle[] = [
     feelings: ['amabilidad', 'optimismo', 'ternura', 'modernidad'],
     image: {
       illustration: 'soft 3D clay render, rounded inflated shapes, pastel colors, smooth matte materials, soft studio lighting, cute and friendly characters',
-      photo: 'soft pastel studio photography, dreamy diffused light, glossy glass and plastic props, gentle color gradients',
+      photo: 'soft pastel-toned everyday photo, hazy daylight, pastel walls and objects found in real places, gentle washed-out colors',
     },
   },
   {

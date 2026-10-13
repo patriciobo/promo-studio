@@ -14,7 +14,15 @@ export type Fit = 'ideal' | 'bien' | 'flojo'
 
 export const IMAGE_KINDS: { id: ImageKind; label: string; hint: string }[] = [
   { id: 'illustration', label: 'Ilustración', hint: 'Vector o dibujo con los colores de la marca.' },
-  { id: 'photo', label: 'Foto realista', hint: 'Personas y escenas creíbles, como fotos de stock propias. Mismo precio que una ilustración.' },
+  { id: 'photo', label: 'Foto realista', hint: 'Fotos naturales e imperfectas, como sacadas con el celular: gente común, nada de modelos de estudio. Mismo precio que una ilustración.' },
+]
+
+/** Tipo elegido al generar: uno fijo o una mezcla, con cada publicación en ilustración o en foto. */
+export type KindChoice = ImageKind | 'mix'
+
+export const KIND_CHOICES: { id: KindChoice; label: string; hint: string }[] = [
+  ...IMAGE_KINDS,
+  { id: 'mix', label: 'Mezcla', hint: 'Cada publicación sale en ilustración o en foto realista, repartidas mitad y mitad.' },
 ]
 
 /** Modelo sugerido para cada tipo de imagen. */
@@ -22,6 +30,9 @@ export const SUGGESTED: Record<ImageKind, string> = {
   illustration: 'openai/gpt-image-2.5-sunburst',
   photo: 'google/gemini-3.1-flash-image',
 }
+
+/** En la mezcla se sugiere el de ilustración: le salen bien los dos tipos. */
+export const suggestedFor = (k: KindChoice) => SUGGESTED[k === 'mix' ? 'illustration' : k]
 
 export const TIERS: { id: Tier; label: string; hint: string }[] = [
   { id: 'pruebas', label: 'Pruebas rápidas', hint: 'Centavos por imagen: para probar el circuito o regenerar mucho.' },
@@ -134,11 +145,17 @@ export function imagesPerMonth(c: Cadence, daily?: { types: ('CAROUSEL' | 'IMAGE
 
 export const parseImageKind = (v: string | null | undefined): ImageKind | undefined => (v === 'illustration' || v === 'photo' ? v : undefined)
 
+export const parseKindChoice = (v: string | null | undefined): KindChoice | undefined => (v === 'mix' ? v : parseImageKind(v))
+
+/** Qué tan bien le sale un tipo a un modelo; en la mezcla, lo peor de los dos. */
+export const fitFor = (m: Pick<ImageModel, 'fit'>, k: KindChoice): Fit =>
+  k !== 'mix' ? m.fit[k] : m.fit.illustration === 'flojo' || m.fit.photo === 'flojo' ? 'flojo' : m.fit.illustration === 'bien' || m.fit.photo === 'bien' ? 'bien' : 'ideal'
+
 /** Modelo de imagen elegido para una generación puntual. `model: null` = sin imagen IA. `kind`: si no viene, el de Ajustes. */
 export interface ImageChoice {
   model: string | null
   quality: string | null
-  kind?: ImageKind
+  kind?: KindChoice
 }
 
 /** Valor del selector junto a cada botón: "proveedor/modelo|calidad" o "none". Vacío = el predeterminado de la app. */
@@ -146,7 +163,7 @@ export const encodeImageChoice = (c: ImageChoice) => (c.model ? `${c.model}|${c.
 
 export function parseImageChoice(v: string | null | undefined, kind?: string | null): ImageChoice | undefined {
   if (!v) return undefined
-  const k = parseImageKind(kind)
+  const k = parseKindChoice(kind)
   if (v === 'none') return { model: null, quality: null }
   const [model, quality] = v.split('|')
   return { model, quality: quality || null, ...(k ? { kind: k } : {}) }

@@ -1,7 +1,7 @@
 'use client'
 // Selector de modelos de OpenRouter: catálogo curado por uso, con precio y gasto mensual estimado.
 import { useState } from 'react'
-import { IMAGE_KINDS, IMAGE_MODELS, imagePrice, parseImageKind, PRICES_CHECKED, SUGGESTED, TEXT_MODELS, TIERS, type Fit, type ImageKind, type ImageQuality } from '@/lib/models'
+import { fitFor, IMAGE_KINDS, IMAGE_MODELS, imagePrice, KIND_CHOICES, parseKindChoice, PRICES_CHECKED, suggestedFor, TEXT_MODELS, TIERS, type Fit, type ImageQuality, type KindChoice } from '@/lib/models'
 import type { ModelInfo } from '@/lib/openrouter'
 import { DEFAULT_DESIGN_STYLE, parseDesignStyle, SAMPLE_MODEL, samplesOfKind, type DesignStyleId } from '@/lib/styles'
 import { StylePicker, type StyleAppProps } from './StylePicker'
@@ -10,7 +10,7 @@ const OTHER = '__other'
 const money = (n: number) => `US$ ${n < 0.1 ? n.toFixed(3) : n.toFixed(2)}`
 const QUALITY_LABEL: Record<ImageQuality, string> = { low: 'Baja', medium: 'Media' }
 const FIT_BADGE: Record<Fit, string> = { ideal: 'ok', bien: '', flojo: 'warn' }
-const KIND_PLURAL: Record<ImageKind, string> = { illustration: 'ilustraciones', photo: 'fotos' }
+const KIND_PLURAL: Record<KindChoice, string> = { illustration: 'ilustraciones', photo: 'fotos', mix: 'la mezcla' }
 
 export function ImageModelPicker({
   current,
@@ -44,8 +44,10 @@ export function ImageModelPicker({
   const [other, setOther] = useState(curated ? '' : (current ?? ''))
   const selected = IMAGE_MODELS.find((m) => m.id === choice)
   const [q, setQ] = useState<ImageQuality>((quality as ImageQuality) ?? selected?.defaultQuality ?? 'medium')
-  const [kind, setKind] = useState<ImageKind>(parseImageKind(initialKind) ?? 'illustration')
-  const suggested = IMAGE_MODELS.find((m) => m.id === SUGGESTED[kind])!
+  const [kind, setKind] = useState<KindChoice>(parseKindChoice(initialKind) ?? 'illustration')
+  // En la mezcla las muestras se ven en ilustración.
+  const sampleKind = kind === 'mix' ? 'illustration' : kind
+  const suggested = IMAGE_MODELS.find((m) => m.id === suggestedFor(kind))!
   const live = new Set(available.map((m) => m.id))
   const value = choice === OTHER ? other : choice
   const pick = (id: string) => {
@@ -66,25 +68,25 @@ export function ImageModelPicker({
         <legend>
           <strong>Estilo de diseño</strong> <span className="hint">plantilla y estética de las imágenes; tocá una muestra para elegir estilo y calidad</span>
         </legend>
-        <StylePicker style={style} onStyle={setStyle} sampleModel={{ id: SAMPLE_MODEL, selected: choice === SAMPLE_MODEL }} quality={q} onSample={sample} generic={samplesOfKind(samples, kind)} app={styleApp && { ...styleApp, samples: samplesOfKind(styleApp.samples, kind) }} />
-        <span className="xs muted">Se ven las muestras en {kind === 'photo' ? 'foto realista' : 'ilustración'} (el tipo de imagen de abajo). Las muestras están hechas con {IMAGE_MODELS.find((m) => m.id === SAMPLE_MODEL)?.name ?? SAMPLE_MODEL} en cada calidad. Tocar una también elige ese modelo y calidad abajo.</span>
+        <StylePicker style={style} onStyle={setStyle} sampleModel={{ id: SAMPLE_MODEL, selected: choice === SAMPLE_MODEL }} quality={q} onSample={sample} generic={samplesOfKind(samples, sampleKind)} app={styleApp && { ...styleApp, samples: samplesOfKind(styleApp.samples, sampleKind) }} />
+        <span className="xs muted">Se ven las muestras en {sampleKind === 'photo' ? 'foto realista' : 'ilustración'} (el tipo de imagen de abajo). Las muestras están hechas con {IMAGE_MODELS.find((m) => m.id === SAMPLE_MODEL)?.name ?? SAMPLE_MODEL} en cada calidad. Tocar una también elige ese modelo y calidad abajo.</span>
       </fieldset>
       <fieldset className="stack-sm" style={{ border: 0, padding: 0, margin: 0 }}>
         <legend>
           <strong>Tipo de imagen</strong> <span className="hint">se puede cambiar en cada generación</span>
         </legend>
         <div className="row">
-          {IMAGE_KINDS.map((k) => (
+          {KIND_CHOICES.map((k) => (
             <label key={k.id} className="check" title={k.hint}>
               <input type="radio" name="imageKind" value={k.id} checked={kind === k.id} onChange={() => setKind(k.id)} /> {k.label}
             </label>
           ))}
         </div>
-        <span className="xs muted">{IMAGE_KINDS.find((k) => k.id === kind)!.hint}</span>
-        {selected && selected.fit[kind] !== 'ideal' && (
+        <span className="xs muted">{KIND_CHOICES.find((k) => k.id === kind)!.hint}</span>
+        {selected && fitFor(selected, kind) !== 'ideal' && (
           <p className="notice warn small row between">
             <span>
-              {selected.name} sale {selected.fit[kind]} para {KIND_PLURAL[kind]}. Sugerido: {suggested.name}.
+              {selected.name} sale {fitFor(selected, kind)} para {KIND_PLURAL[kind]}. Sugerido: {suggested.name}.
             </span>
             <button type="button" className="btn sm" onClick={() => pick(suggested.id)}>
               Usar {suggested.name}

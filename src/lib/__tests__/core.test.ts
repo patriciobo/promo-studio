@@ -11,7 +11,8 @@ import { containerRequests, publish, type GraphClient } from '../instagram'
 import { explain, MetaError } from '../meta-errors'
 import { buildSuggestPrompt, mockSuggestion, SuggestionSchema } from '../ad-suggest'
 import { adMessage, adOnlyCreative, boostCreative, budgetError, campaignLink, campaignRequests, plannedSpend } from '../meta-ads'
-import { buildPlanPrompt, compactReport, styleFor, dailySourceUrl, keepKnownImages, mockPlan, needsRender, postFromPlan, slideLayout } from '../pipeline'
+import { kindsFor } from '../variety'
+import { buildPlanPrompt, compactReport, imagePromptFor, looksFor, styleFor, dailySourceUrl, keepKnownImages, mockPlan, needsRender, postFromPlan, slideLayout } from '../pipeline'
 import { encodeImageChoice, IMAGE_KINDS, IMAGE_MODELS, imagePrice, imagesPerMonth, parseImageChoice, parseImageKind, SUGGESTED } from '../models'
 import { aspectFor } from '../openrouter'
 import { normalizeRepo } from '../github'
@@ -262,15 +263,39 @@ describe('planificación', () => {
     expect(p.system).toMatch(/promesas médicas/)
     expect(p.user).toMatch(/Cómo ganarle al frontón/)
     expect(JSON.parse(p.user).week).toHaveLength(2)
-    expect(p.system).toMatch(/flat vector illustration/)
+    expect(JSON.parse(p.user).week[0].visual).toMatchObject({ imageType: 'illustration', style: expect.stringMatching(/flat vector illustration/) })
     expect(p.system).toMatch(/own imagePrompt/)
   })
   it('con tipo foto pide fotos realistas en vez de ilustraciones', () => {
     const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 1, reels: 0, stories: 0 }, '10:00', 'UTC')
     const p = buildPlanPrompt(m, slots, { feed: [], texts: [], releases: [], recent: [], bestPillars: [], kind: 'photo' })
     expect(p.system).toMatch(/realistic photo/)
-    expect(p.system).toMatch(/photorealistic lifestyle photography/)
-    expect(p.system).not.toMatch(/illustration in this style/)
+    expect(p.system).toMatch(/never models/)
+    expect(p.system).not.toMatch(/imageType "illustration"/)
+    expect(JSON.parse(p.user).week[0].visual).toMatchObject({ imageType: 'photo', style: expect.stringMatching(/candid everyday smartphone photo/) })
+  })
+  it('cada post sortea su gente, escenario y técnica; la mezcla reparte ilustraciones y fotos', () => {
+    let seed = 7
+    const rng = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646
+    const looks = looksFor(m, null, 'mix', 6, rng)
+    expect(looks.filter((l) => l.kind === 'photo')).toHaveLength(3)
+    expect(new Set(looks.map((l) => l.setting)).size).toBe(6)
+    expect(new Set(looks.map((l) => l.people)).size).toBeGreaterThan(3)
+    // Clásico sin estilo propio: cambia la técnica entera de la ilustración; las fotos siempre naturales.
+    const ill = looks.filter((l) => l.kind === 'illustration')
+    expect(new Set(ill.map((l) => l.style)).size).toBe(3)
+    expect(looks.find((l) => l.kind === 'photo')!.style).toMatch(/smartphone/)
+    // En un estilo de diseño, se mantiene su estética y sólo se le da un giro.
+    expect(looksFor(m, 'collage', 'illustration', 3, rng).every((l) => l.style.includes('paper collage'))).toBe(true)
+    expect(kindsFor('photo', 3)).toEqual(['photo', 'photo', 'photo'])
+    const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 2, reels: 0, stories: 0 }, '10:00', 'UTC')
+    const p = buildPlanPrompt(m, slots, { feed: [], texts: [], releases: [], recent: [], bestPillars: [], looks: looks.slice(0, 2) })
+    expect(JSON.parse(p.user).week[1].visual.people).toBe(looks[1].people)
+  })
+  it('el prompt de ilustración saca lo fotográfico y el de foto evita el estudio', () => {
+    const ill = imagePromptFor(m, 'A photorealistic photo of a woman, shallow depth of field, cinematic lighting', { kind: 'illustration', style: 'gouache' })
+    expect(ill).toMatch(/^Illustration\. a woman\. Style: gouache\..*not photorealistic/)
+    expect(imagePromptFor(m, 'A man at a bus stop', { kind: 'photo', style: 'x' })).toMatch(/not models|no studio lighting/)
   })
   it('pasa las imágenes subidas al prompt y pide basarse en las elegidas', () => {
     const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 2, reels: 0, stories: 0 }, '10:00', 'UTC')

@@ -13,6 +13,7 @@ import { DEFAULT_IMAGE_STYLE, DEFAULT_PHOTO_STYLE } from './manifest'
 import { bufferDataUri, dataUri, mediaPath, mediaSrc, saveMedia } from './media'
 import { IMAGE_MODELS, parseImageKind, type ImageKind, type ImageQuality } from './models'
 import { generateImage } from './openrouter'
+import { ILLUSTRATION_ONLY, NATURAL_PHOTO } from './variety'
 import { brandOf, manifestOf, styleFor } from './pipeline'
 import { DESIGN_STYLES, designStyle, parseSampleKey, SAMPLE_MODEL, SAMPLE_QUALITIES, sampleKey, type DesignStyleId } from './styles'
 
@@ -151,7 +152,7 @@ export async function generateSamples(opts: { app?: App; items: SampleItem[]; fo
       if (!opts.force && existsSync(mediaPath(bgRel))) bg = await dataUri(bgRel)
       else if (process.env.OPENROUTER_MOCK === '1') bg = PLACEHOLDER(subject.colors)
       else {
-        const prompt = `${subject.scene}. ${kind === 'photo' ? 'Photorealistic photo. ' : ''}Style: ${subject.look(s, kind)}. Color palette ${subject.colors.join(', ')}. Leave calm space for overlaid text. Absolutely no text, letters, numbers, logos or watermarks.`
+        const prompt = `${kind === 'photo' ? 'Candid real-life photo. ' : 'Illustration. '}${subject.scene}. Style: ${subject.look(s, kind)}. ${kind === 'photo' ? NATURAL_PHOTO : ILLUSTRATION_ONLY} Color palette ${subject.colors.join(', ')}. Leave calm space for overlaid text. Absolutely no text, letters, numbers, logos or watermarks.`
         const img = await generateImage({ appId: opts.app?.id ?? null, model: SAMPLE_MODEL, quality: q, prompt, aspectRatio: '4:5', kind, purpose: `muestra de estilo ${s} (${q}${kind === 'photo' ? ', foto' : ''})` })
         await saveMedia(bgRel, img.data)
         cost += img.cost

@@ -10,7 +10,7 @@ import { addImages, imageFiles, inOrder } from '@/lib/images'
 import { enqueue, QUEUES } from '@/lib/jobs'
 import { actId, adAccounts, discoverAccounts, graph, token, type AdAccount } from '@/lib/instagram'
 import { parseManifest, type Manifest } from '@/lib/manifest'
-import { parseImageChoice, parseImageKind } from '@/lib/models'
+import { parseImageChoice, parseImageKind, parseKindChoice } from '@/lib/models'
 import { estimateSuggestion, suggestCampaign, type SuggestInput } from '@/lib/ad-suggest'
 import { activateCampaign, campaignLink, deleteCampaign, estimateAudience, friendly, pauseCampaign, searchPlaces, searchTargeting, syncCampaign, DETAIL_TYPES, EDUCATION, type Detail, type DetailType, type GeoPlace, type Objective, type Targeting } from '@/lib/meta-ads'
 import { explain } from '@/lib/meta-errors'
@@ -52,7 +52,7 @@ export async function createApp(f: FormData) {
   await requireUser()
   const repo = normalizeRepo(str(f, 'repo'))
   const slug = (str(f, 'slug') || repo.split('/')[1]).toLowerCase().replace(/[^a-z0-9-]+/g, '-')
-  const app = await db.app.create({ data: { slug, repo, name: str(f, 'name') || repo.split('/')[1], branch: str(f, 'branch') || 'main', ...ownerOf(f), imageModel: str(f, 'imageModel') || null, imageQuality: str(f, 'imageQuality') || null, imageKind: parseImageKind(str(f, 'imageKind')) ?? null, designStyle: parseDesignStyle(str(f, 'designStyle')) ?? null } })
+  const app = await db.app.create({ data: { slug, repo, name: str(f, 'name') || repo.split('/')[1], branch: str(f, 'branch') || 'main', ...ownerOf(f), imageModel: str(f, 'imageModel') || null, imageQuality: str(f, 'imageQuality') || null, imageKind: parseKindChoice(str(f, 'imageKind')) ?? null, designStyle: parseDesignStyle(str(f, 'designStyle')) ?? null } })
   await syncApp(app.id).catch(() => null)
   redirect(`/apps/${app.slug}/manifiesto`)
 }
@@ -68,7 +68,7 @@ export async function updateSettings(slug: string, f: FormData) {
       textModel: str(f, 'textModel'),
       imageModel: str(f, 'imageModel') || null,
       imageQuality: str(f, 'imageQuality') || null,
-      imageKind: parseImageKind(str(f, 'imageKind')) ?? null,
+      imageKind: parseKindChoice(str(f, 'imageKind')) ?? null,
       designStyle: parseDesignStyle(str(f, 'designStyle')) ?? null,
       monthlyBudgetUsd: Number(str(f, 'monthlyBudgetUsd') || 7),
       adMonthlyBudget: str(f, 'adMonthlyBudget') ? Number(str(f, 'adMonthlyBudget')) : null,
