@@ -14,16 +14,12 @@ export function shell(b: Brand, w: number, h: number, css: string, body: string,
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{width:${w}px;height:${h}px;overflow:hidden}
 body{font-family:'${b.font}',Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;background:${b.bg};color:${b.ink}}
-.brand{display:flex;align-items:center;gap:18px;font-weight:700;font-size:34px;letter-spacing:-.01em}
-.brand img{width:56px;height:56px;border-radius:14px;object-fit:contain}
 .eyebrow{font-size:30px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:${b.primary}}
 h1{font-weight:800;letter-spacing:-.035em;line-height:1.04;text-wrap:balance}
 p{text-wrap:pretty}
 ${css}
 </style></head><body>${body}</body></html>`
 }
-
-export const brandRow = (b: Brand, color?: string) => `<div class="brand" style="${color ? `color:${color}` : ''}">${b.logo ? `<img src="${b.logo}">` : ''}<span>${esc(b.name)}</span></div>`
 
 export interface SlideData {
   eyebrow?: string
@@ -57,7 +53,7 @@ export function coverSlide(b: Brand, d: SlideData, size: { w: number; h: number 
 h1{font-size:${tall ? 104 : 96}px;margin-top:auto}
 .body{font-size:${tall ? 42 : 38}px;line-height:1.32;margin-top:28px;opacity:.94;max-width:900px}
 .foot{display:flex;justify-content:space-between;margin-top:44px;font-size:28px;font-weight:600;opacity:.85}`,
-    `${bg}<div class="wrap">${brandRow(b, '#fff')}<div style="margin-top:auto"></div>${d.eyebrow ? `<p class="eyebrow">${esc(d.eyebrow)}</p>` : ''}<h1 style="margin-top:0">${esc(d.title)}</h1>${d.body ? `<p class="body">${esc(d.body)}</p>` : ''}<div class="foot"><span>${esc(b.url)}</span>${d.total && d.total > 1 ? `<span>${(d.index ?? 0) + 1} / ${d.total}</span>` : ''}</div></div>`,
+    `${bg}<div class="wrap"><div style="margin-top:auto"></div>${d.eyebrow ? `<p class="eyebrow">${esc(d.eyebrow)}</p>` : ''}<h1 style="margin-top:0">${esc(d.title)}</h1>${d.body ? `<p class="body">${esc(d.body)}</p>` : ''}<div class="foot"><span>${esc(b.url)}</span>${d.total && d.total > 1 ? `<span>${(d.index ?? 0) + 1} / ${d.total}</span>` : ''}</div></div>`,
   )
 }
 
@@ -86,7 +82,7 @@ li::before{content:counter(i);position:absolute;left:0;top:0;width:62px;height:6
 .illu{flex:1;min-height:0;margin-top:40px;border-radius:36px;overflow:hidden}
 .illu img{width:100%;height:100%;object-fit:cover;display:block}
 .foot{display:flex;justify-content:space-between;margin-top:auto;padding-top:36px;font-size:28px;font-weight:600;opacity:.6}`,
-    `<div class="wrap">${brandRow(b)}<div class="mid${shot ? ' with-shot' : ''}">${d.eyebrow ? `<p class="eyebrow">${esc(d.eyebrow)}</p>` : ''}<h1>${esc(d.title)}</h1>${d.body ? `<p class="body">${esc(d.body)}</p>` : ''}${list}${shot}</div><div class="foot"><span>${esc(b.url)}</span>${d.total && d.total > 1 ? `<span>${(d.index ?? 0) + 1} / ${d.total}</span>` : ''}</div></div>`,
+    `<div class="wrap"><div class="mid${shot ? ' with-shot' : ''}">${d.eyebrow ? `<p class="eyebrow">${esc(d.eyebrow)}</p>` : ''}<h1>${esc(d.title)}</h1>${d.body ? `<p class="body">${esc(d.body)}</p>` : ''}${list}${shot}</div><div class="foot"><span>${esc(b.url)}</span>${d.total && d.total > 1 ? `<span>${(d.index ?? 0) + 1} / ${d.total}</span>` : ''}</div></div>`,
   )
 }
 
@@ -104,7 +100,7 @@ h1{font-size:104px;margin-top:auto}
 .body{font-size:42px;line-height:1.32;margin-top:30px;opacity:.88}
 .pill{display:inline-block;margin-top:52px;padding:26px 44px;border-radius:999px;background:${fg};color:${b.primary};font-size:36px;font-weight:700}
 .foot{margin-top:56px;font-size:28px;font-weight:600;opacity:.75}`,
-    `<div class="wrap">${brandRow(b, fg)}<h1>${esc(d.title)}</h1>${d.body ? `<p class="body">${esc(d.body)}</p>` : ''}<div><span class="pill">${esc(b.url)}</span></div><div class="foot">${d.total && d.total > 1 ? `${(d.index ?? 0) + 1} / ${d.total}` : ''}</div></div>`,
+    `<div class="wrap"><h1>${esc(d.title)}</h1>${d.body ? `<p class="body">${esc(d.body)}</p>` : ''}<div><span class="pill">${esc(b.url)}</span></div><div class="foot">${d.total && d.total > 1 ? `${(d.index ?? 0) + 1} / ${d.total}` : ''}</div></div>`,
   )
 }
 

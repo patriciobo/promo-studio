@@ -2,7 +2,7 @@
 // portada (imagen a sangre o recuadro), diapositiva de texto (con ilustración o captura) y cierre con llamado a la acción.
 import type { DesignStyleId } from '@/lib/styles'
 import { lum, onColor, type Brand } from './brand'
-import { brandRow, coverSlide, ctaSlide, esc, shell, SIZES, textSlide, type SlideData } from './html'
+import { coverSlide, ctaSlide, esc, shell, SIZES, textSlide, type SlideData } from './html'
 
 type Size = { w: number; h: number }
 type Render = (b: Brand, d: SlideData, size?: Size) => string
@@ -59,7 +59,7 @@ const poster: Omit<StyleTemplates, 'hero'> = {
 .fade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(14,14,14,.55) 0%,rgba(14,14,14,0) 22%,rgba(14,14,14,0) 60%,#0e0e0e 100%)}
 .bottom{margin-top:auto;position:relative}
 h1{font-size:${fit(d.title, tall ? [200, 160, 128, 104] : [180, 144, 116, 96])}px}`,
-      `${pic}<div class="wrap"><div class="top">${brandRow(b, '#f4f2ec')}<span>${counter(d)}</span></div><div class="bottom">${opt(d.eyebrow, (s) => `<span class="tag">${s}</span>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}</div></div><div class="bar"></div>`,
+      `${pic}<div class="wrap"><div class="top"><span></span><span>${counter(d)}</span></div><div class="bottom">${opt(d.eyebrow, (s) => `<span class="tag">${s}</span>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}</div></div><div class="bar"></div>`,
       ['Anton'],
     )
   },
@@ -80,7 +80,7 @@ li b{color:${p};font-family:'Anton';font-weight:400}
 .media{flex:1;min-height:0;margin-top:40px;display:flex;justify-content:center}
 .media img{width:100%;height:100%;object-fit:cover;border:5px solid ${p}}
 .media.shot img{width:auto;max-width:72%;object-fit:contain;border-radius:28px;border-width:8px}`,
-      `<div class="wrap"><div class="top">${brandRow(b, '#f4f2ec')}<span>${counter(d)}</span></div>${d.total && d.total > 1 ? `<div class="num">${pad2((d.index ?? 0) + 1)}</div>` : '<div style="height:60px"></div>'}${opt(d.eyebrow, (s) => `<div><span class="tag">${s}</span></div>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${items(d, (x) => `<li><b>→</b><span>${x}</span></li>`)}${m ? `<div class="media${m.shot ? ' shot' : ''}"><img src="${m.src}"></div>` : ''}</div><div class="bar"></div>`,
+      `<div class="wrap"><div class="top"><span></span><span>${counter(d)}</span></div>${d.total && d.total > 1 ? `<div class="num">${pad2((d.index ?? 0) + 1)}</div>` : '<div style="height:60px"></div>'}${opt(d.eyebrow, (s) => `<div><span class="tag">${s}</span></div>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${items(d, (x) => `<li><b>→</b><span>${x}</span></li>`)}${m ? `<div class="media${m.shot ? ' shot' : ''}"><img src="${m.src}"></div>` : ''}</div><div class="bar"></div>`,
       ['Anton'],
     )
   },
@@ -96,7 +96,7 @@ li b{color:${p};font-family:'Anton';font-weight:400}
 body{background:${p};color:${fg}}
 h1{font-size:${fit(d.title, [190, 150, 120, 100])}px;margin-top:auto}
 .url{display:inline-block;margin-top:48px;background:#0e0e0e;color:${p};font-size:40px;font-weight:800;padding:24px 34px;letter-spacing:.02em}`,
-      `<div class="wrap"><div class="top">${brandRow(b, fg)}<span>${counter(d)}</span></div><h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}<div><span class="url">${esc(b.url)} →</span></div></div>`,
+      `<div class="wrap"><div class="top"><span></span><span>${counter(d)}</span></div><h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}<div><span class="url">${esc(b.url)} →</span></div></div>`,
       ['Anton'],
     )
   },
@@ -110,15 +110,13 @@ const editorialBase = (b: Brand, tall: boolean) => `body{background:#f2ede3;colo
 h1{font-family:'Fraunces',serif;font-weight:500;letter-spacing:-.02em;line-height:1.03}
 .wrap{height:100%;display:flex;flex-direction:column;padding:${tall ? '130px 80px 190px' : '70px 80px 70px'}}
 .mast{display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:16px;border-bottom:7px double #1b1a17;font-size:26px;font-weight:700;letter-spacing:.16em;text-transform:uppercase}
-.mast .brand{font-size:28px;letter-spacing:.16em;text-transform:uppercase}
-.mast .brand img{width:44px;height:44px}
 .kicker{font-size:26px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:${b.primary};margin:36px 0 18px}
 .body{font-family:'Fraunces',serif;font-size:36px;line-height:1.42;margin-top:26px;color:#3a3833}
 .foot{display:flex;justify-content:space-between;margin-top:auto;padding-top:22px;border-top:2px solid #1b1a17;font-size:24px;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
 figure{margin-top:34px}
 figure img{width:100%;height:100%;object-fit:cover;display:block}
 figcaption{font-family:'Fraunces',serif;font-style:italic;font-size:24px;color:#6b665c;margin-top:12px}`
-const mast = (b: Brand, d: SlideData) => `<div class="mast">${brandRow(b)}<span>Nº ${pad2((d.index ?? 0) + 1)}</span></div>`
+const mast = (b: Brand, d: SlideData) => `<div class="mast"><span></span><span>Nº ${pad2((d.index ?? 0) + 1)}</span></div>`
 
 const editorial: Omit<StyleTemplates, 'hero'> = {
   cover(b, d, size = SIZES.feed) {
@@ -178,7 +176,6 @@ const papelBase = (b: Brand, tall: boolean) => `body{background:#ffffff;color:${
 h1{font-weight:650;letter-spacing:-.035em;line-height:1.06}
 .wrap{height:100%;display:flex;flex-direction:column;padding:${tall ? '140px 88px 200px' : '84px 88px 76px'}}
 .top{display:flex;justify-content:space-between;align-items:center;font-size:26px;color:#8a8f98}
-.top .brand{color:${b.ink};font-size:30px}
 .pill{display:inline-block;border:2px solid ${b.primary};color:${b.primary};border-radius:999px;padding:8px 22px;font-size:26px;font-weight:600;margin-bottom:26px}
 .body{font-size:36px;line-height:1.45;margin-top:26px;color:#5d636c}
 .foot{display:flex;justify-content:space-between;align-items:center;margin-top:auto;padding-top:28px;border-top:1px solid #e6e7ea;font-size:26px;color:#8a8f98}
@@ -197,7 +194,7 @@ const papel: Omit<StyleTemplates, 'hero'> = {
 .card{height:${tall ? 860 : 560}px;margin-top:56px}
 .mid{margin-top:auto}
 h1{font-size:${fit(d.title, [100, 86, 72, 62])}px}`,
-      `<div class="wrap"><div class="top">${brandRow(b)}<span>${counter(d)}</span></div>${d.background ? `<div class="card"><img src="${d.background}"></div>` : ''}<div class="mid">${opt(d.eyebrow, (s) => `<span class="pill">${s}</span>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}</div><div class="foot"><span>${esc(b.url)}</span><span class="arrow">→</span></div></div>`,
+      `<div class="wrap"><div class="top"><span></span><span>${counter(d)}</span></div>${d.background ? `<div class="card"><img src="${d.background}"></div>` : ''}<div class="mid">${opt(d.eyebrow, (s) => `<span class="pill">${s}</span>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}</div><div class="foot"><span>${esc(b.url)}</span><span class="arrow">→</span></div></div>`,
     )
   },
   text(b, d, size = SIZES.feed) {
@@ -218,7 +215,7 @@ li b{flex:none;width:44px;height:44px;margin-top:4px;border-radius:50%;border:2p
 .card{flex:1;min-height:0;margin-top:44px}
 .card.shot{background:#f4f5f7;display:flex;justify-content:center;align-items:flex-end;padding:44px 0 0}
 .card.shot img{width:auto;max-width:62%;object-fit:contain;border-radius:28px 28px 0 0;box-shadow:0 20px 60px -20px rgba(0,0,0,.25)}`,
-      `<div class="wrap"><div class="top">${brandRow(b)}<span>${counter(d)}</span></div><div class="mid">${opt(d.eyebrow, (s) => `<div><span class="pill">${s}</span></div>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${items(d, (x) => `<li><b>✓</b><span>${x}</span></li>`)}${m ? `<div class="card${m.shot ? ' shot' : ''}"><img src="${m.src}"></div>` : ''}</div><div class="foot"><span>${esc(b.url)}</span><span>${counter(d) ? 'deslizá →' : ''}</span></div></div>`,
+      `<div class="wrap"><div class="top"><span></span><span>${counter(d)}</span></div><div class="mid">${opt(d.eyebrow, (s) => `<div><span class="pill">${s}</span></div>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${items(d, (x) => `<li><b>✓</b><span>${x}</span></li>`)}${m ? `<div class="card${m.shot ? ' shot' : ''}"><img src="${m.src}"></div>` : ''}</div><div class="foot"><span>${esc(b.url)}</span><span>${counter(d) ? 'deslizá →' : ''}</span></div></div>`,
     )
   },
   cta(b, d, size = SIZES.feed) {
@@ -232,7 +229,7 @@ li b{flex:none;width:44px;height:44px;margin-top:4px;border-radius:50%;border:2p
 h1{font-size:${fit(d.title, [116, 96, 80, 68])}px}
 .go{display:flex;align-items:center;gap:30px;margin-top:60px;font-size:40px;font-weight:600}
 .go .arrow{width:120px;height:120px;font-size:52px}`,
-      `<div class="wrap"><div class="top">${brandRow(b)}<span>${counter(d)}</span></div><div class="mid"><h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}<div class="go"><span class="arrow">→</span><span>${esc(b.url)}</span></div></div></div>`,
+      `<div class="wrap"><div class="top"><span></span><span>${counter(d)}</span></div><div class="mid"><h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}<div class="go"><span class="arrow">→</span><span>${esc(b.url)}</span></div></div></div>`,
     )
   },
 }
@@ -267,7 +264,7 @@ const collage: Omit<StyleTemplates, 'hero'> = {
 .sticker{top:${tall ? 240 : 150}px;right:46px}
 .mid{margin-top:auto}
 h1{font-size:${fit(d.title, [96, 80, 66, 56])}px}`,
-      `<div class="wrap"><div class="top">${brandRow(b)}<span>${counter(d)}</span></div>${d.background ? `<div class="pol"><img src="${d.background}">${tapes}</div>` : ''}<div class="sticker">${counter(d) ? `${(d.index ?? 0) + 1}/${d.total}` : '★'}</div><div class="mid">${opt(d.eyebrow, (s) => `<span class="marker">${s}</span>`)}<h1>${words(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}</div></div>`,
+      `<div class="wrap"><div class="top"><span></span><span>${counter(d)}</span></div>${d.background ? `<div class="pol"><img src="${d.background}">${tapes}</div>` : ''}<div class="sticker">${counter(d) ? `${(d.index ?? 0) + 1}/${d.total}` : '★'}</div><div class="mid">${opt(d.eyebrow, (s) => `<span class="marker">${s}</span>`)}<h1>${words(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}</div></div>`,
       ['Archivo Black', 'Permanent Marker'],
     )
   },
@@ -288,7 +285,7 @@ li b{font-family:'Permanent Marker';font-weight:400;color:${b.primary};font-size
 .pol{flex:1;min-height:0;margin:56px 40px 0;transform:rotate(-2deg)}
 .pol.shot{background:transparent;box-shadow:none;padding:0;display:flex;justify-content:center}
 .pol.shot img{width:auto;max-width:66%;object-fit:contain;border:12px solid #fff;border-radius:30px;box-shadow:0 18px 40px -14px rgba(0,0,0,.45)}`,
-      `<div class="wrap"><div class="top">${brandRow(b)}<span>${counter(d)}</span></div><div class="mid">${opt(d.eyebrow, (s) => `<div><span class="marker">${s}</span></div>`)}<h1>${words(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${items(d, (x, i) => `<li><b>${i + 1}</b><span>${x}</span></li>`)}${m ? `<div class="pol${m.shot ? ' shot' : ''}"><img src="${m.src}">${m.shot ? '' : tapes}</div>` : ''}</div></div>`,
+      `<div class="wrap"><div class="top"><span></span><span>${counter(d)}</span></div><div class="mid">${opt(d.eyebrow, (s) => `<div><span class="marker">${s}</span></div>`)}<h1>${words(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${items(d, (x, i) => `<li><b>${i + 1}</b><span>${x}</span></li>`)}${m ? `<div class="pol${m.shot ? ' shot' : ''}"><img src="${m.src}">${m.shot ? '' : tapes}</div>` : ''}</div></div>`,
       ['Archivo Black', 'Permanent Marker'],
     )
   },
@@ -305,7 +302,7 @@ body{background:${b.primary}}
 h1{font-size:${fit(d.title, [110, 92, 76, 64])}px;margin-top:auto}
 .marker{color:${fg};font-size:58px;margin-top:56px}
 .sticker{background:#fffdf7;color:#1d1a16;top:${tall ? 300 : 180}px;right:70px;width:230px;height:230px;font-size:40px;line-height:1.1;padding:20px}`,
-      `<div class="wrap"><div class="top">${brandRow(b, fg)}<span>${counter(d)}</span></div><div class="sticker">¡Probalo!</div><h1>${words(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}<div><span class="marker">→ ${esc(b.url)}</span></div></div>`,
+      `<div class="wrap"><div class="top"><span></span><span>${counter(d)}</span></div><div class="sticker">¡Probalo!</div><h1>${words(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}<div><span class="marker">→ ${esc(b.url)}</span></div></div>`,
       ['Archivo Black', 'Permanent Marker'],
     )
   },
@@ -323,7 +320,6 @@ h1{font-weight:800;letter-spacing:-.035em;line-height:1.05}
 .chip{display:inline-block;background:${b.primary};color:${onColor(b.primary)};border-radius:999px;padding:10px 24px;font-size:26px;font-weight:700;margin-bottom:24px}
 .top{display:flex;justify-content:space-between;align-items:center}
 .top .glass{border-radius:999px;padding:14px 26px 14px 18px}
-.top .brand{font-size:30px}
 .top .n{padding:14px 26px;font-size:26px;font-weight:700}
 .body{font-size:36px;line-height:1.42;margin-top:24px;color:#4a4863}`
 
@@ -338,7 +334,7 @@ const suave3d: Omit<StyleTemplates, 'hero'> = {
 .bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .card{margin-top:auto;padding:52px 56px}
 h1{font-size:${fit(d.title, [100, 86, 72, 62])}px}`,
-      `${d.background ? `<img class="bg" src="${d.background}">` : ''}<div class="wrap"><div class="top"><div class="glass">${brandRow(b)}</div>${counter(d) ? `<div class="glass n">${counter(d)}</div>` : ''}</div><div class="glass card">${opt(d.eyebrow, (s) => `<span class="chip">${s}</span>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}</div></div>`,
+      `${d.background ? `<img class="bg" src="${d.background}">` : ''}<div class="wrap"><div class="top"><span></span>${counter(d) ? `<div class="glass n">${counter(d)}</div>` : ''}</div><div class="glass card">${opt(d.eyebrow, (s) => `<span class="chip">${s}</span>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}</div></div>`,
       ['Plus Jakarta Sans:wght@500;700;800'],
     )
   },
@@ -359,7 +355,7 @@ li b{flex:none;width:56px;height:56px;border-radius:50%;background:${b.primary};
 .media img{width:100%;height:100%;object-fit:cover;display:block}
 .media.shot{background:none;box-shadow:none;display:flex;justify-content:center;overflow:visible}
 .media.shot img{width:auto;max-width:62%;object-fit:contain;border-radius:44px;border:10px solid rgba(255,255,255,.85);box-shadow:0 30px 80px -30px rgba(40,30,90,.5)}`,
-      `<div class="wrap"><div class="top"><div class="glass">${brandRow(b)}</div>${counter(d) ? `<div class="glass n">${counter(d)}</div>` : ''}</div><div class="glass card">${opt(d.eyebrow, (s) => `<span class="chip">${s}</span>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${items(d, (x, i) => `<li><b>${i + 1}</b><span>${x}</span></li>`)}</div>${m ? `<div class="media${m.shot ? ' shot' : ''}"><img src="${m.src}"></div>` : ''}</div>`,
+      `<div class="wrap"><div class="top"><span></span>${counter(d) ? `<div class="glass n">${counter(d)}</div>` : ''}</div><div class="glass card">${opt(d.eyebrow, (s) => `<span class="chip">${s}</span>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${items(d, (x, i) => `<li><b>${i + 1}</b><span>${x}</span></li>`)}</div>${m ? `<div class="media${m.shot ? ' shot' : ''}"><img src="${m.src}"></div>` : ''}</div>`,
       ['Plus Jakarta Sans:wght@500;700;800'],
     )
   },
@@ -374,7 +370,7 @@ body{background:${suaveBg(b, 2)}}
 .card{margin:auto 0;padding:72px 60px;text-align:center}
 h1{font-size:${fit(d.title, [110, 92, 78, 66])}px}
 .btn{display:inline-block;margin-top:48px;background:${b.primary};color:${onColor(b.primary)};border-radius:999px;padding:28px 52px;font-size:40px;font-weight:800;box-shadow:0 20px 40px -16px ${b.primary}}`,
-      `<div class="wrap"><div class="top"><div class="glass">${brandRow(b)}</div>${counter(d) ? `<div class="glass n">${counter(d)}</div>` : ''}</div><div class="glass card"><h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}<span class="btn">${esc(b.url)}</span></div></div>`,
+      `<div class="wrap"><div class="top"><span></span>${counter(d) ? `<div class="glass n">${counter(d)}</div>` : ''}</div><div class="glass card"><h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}<span class="btn">${esc(b.url)}</span></div></div>`,
       ['Plus Jakarta Sans:wght@500;700;800'],
     )
   },
@@ -407,9 +403,10 @@ const bento: Omit<StyleTemplates, 'hero'> = {
       size.w,
       size.h,
       `${bentoBase(b, tall)}
-.ph{display:grid;place-items:center;background:radial-gradient(60% 60% at 50% 40%, ${p}66, transparent 70%), #14161d;font-size:300px;font-weight:800;color:${p}}
-h1{font-size:${fit(d.title, [92, 78, 66, 56])}px}`,
-      `<div class="wrap"><div class="row"><div class="c">${brandRow(b)}</div><div class="c" style="gap:16px"><span class="mono">${esc(d.eyebrow ? `// ${d.eyebrow}` : '// nuevo')}</span><span class="mono muted" style="white-space:nowrap">${counter(d)}</span></div></div>${d.background ? `<div class="c pic"><img src="${d.background}"></div>` : `<div class="c pic ph">${esc(b.name.slice(0, 1).toUpperCase())}</div>`}<div class="c"><h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}</div></div>`,
+.big{flex:1;display:flex;flex-direction:column;justify-content:flex-end;background:radial-gradient(70% 60% at 80% 15%, ${p}55, transparent 70%), #14161dcc}
+h1{font-size:${d.background ? fit(d.title, [92, 78, 66, 56]) : fit(d.title, tall ? [160, 136, 116, 98] : [140, 118, 100, 84])}px}`,
+      // Sin imagen, el título ocupa todo el bloque: grande, abajo, sobre el brillo del color de marca.
+      `<div class="wrap"><div class="row"><div class="c" style="gap:16px"><span class="mono">${esc(d.eyebrow ? `// ${d.eyebrow}` : '// nuevo')}</span><span class="mono muted" style="white-space:nowrap">${counter(d)}</span></div></div>${d.background ? `<div class="c pic"><img src="${d.background}"></div>` : ''}<div class="c${d.background ? '' : ' big'}"><h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}</div></div>`,
       ['JetBrains Mono:wght@500;700'],
     )
   },
@@ -429,7 +426,7 @@ li:only-child,li:last-child:nth-child(odd){grid-column:span 2}
 .pic.shot{display:flex;justify-content:center;align-items:flex-end;padding:40px 0 0;background:linear-gradient(180deg,#14161d,#1b1e28)}
 .pic.shot img{width:auto;max-width:56%;object-fit:contain;border-radius:30px 30px 0 0;border:8px solid #2a2e3a;border-bottom:0}
 ${m || d.items?.length ? '' : '.main{flex:1;display:flex;flex-direction:column;justify-content:flex-end}'}`,
-      `<div class="wrap"><div class="row"><div class="c">${brandRow(b)}</div><div class="c" style="flex:.6;justify-content:center"><span class="mono muted">${counter(d) || '—'}</span></div></div><div class="c main"><span class="mono">${esc(`// ${d.eyebrow ?? pad2((d.index ?? 0) + 1)}`)}</span><h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}</div>${items(d, (x, i) => `<li class="c"><span class="mono">${pad2(i + 1)}</span>${x}</li>`)}${m ? `<div class="c pic${m.shot ? ' shot' : ''}"><img src="${m.src}"></div>` : ''}</div>`,
+      `<div class="wrap"><div class="row"><div class="c" style="justify-content:center"><span class="mono muted">${counter(d) || '—'}</span></div></div><div class="c main"><span class="mono">${esc(`// ${d.eyebrow ?? pad2((d.index ?? 0) + 1)}`)}</span><h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}</div>${items(d, (x, i) => `<li class="c"><span class="mono">${pad2(i + 1)}</span>${x}</li>`)}${m ? `<div class="c pic${m.shot ? ' shot' : ''}"><img src="${m.src}"></div>` : ''}</div>`,
       ['JetBrains Mono:wght@500;700'],
     )
   },
@@ -444,7 +441,7 @@ ${m || d.items?.length ? '' : '.main{flex:1;display:flex;flex-direction:column;j
 .big{flex:1;display:flex;flex-direction:column;justify-content:center;box-shadow:0 0 140px -30px ${p}88;border-color:${p}55;padding:64px}
 h1{font-size:${fit(d.title, [112, 94, 78, 66])}px}
 .btn{align-self:flex-start;margin-top:48px;background:${p};color:${onColor(p)};border-radius:20px;padding:26px 40px;font-size:38px;font-weight:750}`,
-      `<div class="wrap"><div class="row"><div class="c">${brandRow(b)}</div><div class="c" style="flex:.6;justify-content:center"><span class="mono muted">${counter(d) || '—'}</span></div></div><div class="c big"><span class="mono">// empezá hoy</span><h1 style="margin-top:20px">${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}<span class="btn">${esc(b.url)} ↗</span></div></div>`,
+      `<div class="wrap"><div class="row"><div class="c" style="justify-content:center"><span class="mono muted">${counter(d) || '—'}</span></div></div><div class="c big"><span class="mono">// empezá hoy</span><h1 style="margin-top:20px">${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}<span class="btn">${esc(b.url)} ↗</span></div></div>`,
       ['JetBrains Mono:wght@500;700'],
     )
   },
@@ -478,7 +475,7 @@ const retro: Omit<StyleTemplates, 'hero'> = {
 .star{top:${tall ? 230 : 130}px;right:40px}
 .mid{margin-top:auto;text-align:center}
 h1{font-size:${fit(d.title, [116, 96, 80, 66])}px}`,
-      `<div class="wrap"><div class="top">${brandRow(b)}<span>${counter(d)}</span></div>${d.background ? `<div class="arch"><img src="${d.background}"></div>` : ''}${opt(d.eyebrow, (s) => `<div class="star">${s}</div>`)}<div class="mid"><h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}</div></div>`,
+      `<div class="wrap"><div class="top"><span></span><span>${counter(d)}</span></div>${d.background ? `<div class="arch"><img src="${d.background}"></div>` : ''}${opt(d.eyebrow, (s) => `<div class="star">${s}</div>`)}<div class="mid"><h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}</div></div>`,
       ['Bricolage Grotesque:opsz,wght@12..96,500..800'],
     )
   },
@@ -499,7 +496,7 @@ li b{flex:none;width:64px;height:64px;border-radius:50%;background:${b.primary};
 .arch{flex:1;min-height:0;margin:48px 14px 14px 0;border-radius:44px}
 .arch.shot{background:${b.primary}33;display:flex;justify-content:center;align-items:flex-end;padding-top:40px}
 .arch.shot img{width:auto;max-width:58%;object-fit:contain;border-radius:30px 30px 0 0;border:6px solid ${INK};border-bottom:0}`,
-      `<div class="wrap"><div class="top">${brandRow(b)}<span>${counter(d)}</span></div><div class="mid">${opt(d.eyebrow, (s) => `<div><span class="kick">${s}</span></div>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${items(d, (x, i) => `<li><b>${i + 1}</b><span>${x}</span></li>`)}${m ? `<div class="arch${m.shot ? ' shot' : ''}"><img src="${m.src}"></div>` : ''}</div></div>`,
+      `<div class="wrap"><div class="top"><span></span><span>${counter(d)}</span></div><div class="mid">${opt(d.eyebrow, (s) => `<div><span class="kick">${s}</span></div>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${items(d, (x, i) => `<li><b>${i + 1}</b><span>${x}</span></li>`)}${m ? `<div class="arch${m.shot ? ' shot' : ''}"><img src="${m.src}"></div>` : ''}</div></div>`,
       ['Bricolage Grotesque:opsz,wght@12..96,500..800'],
     )
   },
@@ -515,7 +512,7 @@ body{background:${rays('rgba(255,255,255,.14)', '50% 50%')}, ${b.primary};color:
 .mid{margin:auto 0;text-align:center}
 h1{color:#fbf0dc;text-shadow:7px 7px 0 ${INK};font-size:${fit(d.title, [130, 108, 90, 76])}px}
 .btn{display:inline-block;margin-top:56px;background:#fbf0dc;color:${INK};border:6px solid ${INK};border-radius:999px;padding:24px 48px;font-size:40px;font-weight:800;box-shadow:9px 9px 0 ${INK}}`,
-      `<div class="wrap"><div class="top">${brandRow(b, fg)}<span>${counter(d)}</span></div><div class="mid"><h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}<span class="btn">${esc(b.url)}</span></div></div>`,
+      `<div class="wrap"><div class="top"><span></span><span>${counter(d)}</span></div><div class="mid"><h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}<span class="btn">${esc(b.url)}</span></div></div>`,
       ['Bricolage Grotesque:opsz,wght@12..96,500..800'],
     )
   },
@@ -552,7 +549,7 @@ const amano: Omit<StyleTemplates, 'hero'> = {
 .ar{top:${tall ? 1090 : 760}px;right:70px;transform:scaleY(-1) rotate(-10deg)}
 .mid{margin-top:auto}
 h1{font-size:${fit(d.title, [100, 84, 70, 60])}px}`,
-      `<div class="wrap"><div class="top">${brandRow(b)}<span class="n">${counter(d)}</span></div>${d.background ? `<div class="img"><img src="${d.background}"></div>${arrow(b.primary)}` : ''}<div class="mid">${opt(d.eyebrow, (s) => `<span class="hand">${s}</span>`)}<h1><span>${esc(d.title)}</span></h1>${squiggle(b.primary)}${opt(d.body, (s) => `<p class="body">${s}</p>`)}</div></div>`,
+      `<div class="wrap"><div class="top"><span></span><span class="n">${counter(d)}</span></div>${d.background ? `<div class="img"><img src="${d.background}"></div>${arrow(b.primary)}` : ''}<div class="mid">${opt(d.eyebrow, (s) => `<span class="hand">${s}</span>`)}<h1><span>${esc(d.title)}</span></h1>${squiggle(b.primary)}${opt(d.body, (s) => `<p class="body">${s}</p>`)}</div></div>`,
       [HAND],
     )
   },
@@ -572,7 +569,7 @@ li b{flex:none;width:72px;height:68px;display:grid;place-items:center;font-famil
 .img{flex:1;min-height:0;margin-top:44px;transform:rotate(.8deg)}
 .img.shot{border:0;background:none;display:flex;justify-content:center;overflow:visible}
 .img.shot img{width:auto;max-width:62%;object-fit:contain;border:6px solid #1f2430;border-radius:40px}`,
-      `<div class="wrap"><div class="top">${brandRow(b)}<span class="n">${counter(d)}</span></div><div class="mid">${opt(d.eyebrow, (s) => `<div><span class="hand">${s}</span></div>`)}<h1><span>${esc(d.title)}</span></h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${items(d, (x, i) => `<li><b>${i + 1}</b><span>${x}</span></li>`)}${m ? `<div class="img${m.shot ? ' shot' : ''}"><img src="${m.src}"></div>` : ''}</div></div>`,
+      `<div class="wrap"><div class="top"><span></span><span class="n">${counter(d)}</span></div><div class="mid">${opt(d.eyebrow, (s) => `<div><span class="hand">${s}</span></div>`)}<h1><span>${esc(d.title)}</span></h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${items(d, (x, i) => `<li><b>${i + 1}</b><span>${x}</span></li>`)}${m ? `<div class="img${m.shot ? ' shot' : ''}"><img src="${m.src}"></div>` : ''}</div></div>`,
       [HAND],
     )
   },
@@ -586,7 +583,7 @@ li b{flex:none;width:72px;height:68px;display:grid;place-items:center;font-famil
 .mid{margin:auto 0}
 h1{font-size:${fit(d.title, [116, 96, 80, 68])}px}
 .url{display:inline-block;margin-top:56px;font-family:'Caveat';font-weight:700;font-size:78px;color:${b.primary};padding:14px 44px;border:5px solid ${b.primary};border-radius:58% 42% 52% 48%/55% 45% 58% 42%;transform:rotate(-2deg)}`,
-      `<div class="wrap"><div class="top">${brandRow(b)}<span class="n">${counter(d)}</span></div><div class="mid">${opt(d.eyebrow, (s) => `<span class="hand">${s}</span>`)}<h1><span>${esc(d.title)}</span></h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}<div><span class="url">→ ${esc(b.url)}</span></div></div></div>`,
+      `<div class="wrap"><div class="top"><span></span><span class="n">${counter(d)}</span></div><div class="mid">${opt(d.eyebrow, (s) => `<span class="hand">${s}</span>`)}<h1><span>${esc(d.title)}</span></h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}<div><span class="url">→ ${esc(b.url)}</span></div></div></div>`,
       [HAND],
     )
   },
@@ -628,7 +625,7 @@ const HERO: Record<DesignStyleId, Render> = {
 h1{font-size:${heroTitle(d, [96, 84, 72, 62], [80, 70, 60, 52])}px}
 .body{font-size:36px;line-height:1.35;margin-top:22px;opacity:.94}
 .foot{display:flex;justify-content:space-between;margin-top:36px;font-size:28px;font-weight:600;opacity:.85}`,
-      `${heroMedia(d)}<div class="veil"></div><div class="wrap">${brandRow(b, '#fff')}<div class="spacer"></div>${opt(d.eyebrow, (s) => `<p class="eyebrow">${s}</p>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, b.primary, onColor(b.primary))}<div class="foot"><span>${esc(b.url)}</span><span>${counter(d)}</span></div></div>`,
+      `${heroMedia(d)}<div class="veil"></div><div class="wrap"><div class="spacer"></div>${opt(d.eyebrow, (s) => `<p class="eyebrow">${s}</p>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, b.primary, onColor(b.primary))}<div class="foot"><span>${esc(b.url)}</span><span>${counter(d)}</span></div></div>`,
     )
   },
   poster(b, d, size = SIZES.feed) {
@@ -644,7 +641,7 @@ ${heroCss(tall)}
 .wrap{position:relative}
 h1{font-size:${heroTitle(d, tall ? [190, 150, 120, 98] : [170, 136, 110, 92], [130, 110, 92, 78])}px;color:#f4f2ec}
 .bar{z-index:2}`,
-      `${heroMedia(d)}<div class="veil"></div><div class="wrap"><div class="top">${brandRow(b, '#f4f2ec')}<span>${counter(d)}</span></div><div class="spacer"></div>${opt(d.eyebrow, (s) => `<span class="tag" style="align-self:flex-start">${s}</span>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, p, onColor(p))}</div><div class="bar"></div>`,
+      `${heroMedia(d)}<div class="veil"></div><div class="wrap"><div class="top"><span></span><span>${counter(d)}</span></div><div class="spacer"></div>${opt(d.eyebrow, (s) => `<span class="tag" style="align-self:flex-start">${s}</span>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, p, onColor(p))}</div><div class="bar"></div>`,
       ['Anton'],
     )
   },
@@ -658,7 +655,6 @@ h1{font-size:${heroTitle(d, tall ? [190, 150, 120, 98] : [170, 136, 110, 92], [1
 ${heroCss(tall)}
 .veil{background:linear-gradient(180deg,rgba(0,0,0,.5) 0%,rgba(0,0,0,0) 22%)}
 .mast{color:#fff;border-bottom-color:#fff}
-.mast .brand{color:#fff}
 .sheet{background:#f2ede3;padding:40px 46px 34px;box-shadow:0 30px 70px -30px rgba(0,0,0,.6)}
 .sheet .kicker{margin:0 0 14px}
 h1{font-size:${heroTitle(d, [96, 82, 70, 60], [78, 68, 58, 50])}px}
@@ -676,11 +672,11 @@ h1{font-size:${heroTitle(d, [96, 82, 70, 60], [78, 68, 58, 50])}px}
       `${papelBase(b, tall)}
 ${heroCss(tall)}
 .veil{background:linear-gradient(180deg,rgba(0,0,0,.35) 0%,rgba(0,0,0,0) 20%)}
-.top,.top .brand{color:#fff}
+.top{color:#fff}
 .sheet{background:#fff;border-radius:40px;padding:44px 48px 38px;box-shadow:0 30px 70px -30px rgba(0,0,0,.45)}
 h1{font-size:${heroTitle(d, [92, 80, 68, 58], [76, 66, 56, 50])}px}
 .foot{margin-top:28px}`,
-      `${heroMedia(d)}<div class="veil"></div><div class="wrap"><div class="top">${brandRow(b, '#fff')}<span>${counter(d)}</span></div><div class="spacer"></div><div class="sheet">${opt(d.eyebrow, (s) => `<span class="pill">${s}</span>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, b.primary, onColor(b.primary), 32)}<div class="foot"><span>${esc(b.url)}</span><span class="arrow">→</span></div></div></div>`,
+      `${heroMedia(d)}<div class="veil"></div><div class="wrap"><div class="top"><span></span><span>${counter(d)}</span></div><div class="spacer"></div><div class="sheet">${opt(d.eyebrow, (s) => `<span class="pill">${s}</span>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, b.primary, onColor(b.primary), 32)}<div class="foot"><span>${esc(b.url)}</span><span class="arrow">→</span></div></div></div>`,
     )
   },
   collage(b, d, size = SIZES.feed) {
@@ -693,12 +689,11 @@ h1{font-size:${heroTitle(d, [92, 80, 68, 58], [76, 66, 56, 50])}px}
 ${heroCss(tall)}
 .veil{background:linear-gradient(180deg,rgba(0,0,0,.3) 0%,rgba(0,0,0,0) 18%,rgba(0,0,0,0) 55%,rgba(0,0,0,.35) 100%)}
 .top{color:#fff}
-.top .brand{background:#fffdf7;color:#1d1a16;padding:8px 18px;transform:rotate(-2deg);box-shadow:4px 6px 0 rgba(0,0,0,.15)}
 .marker{background:#fffdf7;padding:4px 18px;box-shadow:4px 6px 0 rgba(0,0,0,.12)}
 h1{font-size:${heroTitle(d, [86, 74, 62, 54], [70, 62, 54, 46])}px}
 .note{background:#fffdf7;padding:18px 26px;margin-top:22px;transform:rotate(-.6deg);box-shadow:4px 6px 0 rgba(0,0,0,.12);position:relative}
 .note .body{background:none;box-shadow:none;padding:0;margin:0;transform:none}`,
-      `${heroMedia(d)}<div class="veil"></div><div class="tape" style="top:${tall ? 110 : 40}px;left:-30px;transform:rotate(-24deg);z-index:2"></div><div class="tape" style="bottom:${tall ? 120 : 50}px;right:-36px;transform:rotate(-20deg);z-index:2"></div><div class="wrap"><div class="top">${brandRow(b)}${counter(d) ? `<span style="background:#fffdf7;color:#1d1a16;padding:6px 14px">${counter(d)}</span>` : ''}</div><div class="spacer"></div>${opt(d.eyebrow, (s) => `<span class="marker" style="align-self:flex-start">${s}</span>`)}<h1>${words(d.title)}</h1>${d.body || d.items?.length ? `<div class="note">${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, b.primary, onColor(b.primary), 32)}</div>` : ''}</div>`,
+      `${heroMedia(d)}<div class="veil"></div><div class="tape" style="top:${tall ? 110 : 40}px;left:-30px;transform:rotate(-24deg);z-index:2"></div><div class="tape" style="bottom:${tall ? 120 : 50}px;right:-36px;transform:rotate(-20deg);z-index:2"></div><div class="wrap"><div class="top"><span></span>${counter(d) ? `<span style="background:#fffdf7;color:#1d1a16;padding:6px 14px">${counter(d)}</span>` : ''}</div><div class="spacer"></div>${opt(d.eyebrow, (s) => `<span class="marker" style="align-self:flex-start">${s}</span>`)}<h1>${words(d.title)}</h1>${d.body || d.items?.length ? `<div class="note">${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, b.primary, onColor(b.primary), 32)}</div>` : ''}</div>`,
       ['Archivo Black', 'Permanent Marker'],
     )
   },
@@ -712,7 +707,7 @@ h1{font-size:${heroTitle(d, [86, 74, 62, 54], [70, 62, 54, 46])}px}
 ${heroCss(tall)}
 .card{padding:46px 52px}
 h1{font-size:${heroTitle(d, [92, 80, 68, 58], [76, 66, 56, 50])}px}`,
-      `${heroMedia(d)}<div class="wrap"><div class="top"><div class="glass">${brandRow(b)}</div>${counter(d) ? `<div class="glass n">${counter(d)}</div>` : ''}</div><div class="spacer"></div><div class="glass card">${opt(d.eyebrow, (s) => `<span class="chip">${s}</span>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, b.primary, onColor(b.primary), 32)}</div></div>`,
+      `${heroMedia(d)}<div class="wrap"><div class="top"><span></span>${counter(d) ? `<div class="glass n">${counter(d)}</div>` : ''}</div><div class="spacer"></div><div class="glass card">${opt(d.eyebrow, (s) => `<span class="chip">${s}</span>`)}<h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, b.primary, onColor(b.primary), 32)}</div></div>`,
       ['Plus Jakarta Sans:wght@500;700;800'],
     )
   },
@@ -728,7 +723,7 @@ ${heroCss(tall)}
 .veil{background:linear-gradient(180deg,rgba(10,11,15,.35) 0%,rgba(10,11,15,0) 25%,rgba(10,11,15,0) 50%,rgba(10,11,15,.55) 100%)}
 .c{background:#14161dd9;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
 h1{font-size:${heroTitle(d, [88, 76, 64, 56], [72, 64, 56, 48])}px}`,
-      `${heroMedia(d)}<div class="veil"></div><div class="wrap"><div class="row"><div class="c">${brandRow(b)}</div><div class="c" style="gap:16px"><span class="mono">${esc(d.eyebrow ? `// ${d.eyebrow}` : '// nuevo')}</span><span class="mono muted" style="white-space:nowrap">${counter(d)}</span></div></div><div class="spacer"></div><div class="c"><h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, p, onColor(p), 32)}</div></div>`,
+      `${heroMedia(d)}<div class="veil"></div><div class="wrap"><div class="row"><div class="c" style="gap:16px"><span class="mono">${esc(d.eyebrow ? `// ${d.eyebrow}` : '// nuevo')}</span><span class="mono muted" style="white-space:nowrap">${counter(d)}</span></div></div><div class="spacer"></div><div class="c"><h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, p, onColor(p), 32)}</div></div>`,
       ['JetBrains Mono:wght@500;700'],
     )
   },
@@ -745,7 +740,7 @@ ${heroCss(tall)}
 .sheet{background:#fbf0dc;border:8px solid ${INK};box-shadow:14px 14px 0 ${INK};padding:40px 44px}
 h1{font-size:${heroTitle(d, [96, 82, 70, 60], [78, 68, 58, 50])}px}
 .star{width:240px;height:240px;padding:52px;font-size:22px}`,
-      `${heroMedia(d)}<div class="veil"></div>${opt(d.eyebrow, (s) => `<div class="star" style="right:${tall ? 50 : 40}px;top:${tall ? 230 : 150}px">${s}</div>`)}<div class="wrap"><div class="top">${brandRow(b, '#fbf0dc')}<span>${counter(d)}</span></div><div class="spacer"></div><div class="sheet"><h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, b.primary, onColor(b.primary), 32)}</div></div>`,
+      `${heroMedia(d)}<div class="veil"></div>${opt(d.eyebrow, (s) => `<div class="star" style="right:${tall ? 50 : 40}px;top:${tall ? 230 : 150}px">${s}</div>`)}<div class="wrap"><div class="top"><span></span><span>${counter(d)}</span></div><div class="spacer"></div><div class="sheet"><h1>${esc(d.title)}</h1>${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, b.primary, onColor(b.primary), 32)}</div></div>`,
       ['Bricolage Grotesque:opsz,wght@12..96,500..800'],
     )
   },
@@ -762,7 +757,7 @@ ${heroCss(tall)}
 .sheet{background:linear-gradient(#e6ecf6 2px, transparent 2px) 0 0/54px 54px, linear-gradient(90deg, #e6ecf6 2px, transparent 2px) 0 0/54px 54px, #fffdf7;border:4px solid #1f2430;border-radius:255px 18px 225px 18px/18px 225px 18px 255px;padding:44px 50px;position:relative;box-shadow:0 26px 60px -28px rgba(0,0,0,.55)}
 h1{font-size:${heroTitle(d, [90, 78, 66, 56], [74, 64, 56, 48])}px}
 .ar{right:70px;top:-120px}`,
-      `${heroMedia(d)}<div class="veil"></div><div class="wrap"><div class="top">${brandRow(b, '#fff')}<span class="n">${counter(d)}</span></div><div class="spacer"></div><div class="sheet">${arrow('#fff')}${opt(d.eyebrow, (s) => `<span class="hand">${s}</span>`)}<h1><span>${esc(d.title)}</span></h1>${squiggle(b.primary)}${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, b.primary, onColor(b.primary), 32)}</div></div>`,
+      `${heroMedia(d)}<div class="veil"></div><div class="wrap"><div class="top"><span></span><span class="n">${counter(d)}</span></div><div class="spacer"></div><div class="sheet">${arrow('#fff')}${opt(d.eyebrow, (s) => `<span class="hand">${s}</span>`)}<h1><span>${esc(d.title)}</span></h1>${squiggle(b.primary)}${opt(d.body, (s) => `<p class="body">${s}</p>`)}${heroList(d, b.primary, onColor(b.primary), 32)}</div></div>`,
       [HAND],
     )
   },
