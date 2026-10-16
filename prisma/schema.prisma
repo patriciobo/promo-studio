@@ -70,11 +70,12 @@ model Batch {
   notes     String?
   brief     String? // consigna del usuario para la semana ("Generar semana")
   kind      String      @default("WEEK") // WEEK = lote semanal | STARTER = kit de publicaciones iniciales (weekStart = su primer día)
+  round     Int         @default(1) // tanda: una semana se puede generar varias veces (cada tanda en otros horarios)
   imageIds  String[]    @default([]) // imágenes subidas en las que se basa la semana
   createdAt DateTime    @default(now())
   posts     Post[]
 
-  @@unique([appId, weekStart, kind])
+  @@unique([appId, weekStart, kind, round])
 }
 
 enum BatchStatus {

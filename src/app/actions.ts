@@ -154,18 +154,20 @@ export async function generateWeek(slug: string, f: FormData) {
   const week = str(f, 'week')
   const weekStart = week ? new Date(`${week}T00:00:00Z`) : nextMonday()
   const day = weekStart.toISOString().slice(0, 10)
-  const existing = await db.batch.findUnique({ where: { appId_weekStart_kind: { appId: app.id, weekStart, kind: 'WEEK' } } })
-  if (existing?.status === 'READY' && !existing.error) redirect(`/apps/${slug}?aviso=ya-generada&semana=${day}`)
+  // Una semana se puede generar varias veces: si la última tanda quedó completa se arma otra; si falló o sigue en curso, se retoma esa.
+  const last = await db.batch.findFirst({ where: { appId: app.id, weekStart, kind: 'WEEK' }, orderBy: { round: 'desc' } })
+  const existing = last && (last.status !== 'READY' || last.error) ? last : null
+  const round = existing ? existing.round : (last?.round ?? 0) + 1
   // El lote aparece enseguida en el Calendario ("Planificando") aunque el worker tarde unos segundos en tomarlo.
   // La consigna queda en el lote: si hay que retomarlo, se planifica con la misma.
   const brief = str(f, 'brief').slice(0, 1000) || null
-  if (!existing) await db.batch.create({ data: { appId: app.id, weekStart, status: 'PLANNING', brief } })
+  if (!existing) await db.batch.create({ data: { appId: app.id, weekStart, status: 'PLANNING', brief, round } })
   else if (brief) await db.batch.update({ where: { id: existing.id }, data: { brief } })
   const imageIds = await requestImages(app, f)
   // Un lote fallido de esa semana se retoma (planBatch lo detecta).
-  await enqueue(QUEUES.runWeekly, { appId: app.id, weekStart: weekStart.toISOString(), image: parseImageChoice(str(f, 'imageChoice'), str(f, 'imageKind')), imageIds }, { singletonKey: `${app.id}-${weekStart.toISOString()}` })
+  await enqueue(QUEUES.runWeekly, { appId: app.id, weekStart: weekStart.toISOString(), image: parseImageChoice(str(f, 'imageChoice'), str(f, 'imageKind')), imageIds, round }, { singletonKey: `${app.id}-${weekStart.toISOString()}-${round}` })
   revalidatePath(`/apps/${slug}`)
-  redirect(`/apps/${slug}?aviso=generando&semana=${day}`)
+  redirect(`/apps/${slug}?aviso=generando&semana=${day}${round > 1 ? `&tanda=${round}` : ''}`)
 }
 
 /** Borra publicaciones con sus piezas en disco. Sólo para lo que nunca se publicó ni tiene anuncios. */
@@ -326,10 +328,11 @@ export async function setPostStatus(postId: string, status: 'APPROVED' | 'REJECT
   revalidatePath(`/apps/${post.app.slug}`, 'layout')
 }
 
-export async function approveAll(slug: string) {
+/** Aprueba todo lo pendiente de la app, o sólo lo de un lote (`batchId`, desde el Calendario). */
+export async function approveAll(slug: string, batchId?: string) {
   await requireUser()
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
-  await db.post.updateMany({ where: { appId: app.id, status: 'PENDING_REVIEW' }, data: { status: 'APPROVED' } })
+  await db.post.updateMany({ where: { appId: app.id, status: 'PENDING_REVIEW', ...(batchId ? { batchId } : {}) }, data: { status: 'APPROVED' } })
   revalidatePath(`/apps/${slug}`, 'layout')
 }
 

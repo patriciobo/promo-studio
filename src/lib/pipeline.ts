@@ -19,7 +19,7 @@ import { drawLooks, forIllustration, ILLUSTRATION_ONLY, kindsFor, NATURAL_PHOTO,
 import { designStyle, parseDesignStyle } from './styles'
 import { MAX_CAROUSEL, parsePhotoMode, photoSetSlides, photoTreatment, type PhotoMode } from './photos'
 import { completeJson, generateImage } from './openrouter'
-import { localParts, weekSlots, zonedTime, type Slot } from './schedule'
+import { localParts, roundTime, weekSlots, zonedTime, type Slot } from './schedule'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { extname } from 'node:path'
@@ -223,11 +223,11 @@ Answer only with JSON: {"posts":[{"slot":number,"pillar":string,"hook":string,"c
   return { system, user }
 }
 
-/** `imageIds`: imágenes subidas en las que se basa la semana (quedan en el lote por si hay que retomarlo). */
-export async function planBatch(appId: string, weekStart: Date, imageIds: string[] = [], kind?: KindChoice, batchKind: BatchKind = 'WEEK') {
+/** `imageIds`: imágenes subidas en las que se basa la semana (quedan en el lote por si hay que retomarlo). `round`: tanda de esa semana. */
+export async function planBatch(appId: string, weekStart: Date, imageIds: string[] = [], kind?: KindChoice, batchKind: BatchKind = 'WEEK', round = 1) {
   const app = await db.app.findUniqueOrThrow({ where: { id: appId } })
   const m = manifestOf(app)
-  const existing = await db.batch.findUnique({ where: { appId_weekStart_kind: { appId, weekStart, kind: batchKind } }, include: { _count: { select: { posts: true } } } })
+  const existing = await db.batch.findUnique({ where: { appId_weekStart_kind_round: { appId, weekStart, kind: batchKind, round } }, include: { _count: { select: { posts: true } } } })
   if (existing) {
     // Nunca se borran posts de un lote: un lote fallido que ya tiene posts se retoma (se renderiza lo que falta),
     // así no se pierde lo que ya revisaste o aprobaste.
@@ -238,9 +238,9 @@ export async function planBatch(appId: string, weekStart: Date, imageIds: string
   const focus = imageIds.length ? imageIds : (existing?.imageIds ?? [])
   const batch = existing
     ? await db.batch.update({ where: { id: existing.id }, data: { status: 'PLANNING', error: null, imageIds: focus } })
-    : await db.batch.create({ data: { appId, weekStart, status: 'PLANNING', imageIds: focus, kind: batchKind } })
+    : await db.batch.create({ data: { appId, weekStart, status: 'PLANNING', imageIds: focus, kind: batchKind, round } })
   try {
-    return await planPosts(app, m, batch.id, weekStart, focus, kind ?? kindOf(app), batch.brief, batchKind)
+    return await planPosts(app, m, batch.id, weekStart, focus, kind ?? kindOf(app), batch.brief, batchKind, round)
   } catch (e) {
     await db.batch.update({ where: { id: batch.id }, data: { status: 'FAILED', error: `No se pudo planificar: ${(e as Error).message}` } })
     await notify(`⚠️ ${app.name}: falló la planificación ${batchKind === 'STARTER' ? 'del kit inicial' : 'de la semana'} del ${weekStart.toISOString().slice(0, 10)}: ${(e as Error).message}`)
@@ -248,12 +248,12 @@ export async function planBatch(appId: string, weekStart: Date, imageIds: string
   }
 }
 
-async function planPosts(app: App, m: Manifest, batchId: string, weekStart: Date, imageIds: string[], kind: KindChoice, brief: string | null, batchKind: BatchKind) {
+async function planPosts(app: App, m: Manifest, batchId: string, weekStart: Date, imageIds: string[], kind: KindChoice, brief: string | null, batchKind: BatchKind, round = 1) {
   const appId = app.id
   const batch = { id: batchId }
 
   const starter = batchKind === 'STARTER'
-  const slots = starter ? starterSlots(weekStart, app.postTime, app.timezone) : await withoutStarterDays(app, weekSlots(weekStart, m.cadence, app.postTime, app.timezone))
+  const slots = starter ? starterSlots(weekStart, app.postTime, app.timezone) : await withoutStarterDays(app, weekSlots(weekStart, m.cadence, roundTime(app.postTime, round), app.timezone))
   if (!slots.length) return db.batch.update({ where: { id: batch.id }, data: { status: 'READY', notes: 'Cadencia semanal en 0' } })
   const [src, releases, recent, scored, images] = await Promise.all([
     sources(m),
@@ -520,12 +520,12 @@ export async function toClient(appId: string) {
 }
 
 /** Sincronizar + planificar + generar la semana que empieza en `weekStart`. */
-export async function runWeekly(appId: string, weekStart: Date, image?: ImageChoice, imageIds?: string[], batchKind: BatchKind = 'WEEK') {
+export async function runWeekly(appId: string, weekStart: Date, image?: ImageChoice, imageIds?: string[], batchKind: BatchKind = 'WEEK', round = 1) {
   const app = await db.app.findUniqueOrThrow({ where: { id: appId } })
   if (app.paused) return null
   const s = await syncApp(appId)
   if (!s.ok && !app.manifest) throw new Error(`${app.name}: ${'error' in s ? s.error : 'manifiesto inválido'}`)
-  const batch = await planBatch(appId, weekStart, imageIds, image?.kind, batchKind)
+  const batch = await planBatch(appId, weekStart, imageIds, image?.kind, batchKind, round)
   if (batch.status === 'GENERATING') await generateBatch(batch.id, image)
   return batch
 }

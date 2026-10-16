@@ -7,7 +7,7 @@ export const QUEUES = {
   insights: 'insights', // cada hora: métricas
   daily: 'daily', // cada 10 minutos: edición diaria de las apps que la tienen
   weekly: 'weekly', // domingo: lote de cada app
-  runWeekly: 'run-weekly', // { appId, weekStart, image?, imageIds?, batchKind? }: lote semanal o kit inicial
+  runWeekly: 'run-weekly', // { appId, weekStart, image?, imageIds?, batchKind?, round? }: lote semanal (tanda round) o kit inicial
   renderPost: 'render-post', // { postId, regenerateImage?, image? }
   syncApp: 'sync-app', // { appId }
   revisePost: 'revise-post', // { postId, note }: aplicar el cambio que pidió el cliente por WhatsApp

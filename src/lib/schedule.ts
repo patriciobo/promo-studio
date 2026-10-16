@@ -61,6 +61,13 @@ export function nextMonday(from = new Date()) {
   return d
 }
 
+/** Hora de las publicaciones de la tanda `round` de una semana: cada tanda extra, 2 h más tarde, para no pisarse. */
+export function roundTime(postTime: string, round: number) {
+  if (round <= 1) return postTime
+  const [hh, mm] = postTime.split(':').map(Number)
+  return `${String(Math.min(22, hh + 2 * (round - 1))).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
+}
+
 const FEED_DAYS = [0, 2, 4, 6, 1, 3, 5] // lunes, miércoles, viernes, domingo…
 const STORY_DAYS = [1, 3, 5, 6, 0, 2, 4] // martes, jueves, sábado…
 

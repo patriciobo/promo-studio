@@ -5,7 +5,7 @@ vi.mock('../db', () => ({ db: {} }))
 
 import { flowScreenPath, parseManifest, setYamlStyle } from '../manifest'
 import { inOrder } from '../images'
-import { fromLocalInput, localParts, toLocalInput, weekSlots, zonedTime } from '../schedule'
+import { fromLocalInput, localParts, roundTime, toLocalInput, weekSlots, zonedTime } from '../schedule'
 import { adCandidates, engagement, median, relativeScore } from '../score'
 import { containerRequests, publish, type GraphClient } from '../instagram'
 import { explain, MetaError } from '../meta-errors'
@@ -95,6 +95,11 @@ flows:
 })
 
 describe('schedule', () => {
+  it('cada tanda extra de una semana sale 2 h más tarde, sin pasarse de las 22', () => {
+    expect(roundTime('10:30', 1)).toBe('10:30')
+    expect(roundTime('10:30', 2)).toBe('12:30')
+    expect(roundTime('10:30', 9)).toBe('22:30')
+  })
   it('convierte hora local a UTC (Buenos Aires = UTC-3)', () => {
     expect(zonedTime(2026, 10, 5, 10, 0, 'America/Argentina/Buenos_Aires').toISOString()).toBe('2026-10-05T13:00:00.000Z')
   })

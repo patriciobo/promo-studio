@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { deleteRejected, generateWeek, retryPost, syncNow } from '@/app/actions'
+import { approveAll, deleteRejected, generateWeek, retryPost, setPostStatus, syncNow } from '@/app/actions'
 import { AutoRefresh, ConfirmButton, Progress, SubmitButton } from '@/components/client'
 import { starterRedoable } from '@/lib/starter'
 import { ImagePicker } from '@/components/ImagePicker'
@@ -15,12 +15,12 @@ const BATCH_STATUS = { PLANNING: 'Planificando', GENERATING: 'Generando', READY:
 
 export default async function Calendar({ params, searchParams }: PageProps<'/apps/[slug]'>) {
   const { slug } = await params
-  const { aviso, semana } = await searchParams
+  const { aviso, semana, tanda } = await searchParams
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
   const batches = await db.batch.findMany({
     where: { appId: app.id },
-    orderBy: { weekStart: 'desc' },
-    take: 6,
+    orderBy: [{ weekStart: 'desc' }, { round: 'desc' }],
+    take: 8,
     include: { posts: { orderBy: { scheduledAt: 'asc' }, include: { assets: true } } },
   })
   const images = await db.appImage.findMany({ where: { appId: app.id, archived: false }, orderBy: { createdAt: 'desc' }, take: 24 })
@@ -38,18 +38,17 @@ export default async function Calendar({ params, searchParams }: PageProps<'/app
       {working && <AutoRefresh />}
       {aviso === 'generando' && working && (
         <p className="notice ok">
-          Generando la semana del {String(semana)}: primero se escriben los textos y después se arman las piezas, una por una. Tarda unos minutos; esta página se actualiza sola.
+          Generando {tanda ? `la tanda ${String(tanda)} de ` : ''}la semana del {String(semana)}: primero se escriben los textos y después se arman las piezas, una por una. Tarda unos minutos; esta página se actualiza sola.
         </p>
       )}
       {aviso === 'kit-generando' && working && <p className="notice ok">Generando el kit inicial: primero los textos de las 9 publicaciones y después las piezas. Tarda unos minutos; esta página se actualiza sola.</p>}
       {aviso === 'kit-ya-generado' && <p className="notice warn">Esta app ya tiene su kit inicial. Para rehacer una publicación, editala o regenerá su imagen desde Revisión.</p>}
       {offerStarter && app.manifest && <StarterKit app={app} redo={redo} />}
-      {aviso === 'ya-generada' && <p className="notice warn">La semana del {String(semana)} ya está generada. Para rehacer una publicación, editala o regenerá su imagen desde Revisión.</p>}
       <div className="card stack">
         <div className="row between">
           <div className="stack-sm">
             <h2>Lote semanal</h2>
-            <p className="small muted">Se genera solo cada domingo a las 18:00. Podés adelantarlo o rehacer una semana que falló.</p>
+            <p className="small muted">Se genera solo cada domingo a las 18:00. Podés adelantarlo, rehacer una semana que falló o generar otra tanda de una semana ya hecha: trae ideas distintas, 2 h más tarde que la anterior, y te quedás con las que apruebes.</p>
             {app.manifestError && <p className="notice bad small">El promo.yaml tiene errores: {app.manifestError}</p>}
             {!app.imageModel && <p className="notice warn small">Sin modelo de imagen: las piezas se arman con el color de la marca. Elegí uno en Ajustes.</p>}
           </div>
@@ -103,7 +102,7 @@ export default async function Calendar({ params, searchParams }: PageProps<'/app
       {batches.map((b) => (
         <section key={b.id} className="stack">
           <div className="row between">
-            <h2>{b.kind === 'STARTER' ? `Kit inicial · desde el ${b.weekStart.toISOString().slice(0, 10)}` : `Semana del ${b.weekStart.toISOString().slice(0, 10)}`}</h2>
+            <h2>{b.kind === 'STARTER' ? `Kit inicial · desde el ${b.weekStart.toISOString().slice(0, 10)}` : `Semana del ${b.weekStart.toISOString().slice(0, 10)}${b.round > 1 ? ` · tanda ${b.round}` : ''}`}</h2>
             <span className={`badge ${b.status === 'READY' ? 'ok' : b.status === 'FAILED' ? 'bad' : 'info'}`}>
               {(b.status === 'PLANNING' || b.status === 'GENERATING') && <span className="spinner" aria-hidden />}
               {BATCH_STATUS[b.status]}
@@ -127,14 +126,21 @@ export default async function Calendar({ params, searchParams }: PageProps<'/app
             </p>
           )}
           {b.error && <p className="notice bad small">{b.error}</p>}
-          {b.posts.some((p) => p.status === 'REJECTED') && (
+          {b.posts.some((p) => p.status === 'PENDING_REVIEW' || p.status === 'REJECTED') && (
             <div className="row" style={{ gap: 8 }}>
+              {b.posts.some((p) => p.status === 'PENDING_REVIEW') && (
+                <form action={approveAll.bind(null, slug, b.id)}>
+                  <SubmitButton className="btn sm">Aprobar las {b.posts.filter((p) => p.status === 'PENDING_REVIEW').length} pendientes</SubmitButton>
+                </form>
+              )}
+              {b.posts.some((p) => p.status === 'REJECTED') && (
               <ConfirmButton
                 action={deleteRejected.bind(null, slug, { batchId: b.id })}
                 label={`Borrar las ${b.posts.filter((p) => p.status === 'REJECTED').length} rechazadas`}
                 confirm="Se borran con sus piezas; no se puede deshacer."
                 className="btn sm ghost"
               />
+              )}
             </div>
           )}
           <div className="grid">
@@ -148,9 +154,24 @@ export default async function Calendar({ params, searchParams }: PageProps<'/app
                 {p.error && <p className={`notice small ${p.status === 'FAILED' ? 'bad' : 'warn'}`}>{p.error}</p>}
                 <div className="row">
                   {p.status === 'PENDING_REVIEW' && (
+                    <form action={setPostStatus.bind(null, p.id, 'APPROVED')}>
+                      <SubmitButton className="btn primary sm">Aprobar</SubmitButton>
+                    </form>
+                  )}
+                  {(p.status === 'PENDING_REVIEW' || p.status === 'APPROVED') && (
+                    <form action={setPostStatus.bind(null, p.id, 'REJECTED')}>
+                      <SubmitButton className="btn sm danger">Rechazar</SubmitButton>
+                    </form>
+                  )}
+                  {p.status === 'PENDING_REVIEW' && (
                     <Link className="btn sm" href={`/apps/${slug}/revision#${p.id}`}>
-                      Revisar
+                      Editar
                     </Link>
+                  )}
+                  {p.status === 'REJECTED' && (
+                    <form action={setPostStatus.bind(null, p.id, 'PENDING_REVIEW')}>
+                      <SubmitButton className="btn sm">Recuperar</SubmitButton>
+                    </form>
                   )}
                   {p.status === 'REJECTED' && <ConfirmButton action={deleteRejected.bind(null, slug, { postId: p.id })} label="Borrar" confirm="¿Borrarla?" className="btn sm ghost" />}
                   {p.status === 'FAILED' && p.assets.length > 0 && (

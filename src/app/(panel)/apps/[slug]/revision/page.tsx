@@ -42,7 +42,7 @@ export default async function Review({ params, searchParams }: PageProps<'/apps/
           {pending ? `${pending} para revisar. Lo que no revises se aprueba solo a las ${app.autoApproveHours} h.` : 'No hay nada pendiente de revisión.'}
         </p>
         {pending > 0 && (
-          <form action={approveAll.bind(null, slug)}>
+          <form action={approveAll.bind(null, slug, undefined)}>
             <SubmitButton className="btn">Aprobar todo</SubmitButton>
           </form>
         )}

@@ -69,15 +69,15 @@ async function main() {
   await boss.work(QUEUES.weekly, async () => {
     const apps = await db.app.findMany({ where: { paused: false } })
     const weekStart = nextMonday()
-    for (const a of apps) await boss.send(QUEUES.runWeekly, { appId: a.id, weekStart: weekStart.toISOString() }, { singletonKey: `${a.id}-${weekStart.toISOString()}` })
+    for (const a of apps) await boss.send(QUEUES.runWeekly, { appId: a.id, weekStart: weekStart.toISOString() }, { singletonKey: `${a.id}-${weekStart.toISOString()}-1` })
   })
 
   // `image`: modelo elegido junto al botón; el lote automático del domingo no lo trae y usa el de Ajustes.
-  type WeeklyJob = { appId: string; weekStart: string; image?: ImageChoice; imageIds?: string[]; batchKind?: BatchKind }
+  type WeeklyJob = { appId: string; weekStart: string; image?: ImageChoice; imageIds?: string[]; batchKind?: BatchKind; round?: number }
   await boss.work<WeeklyJob>(QUEUES.runWeekly, async (jobs: Job<WeeklyJob>[]) => {
     for (const j of jobs) {
-      console.log(`[lote] ${j.data.appId} ${j.data.batchKind === 'STARTER' ? 'kit inicial' : 'semana'} ${j.data.weekStart.slice(0, 10)}`)
-      await runWeekly(j.data.appId, new Date(j.data.weekStart), j.data.image, j.data.imageIds, j.data.batchKind)
+      console.log(`[lote] ${j.data.appId} ${j.data.batchKind === 'STARTER' ? 'kit inicial' : 'semana'} ${j.data.weekStart.slice(0, 10)}${(j.data.round ?? 1) > 1 ? ` tanda ${j.data.round}` : ''}`)
+      await runWeekly(j.data.appId, new Date(j.data.weekStart), j.data.image, j.data.imageIds, j.data.batchKind, j.data.round)
       await closeBrowser()
     }
   })
