@@ -696,3 +696,12 @@ describe('cambios pedidos por el cliente', () => {
     expect(reviewDue(48, null, now).toISOString()).toBe('2026-10-13T12:00:00.000Z')
   })
 })
+
+describe('parseJsonLoose', () => {
+  it('acepta cercas y texto alrededor; devuelve undefined si está cortado', async () => {
+    const { parseJsonLoose } = await import('../openrouter')
+    expect(parseJsonLoose('```json\n{"a":1}\n```')).toEqual({ a: 1 })
+    expect(parseJsonLoose('Acá va: {"a":[1,2]} listo')).toEqual({ a: [1, 2] })
+    expect(parseJsonLoose('{"options":[{"conceptId":"micro","title":"Traz')).toBeUndefined()
+  })
+})

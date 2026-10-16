@@ -42,7 +42,7 @@ async function record(appId: string | null, kind: 'text' | 'image', model: strin
 const MAX_TOKENS = Number(process.env.TEXT_MAX_TOKENS ?? 32000)
 
 /** Pide una respuesta JSON al modelo de texto. `images` (data URIs) se le muestran junto al pedido. */
-export async function completeJson<T = unknown>(opts: { appId: string | null; model: string; system: string; user: string; purpose: string; maxTokens?: number; images?: string[]; onCost?: (usd: number) => void }): Promise<T> {
+export async function completeJson<T = unknown>(opts: { appId: string | null; model: string; system: string; user: string; purpose: string; maxTokens?: number; images?: string[]; onCost?: (usd: number) => void }, retried = false): Promise<T> {
   await assertBudget(opts.appId, 0.05)
   const r = (await call('/chat/completions', {
     model: opts.model,
@@ -58,11 +58,28 @@ export async function completeJson<T = unknown>(opts: { appId: string | null; mo
   opts.onCost?.(r.usage?.cost ?? 0)
   const content = r.choices?.[0]?.message?.content ?? ''
   if (r.choices?.[0]?.finish_reason === 'length') throw new OpenRouterError(200, `la respuesta de ${opts.model} se cortó por el límite de tokens (${opts.maxTokens ?? MAX_TOKENS}); probá con otro modelo de texto (Ajustes > Modelos de OpenRouter > Modelo de texto)`)
-  try {
-    return JSON.parse(content.replace(/^```(?:json)?\s*|\s*```$/g, '')) as T
-  } catch {
-    throw new OpenRouterError(200, `la respuesta no es JSON válido: ${content.slice(0, 200)}`)
+  const parsed = parseJsonLoose(content)
+  if (parsed !== undefined) return parsed as T
+  // A veces el modelo devuelve un JSON cortado o con texto alrededor: se pide una vez más antes de fallar.
+  if (!retried) {
+    const first = r.usage?.cost ?? 0
+    return completeJson<T>({ ...opts, onCost: (c) => opts.onCost?.(first + c) }, true)
   }
+  throw new OpenRouterError(200, `la respuesta de ${opts.model} no es JSON válido (dos intentos; finish_reason: ${r.choices?.[0]?.finish_reason ?? '?'}). Probá de nuevo o con otro modelo de texto. Empieza: ${content.slice(0, 120)} … termina: ${content.slice(-80)}`)
+}
+
+/** JSON de un modelo: sin cercas ``` y, si trae texto alrededor, el objeto entre la primera { y la última }. */
+export function parseJsonLoose(content: string): unknown {
+  const tries = [content.replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, '')]
+  const a = content.indexOf('{')
+  const b = content.lastIndexOf('}')
+  if (a >= 0 && b > a) tries.push(content.slice(a, b + 1))
+  for (const t of tries) {
+    try {
+      return JSON.parse(t)
+    } catch {}
+  }
+  return undefined
 }
 
 export type AspectRatio = '4:5' | '3:4' | '9:16' | '1:1'
@@ -80,6 +97,7 @@ export async function generateImage(opts: { appId: string | null; model: string;
   const info = imageModel(opts.model)
   const refs = info?.references ? (opts.references ?? []).slice(0, 4) : []
   let aspect = aspectFor(opts.model, opts.aspectRatio)
+  let imagesError: OpenRouterError | null = null
   if (info?.api !== 'chat') {
     // Una calidad que el catálogo ya no ofrece (p. ej. "high" guardada de antes) usa la por defecto.
     const quality = info?.qualities ? (opts.quality && opts.quality in info.qualities ? opts.quality : info.defaultQuality) : undefined
@@ -99,7 +117,9 @@ export async function generateImage(opts: { appId: string | null; model: string;
       await record(opts.appId, 'image', opts.model, cost, undefined, opts.purpose)
       return { data: Buffer.from(img.data[0].b64_json, 'base64'), mime: img.data[0].media_type ?? 'image/jpeg', cost }
     } catch (e) {
-      if (!(e instanceof OpenRouterError) || ![400, 404, 405].includes(e.status)) throw e
+      // Un modelo del catálogo que va por /images no tiene plan B por chat: el error de /images es el que importa.
+      if (!(e instanceof OpenRouterError) || ![400, 404, 405].includes(e.status) || info) throw e
+      imagesError = e
     }
   }
   // `withText`: logos y piezas de marca, donde el nombre sí tiene que aparecer.
@@ -110,6 +130,9 @@ export async function generateImage(opts: { appId: string | null; model: string;
     messages: [{ role: 'user', content: refs.length ? [{ type: 'text', text }, ...refs.map(imagePart)] : text }],
     image_config: { aspect_ratio: aspect },
     usage: { include: true },
+  }).catch((e) => {
+    // Si el chat tampoco lo acepta (p. ej. "is an image generation model"), el error útil es el de /images.
+    throw imagesError && e instanceof OpenRouterError && /images endpoint|image generation model/i.test(e.message) ? imagesError : e
   })) as { choices: { message: { images?: { image_url: { url: string } }[] } }[]; usage?: { cost?: number; total_tokens?: number } }
   const url = r.choices?.[0]?.message?.images?.[0]?.image_url?.url
   if (!url?.startsWith('data:')) throw new OpenRouterError(200, 'el modelo no devolvió una imagen')
