@@ -13,7 +13,7 @@ import { buildSuggestPrompt, mockSuggestion, SuggestionSchema } from '../ad-sugg
 import { adMessage, adOnlyCreative, boostCreative, budgetError, campaignLink, campaignRequests, plannedSpend } from '../meta-ads'
 import { kindsFor } from '../variety'
 import { buildPlanPrompt, compactReport, imagePromptFor, looksFor, styleFor, dailySourceUrl, keepKnownImages, mockPlan, needsRender, postFromPlan, slideLayout } from '../pipeline'
-import { encodeImageChoice, IMAGE_KINDS, IMAGE_MODELS, imagePrice, imagesPerMonth, parseImageChoice, parseImageKind, SUGGESTED } from '../models'
+import { encodeImageChoice, fitFor, IMAGE_KINDS, parseKindChoice, IMAGE_MODELS, imagePrice, imagesPerMonth, parseImageChoice, parseImageKind, SUGGESTED } from '../models'
 import { aspectFor } from '../openrouter'
 import { normalizeRepo } from '../github'
 import { brandFrom } from '@/templates/brand'
@@ -291,6 +291,36 @@ describe('planificación', () => {
     const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 2, reels: 0, stories: 0 }, '10:00', 'UTC')
     const p = buildPlanPrompt(m, slots, { feed: [], texts: [], releases: [], recent: [], bestPillars: [], looks: looks.slice(0, 2) })
     expect(JSON.parse(p.user).week[1].visual.people).toBe(looks[1].people)
+  })
+  it('sólo texto: sin imagen ni estética, y las mezclas con texto reparten mitad y mitad', () => {
+    const rng = () => 0.3
+    const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 1, reels: 0, stories: 0 }, '10:00', 'UTC')
+    const p = buildPlanPrompt(m, slots, { feed: [], texts: [], releases: [], recent: [], bestPillars: [], kind: 'text' })
+    expect(p.system).toMatch(/imageType "text"/)
+    expect(p.system).not.toMatch(/Show people/)
+    expect(JSON.parse(p.user).week[0].visual).toEqual({ imageType: 'text' })
+    expect(looksFor(m, null, 'text', 2, rng)).toEqual([{ kind: 'text', style: '' }, { kind: 'text', style: '' }])
+    const mixed = kindsFor('text+photo', 6, rng)
+    expect(mixed.filter((k) => k === 'text')).toHaveLength(3)
+    expect(mixed.filter((k) => k === 'photo')).toHaveLength(3)
+    expect(parseKindChoice('text+illustration')).toBe('text+illustration')
+    expect(parseKindChoice('video')).toBeUndefined()
+    expect(fitFor({ fit: { illustration: 'flojo', photo: 'bien' } }, 'text')).toBe('ideal')
+    expect(fitFor({ fit: { illustration: 'flojo', photo: 'bien' } }, 'text+photo')).toBe('bien')
+    expect(fitFor({ fit: { illustration: 'flojo', photo: 'bien' } }, 'mix')).toBe('flojo')
+  })
+  it('con estética propia en el promo.yaml no se sortea gente ni se le suma el look de celular', () => {
+    const base = m as Parameters<typeof styleFor>[0]
+    const own = { ...base, brand: { ...base.brand, imageStyle: 'flat diagram, no people', photoStyle: 'two people at a table, uncluttered background' } }
+    const looks = looksFor(own, null, 'mix', 4)
+    expect(looks.every((l) => !l.people && !l.setting && (l.style === 'flat diagram, no people' || l.style === 'two people at a table, uncluttered background'))).toBe(true)
+    const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 2, reels: 0, stories: 0 }, '10:00', 'UTC')
+    const p = buildPlanPrompt(own, slots, { feed: [], texts: [], releases: [], recent: [], bestPillars: [], looks: looks.slice(0, 2) })
+    expect(p.system).not.toMatch(/Show people/)
+    expect(p.system).toMatch(/that style rules the subject/)
+    expect(imagePromptFor(own, 'Two people at a table', { kind: 'photo', style: 'x' })).not.toMatch(/cluttered real background/)
+    // En otro estilo de diseño manda su estética, no la del promo.yaml.
+    expect(looksFor(own, 'collage', 'illustration', 1)[0].people).toBeTruthy()
   })
   it('el prompt de ilustración saca lo fotográfico y el de foto evita el estudio', () => {
     const ill = imagePromptFor(m, 'A photorealistic photo of a woman, shallow depth of field, cinematic lighting', { kind: 'illustration', style: 'gouache' })

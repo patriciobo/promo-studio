@@ -1,7 +1,7 @@
 'use client'
 // Selector de modelos de OpenRouter: catálogo curado por uso, con precio y gasto mensual estimado.
 import { useState } from 'react'
-import { fitFor, IMAGE_KINDS, IMAGE_MODELS, imagePrice, KIND_CHOICES, parseKindChoice, PRICES_CHECKED, suggestedFor, TEXT_MODELS, TIERS, type Fit, type ImageQuality, type KindChoice } from '@/lib/models'
+import { fitFor, IMAGE_KINDS, imageKindsIn, KIND_PLURAL, IMAGE_MODELS, imagePrice, KIND_CHOICES, parseKindChoice, PRICES_CHECKED, suggestedFor, TEXT_MODELS, TIERS, type Fit, type ImageQuality, type KindChoice } from '@/lib/models'
 import type { ModelInfo } from '@/lib/openrouter'
 import { DEFAULT_DESIGN_STYLE, parseDesignStyle, SAMPLE_MODEL, samplesOfKind, type DesignStyleId } from '@/lib/styles'
 import { StylePicker, type StyleAppProps } from './StylePicker'
@@ -10,7 +10,6 @@ const OTHER = '__other'
 const money = (n: number) => `US$ ${n < 0.1 ? n.toFixed(3) : n.toFixed(2)}`
 const QUALITY_LABEL: Record<ImageQuality, string> = { low: 'Baja', medium: 'Media' }
 const FIT_BADGE: Record<Fit, string> = { ideal: 'ok', bien: '', flojo: 'warn' }
-const KIND_PLURAL: Record<KindChoice, string> = { illustration: 'ilustraciones', photo: 'fotos', mix: 'la mezcla' }
 
 export function ImageModelPicker({
   current,
@@ -45,8 +44,8 @@ export function ImageModelPicker({
   const selected = IMAGE_MODELS.find((m) => m.id === choice)
   const [q, setQ] = useState<ImageQuality>((quality as ImageQuality) ?? selected?.defaultQuality ?? 'medium')
   const [kind, setKind] = useState<KindChoice>(parseKindChoice(initialKind) ?? 'illustration')
-  // En la mezcla las muestras se ven en ilustración.
-  const sampleKind = kind === 'mix' ? 'illustration' : kind
+  // En la mezcla de ilustración y foto (y en sólo texto) las muestras se ven en ilustración.
+  const sampleKind = imageKindsIn(kind)[0] ?? 'illustration'
   const suggested = IMAGE_MODELS.find((m) => m.id === suggestedFor(kind))!
   const live = new Set(available.map((m) => m.id))
   const value = choice === OTHER ? other : choice

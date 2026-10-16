@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { encodeImageChoice, fitFor, IMAGE_MODELS, KIND_CHOICES, parseImageChoice, suggestedFor, TIERS, type ImageQuality, type KindChoice } from '@/lib/models'
+import { encodeImageChoice, fitFor, IMAGE_MODELS, KIND_CHOICES, KIND_PLURAL, parseImageChoice, suggestedFor, TIERS, type ImageQuality, type KindChoice } from '@/lib/models'
 
 const QUALITY_LABEL: Record<ImageQuality, string> = { low: 'baja', medium: 'media' }
 const money = (n: number) => `US$ ${n < 0.1 ? n.toFixed(3) : n.toFixed(2)}`
@@ -57,7 +57,7 @@ export function ModelSelectFields({ imageModel, imageQuality, imageKind, label }
         </optgroup>
       </select>
       {selected && fitFor(selected, kind) !== 'ideal' && (
-        <button type="button" className="btn sm ghost" onClick={useSuggested} title={`${selected.name} sale ${fitFor(selected, kind)} para ${kind === 'photo' ? 'fotos' : kind === 'mix' ? 'la mezcla de ilustraciones y fotos' : 'ilustraciones'}`}>
+        <button type="button" className="btn sm ghost" onClick={useSuggested} title={`${selected.name} sale ${fitFor(selected, kind)} para ${KIND_PLURAL[kind]}`}>
           Usar {suggested.name} ★
         </button>
       )}

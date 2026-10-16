@@ -29,7 +29,7 @@ model App {
   textModel        String    @default("anthropic/claude-haiku-5.5")
   imageModel       String?
   imageQuality     String? // low | medium | high, para modelos que cobran según la calidad
-  imageKind        String? // illustration | photo | mix (null = illustration)
+  imageKind        String? // illustration | photo | text | mix | text+photo | text+illustration (null = illustration)
   photoMode        String   @default("fondo") // fotos elegidas: fondo | marco | mezcla
   starterDismissed Boolean  @default(false) // no ofrecer el kit inicial (la cuenta ya tiene contenido)
   autoRevise       Boolean  @default(true) // aplicar solos (con el modelo de texto) los cambios que pide el cliente por WhatsApp
@@ -112,7 +112,7 @@ model Post {
   waNumber    Int? // número con el que se le mandó al cliente por WhatsApp para aprobar (null = sin mandar)
   waSentAt    DateTime?
   photoMode   String? // tratamiento de las fotos elegidas (null = el de la app)
-  imageKind   String? // illustration | photo: el tipo con que se planificó (null = el de la app)
+  imageKind   String? // illustration | photo | text (sin imagen IA): el tipo con que se planificó (null = el de la app)
   imageStyle  String? // estética sorteada para sus imágenes IA (null = la del estilo de diseño)
   revisions   Int       @default(0) // correcciones automáticas por pedidos del cliente
   createdAt   DateTime   @default(now())

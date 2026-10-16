@@ -9,6 +9,8 @@ export type Tier = 'pruebas' | 'mejor-calidad'
 /** Sin calidad alta: cuesta el triple que la media y en las piezas (con texto encima) casi no se nota. */
 export type ImageQuality = 'low' | 'medium'
 export type ImageKind = 'illustration' | 'photo'
+/** Tipo de un post: con imagen IA (ilustración o foto) o sólo texto, una pieza tipográfica sin imagen generada. */
+export type PostKind = ImageKind | 'text'
 /** Qué tan bien le sale cada tipo de imagen a un modelo. */
 export type Fit = 'ideal' | 'bien' | 'flojo'
 
@@ -17,13 +19,33 @@ export const IMAGE_KINDS: { id: ImageKind; label: string; hint: string }[] = [
   { id: 'photo', label: 'Foto realista', hint: 'Fotos naturales e imperfectas, como sacadas con el celular: gente común, nada de modelos de estudio. Mismo precio que una ilustración.' },
 ]
 
-/** Tipo elegido al generar: uno fijo o una mezcla, con cada publicación en ilustración o en foto. */
-export type KindChoice = ImageKind | 'mix'
+/** Tipo elegido al generar: uno fijo o una mezcla de dos, con cada publicación de uno u otro. */
+export type KindChoice = PostKind | 'mix' | 'text+photo' | 'text+illustration'
+
+/** Los tipos que reparte cada mezcla (`mix` es ilustración y foto, de antes de que hubiera sólo texto). */
+const MIXES: Partial<Record<KindChoice, [PostKind, PostKind]>> = { mix: ['illustration', 'photo'], 'text+photo': ['text', 'photo'], 'text+illustration': ['text', 'illustration'] }
+
+export const kindsIn = (k: KindChoice): PostKind[] => MIXES[k] ?? [k as PostKind]
+/** Los tipos con imagen IA de una elección (ninguno en sólo texto). */
+export const imageKindsIn = (k: KindChoice): ImageKind[] => kindsIn(k).filter((x): x is ImageKind => x !== 'text')
 
 export const KIND_CHOICES: { id: KindChoice; label: string; hint: string }[] = [
   ...IMAGE_KINDS,
-  { id: 'mix', label: 'Mezcla', hint: 'Cada publicación sale en ilustración o en foto realista, repartidas mitad y mitad.' },
+  { id: 'text', label: 'Sólo texto', hint: 'Piezas tipográficas con los colores de la marca, sin imagen IA: el título lleva la idea (un dato, una pregunta, un checklist). No gasta en imágenes.' },
+  { id: 'mix', label: 'Mezcla: ilustración y foto', hint: 'Cada publicación sale en ilustración o en foto realista, repartidas mitad y mitad.' },
+  { id: 'text+photo', label: 'Mezcla: texto y foto', hint: 'Mitad de las publicaciones sólo con texto y mitad con foto realista.' },
+  { id: 'text+illustration', label: 'Mezcla: texto e ilustración', hint: 'Mitad de las publicaciones sólo con texto y mitad con ilustración.' },
 ]
+
+/** Cómo nombrar cada elección en plural ("sale flojo para …"). */
+export const KIND_PLURAL: Record<KindChoice, string> = {
+  illustration: 'ilustraciones',
+  photo: 'fotos',
+  text: 'sólo texto',
+  mix: 'la mezcla de ilustraciones y fotos',
+  'text+photo': 'las fotos',
+  'text+illustration': 'las ilustraciones',
+}
 
 /** Modelo sugerido para cada tipo de imagen. */
 export const SUGGESTED: Record<ImageKind, string> = {
@@ -31,8 +53,8 @@ export const SUGGESTED: Record<ImageKind, string> = {
   photo: 'google/gemini-3.1-flash-image',
 }
 
-/** En la mezcla se sugiere el de ilustración: le salen bien los dos tipos. */
-export const suggestedFor = (k: KindChoice) => SUGGESTED[k === 'mix' ? 'illustration' : k]
+/** En la mezcla se sugiere el de ilustración (le salen bien los dos tipos); en sólo texto no se usa. */
+export const suggestedFor = (k: KindChoice) => SUGGESTED[imageKindsIn(k)[0] ?? 'illustration']
 
 export const TIERS: { id: Tier; label: string; hint: string }[] = [
   { id: 'pruebas', label: 'Pruebas rápidas', hint: 'Centavos por imagen: para probar el circuito o regenerar mucho.' },
@@ -145,11 +167,13 @@ export function imagesPerMonth(c: Cadence, daily?: { types: ('CAROUSEL' | 'IMAGE
 
 export const parseImageKind = (v: string | null | undefined): ImageKind | undefined => (v === 'illustration' || v === 'photo' ? v : undefined)
 
-export const parseKindChoice = (v: string | null | undefined): KindChoice | undefined => (v === 'mix' ? v : parseImageKind(v))
+export const parsePostKind = (v: string | null | undefined): PostKind | undefined => (v === 'text' ? v : parseImageKind(v))
 
-/** Qué tan bien le sale un tipo a un modelo; en la mezcla, lo peor de los dos. */
-export const fitFor = (m: Pick<ImageModel, 'fit'>, k: KindChoice): Fit =>
-  k !== 'mix' ? m.fit[k] : m.fit.illustration === 'flojo' || m.fit.photo === 'flojo' ? 'flojo' : m.fit.illustration === 'bien' || m.fit.photo === 'bien' ? 'bien' : 'ideal'
+export const parseKindChoice = (v: string | null | undefined): KindChoice | undefined => KIND_CHOICES.find((k) => k.id === v)?.id
+
+const FITS: Fit[] = ['ideal', 'bien', 'flojo']
+/** Qué tan bien le sale un tipo a un modelo; en la mezcla, lo peor de los dos (sólo texto no usa el modelo). */
+export const fitFor = (m: Pick<ImageModel, 'fit'>, k: KindChoice): Fit => FITS[Math.max(0, ...imageKindsIn(k).map((x) => FITS.indexOf(m.fit[x])))]
 
 /** Modelo de imagen elegido para una generación puntual. `model: null` = sin imagen IA. `kind`: si no viene, el de Ajustes. */
 export interface ImageChoice {

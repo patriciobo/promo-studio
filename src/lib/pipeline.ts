@@ -14,7 +14,7 @@ import { bufferDataUri, dataUri, mediaPath, saveMedia } from './media'
 import { notify } from './notify'
 import { sendForReview } from './whatsapp'
 import { localDay, starterSlots, STARTER_TOPICS } from './starter'
-import { parseImageKind, parseKindChoice, type ImageChoice, type ImageKind, type KindChoice } from './models'
+import { kindsIn, parseKindChoice, parsePostKind, type ImageChoice, type ImageKind, type KindChoice } from './models'
 import { drawLooks, forIllustration, ILLUSTRATION_ONLY, kindsFor, NATURAL_PHOTO, type Look, type Rng } from './variety'
 import { designStyle, parseDesignStyle } from './styles'
 import { MAX_CAROUSEL, parsePhotoMode, photoSetSlides, photoTreatment, type PhotoMode } from './photos'
@@ -155,6 +155,10 @@ const SLIDE_RULES: Record<PostType, string> = {
 export const styleFor = (m: Manifest, kind: ImageKind, design?: string | null) =>
   designStyle(design).image?.[kind] ?? (kind === 'photo' ? (m.brand.photoStyle ?? DEFAULT_PHOTO_STYLE) : (m.brand.imageStyle ?? DEFAULT_IMAGE_STYLE))
 
+/** ¿La estética de ese tipo es la propia del promo.yaml? Entonces manda ella: no se sortea gente ni se le suma el look de celular. */
+export const ownStyle = (m: Manifest, kind: ImageKind, design?: string | null) =>
+  !designStyle(design).image?.[kind] && !!(kind === 'photo' ? m.brand.photoStyle : m.brand.imageStyle)
+
 /** Tipo de imagen de una generación: el elegido junto al botón o el de Ajustes (puede ser la mezcla). */
 const kindOf = (app: Pick<App, 'imageKind'>, image?: ImageChoice): KindChoice => image?.kind ?? parseKindChoice(app.imageKind) ?? 'illustration'
 
@@ -164,25 +168,29 @@ const kindOf = (app: Pick<App, 'imageKind'>, image?: ImageChoice): KindChoice =>
  */
 export function looksFor(m: Manifest, design: string | null | undefined, choice: KindChoice, n: number, rng?: Rng): Look[] {
   const free = !designStyle(design).image && !m.brand.imageStyle
-  return drawLooks(kindsFor(choice, n, rng), { illustration: styleFor(m, 'illustration', design), photo: styleFor(m, 'photo', design) }, { free, colors: m.brand.colors }, rng)
+  const own = { illustration: ownStyle(m, 'illustration', design), photo: ownStyle(m, 'photo', design) }
+  return drawLooks(kindsFor(choice, n, rng), { illustration: styleFor(m, 'illustration', design), photo: styleFor(m, 'photo', design) }, { free, own, colors: m.brand.colors }, rng)
 }
 
 /** Lo que el modelo de texto tiene que respetar en las imagePrompts de cada post. */
-const visualOf = (l: Pick<Look, 'kind' | 'style'> & Partial<Look>) => ({ imageType: l.kind, style: l.style, people: l.people, setting: l.setting, framing: l.framing, light: l.light })
+const visualOf = (l: Look) => (l.kind === 'text' ? { imageType: l.kind } : { imageType: l.kind, style: l.style, people: l.people, setting: l.setting, framing: l.framing, light: l.light })
 
 export function buildPlanPrompt(m: Manifest, slots: Slot[], ctx: { feed: Feed['items']; texts: string[]; releases: { name: string; body: string }[]; recent: { pillar: string | null; hook: string | null }[]; bestPillars: string[]; topic?: string; daily?: { date: string; report: string }; images?: PromptImage[]; kind?: KindChoice; design?: string | null; brief?: string | null; starter?: { theme: string; goal: string; pin?: boolean }[]; photoMode?: PhotoMode; photoSet?: string[]; looks?: Look[] }) {
   const images = ctx.images ?? []
-  const looks: (Pick<Look, 'kind' | 'style'> & Partial<Look>)[] = ctx.looks ?? kindsFor(ctx.kind ?? 'illustration', slots.length).map((kind) => ({ kind, style: styleFor(m, kind, ctx.design) }))
+  const looks: Look[] = ctx.looks ?? kindsFor(ctx.kind ?? 'illustration', slots.length).map((kind) => ({ kind, style: kind === 'text' ? '' : styleFor(m, kind, ctx.design) }))
   const kinds = new Set(looks.map((l) => l.kind))
+  const drawn = looks.some((l) => l.people)
+  const styled = looks.some((l) => l.kind !== 'text' && !l.people)
   const focus = images.filter((i) => i.focus)
   const system = `You are the social media manager of the app "${m.name}". You write Instagram content that promotes the app with real value for its audience, never clickbait.
 Write ALL user-facing text in ${m.languages[0]} with this tone: ${m.tone}.
 Never mention: ${m.avoid.join('; ') || 'nothing in particular'}.
-Image prompts are in English. Each slot has a "visual" brief drawn at random so the feed never looks the same: follow its imageType and style exactly.${kinds.has('illustration') ? `
+Image prompts are in English. Each slot has a "visual" brief drawn at random so the feed never looks the same: follow its imageType and style exactly.${kinds.has('text') ? `
+- imageType "text": the post has no image at all, only the brand typography. Set every imagePrompt to "" and let the words carry the post: a title that works on its own (a figure, a direct question or a clear statement) and items or a checklist on the middle slides.` : ''}${kinds.has('illustration') ? `
 - imageType "illustration": describe an illustration in that style, with simplified UI shapes. Never use photographic words (photo, realistic, camera, lens, bokeh, cinematic): it must not look like a photo.` : ''}${kinds.has('photo') ? `
 - imageType "photo": describe a realistic photo in that style that looks candid, unposed and a bit imperfect, like a snapshot a friend took with a phone, with screens angled or out of focus. Ordinary-looking people as they really are, never models, a photoshoot or a studio.` : ''}
-Show people using the app or the problem it solves: when the visual brief has people, setting, framing and light, use them (describe the people concretely: age, look, build and clothes) and change them only if they contradict the slide or the app's audience; never default to young good-looking people. No readable text, letters, numbers or logos anywhere; fit the brand colors ${m.brand.colors.join(', ')} and leave calm space for overlaid text.
-Every slide (or reel scene) also gets its own imagePrompt: the same people, setting and style as the rest of its post, showing that slide's idea.${images.length ? `
+${drawn ? `Show people using the app or the problem it solves: when the visual brief has people, setting, framing and light, use them (describe the people concretely: age, look, build and clothes) and change them only if they contradict the slide or the app's audience; never default to young good-looking people. ` : ''}${styled ? `When the visual brief has only a style, that style rules the subject and composition: show the slide's idea the way it describes, and add people only if the style includes them. ` : ''}No readable text, letters, numbers or logos anywhere; fit the brand colors ${m.brand.colors.join(', ')} and leave calm space for overlaid text.
+Every slide (or reel scene) also gets its own imagePrompt${kinds.has('text') ? ' (except in "text" posts)' : ''}: the same people, setting and style as the rest of its post, showing that slide's idea.${images.length ? `
 appImages are real images of the app uploaded by the user (SCREENSHOT = a screen of the app, PHOTO = a photo). A slide can show one instead of a generated image: set its "imageId" and write that slide's text about what the image really shows (never invent features that are not visible). ${PHOTO_LAYOUT[ctx.photoMode ?? 'fondo']} Use each image at most once per post${ctx.photoSet ? '' : ' and never on the last call-to-action slide'}.` : ''}
 Captions: first line is a hook, 2-5 short lines of value, then the CTA "${m.cta}", then 3-5 specific hashtags (from: ${m.hashtags.join(' ') || 'choose relevant ones'}).
 altText describes the image for accessibility and includes keywords people would search.
@@ -364,12 +372,12 @@ export function slideLayout(type: PostType, total: number, i: number, hasShot: b
  * Ilustración con IA para una diapositiva (`position`). Reutiliza la existente salvo que se pida regenerar,
  * así volver a renderizar no cuesta nada. `references`: ilustraciones anteriores del post, para mantener el estilo.
  */
-async function background(app: App, post: Post, position: number, scene: string | undefined, opts: { force?: boolean; references?: string[]; image: ImageChoice; look: Pick<Look, 'kind' | 'style'> }): Promise<string | undefined> {
+async function background(app: App, post: Post, position: number, scene: string | undefined, opts: { force?: boolean; references?: string[]; image: ImageChoice; look: { kind: ImageKind; style: string } }): Promise<string | undefined> {
   const prev = await db.asset.findFirst({ where: { postId: post.id, kind: 'BACKGROUND', position }, orderBy: { createdAt: 'desc' } })
   if (prev && !opts.force && existsSync(mediaPath(prev.path))) return dataUri(prev.path)
   const { model, quality } = opts.image
   if (!model || !scene || process.env.OPENROUTER_MOCK === '1') return undefined
-  const prompt = imagePromptFor(manifestOf(app), scene, opts.look)
+  const prompt = imagePromptFor(manifestOf(app), scene, opts.look, app.designStyle)
   const kind = opts.look.kind
   const img = await generateImage({ appId: app.id, model, quality, prompt, aspectRatio: vertical(post.type) ? '9:16' : '4:5', references: opts.references, kind, purpose: `${kind === 'photo' ? 'foto' : 'ilustración'} ${post.type} ${position + 1}` })
   const rel = await saveMedia(`apps/${app.slug}/posts/${post.id}/bg-${position}-${Date.now()}.jpg`, img.data)
@@ -377,11 +385,14 @@ async function background(app: App, post: Post, position: number, scene: string 
   return bufferDataUri(img.data, img.mime)
 }
 
-/** Prompt de una imagen IA: la foto, natural y sin estudio; la ilustración, sin nada que la vuelva realista. */
-export function imagePromptFor(m: Manifest, scene: string, look: Pick<Look, 'kind' | 'style'>) {
+/**
+ * Prompt de una imagen IA: la foto, natural y sin estudio (salvo que el promo.yaml traiga su estética de foto, que manda);
+ * la ilustración, sin nada que la vuelva realista.
+ */
+export function imagePromptFor(m: Manifest, scene: string, look: { kind: ImageKind; style: string }, design?: string | null) {
   const colors = m.brand.colors.join(', ')
   return look.kind === 'photo'
-    ? `Candid real-life photo. ${scene}. Style: ${look.style}. ${NATURAL_PHOTO} Subtle touches of the brand colors ${colors} in clothes or objects, natural color grading. Absolutely no text, letters, numbers, logos or watermarks.`
+    ? `Candid real-life photo. ${scene}. Style: ${look.style}.${ownStyle(m, 'photo', design) ? '' : ` ${NATURAL_PHOTO}`} Subtle touches of the brand colors ${colors} in clothes or objects, natural color grading. Absolutely no text, letters, numbers, logos or watermarks.`
     : `Illustration. ${forIllustration(scene)}. Style: ${look.style}. Color palette ${colors}. ${ILLUSTRATION_ONLY} Absolutely no text, letters, numbers, logos or watermarks.`
 }
 
@@ -390,8 +401,8 @@ export function imagePromptFor(m: Manifest, scene: string, look: Pick<Look, 'kin
  * (o el post es de antes de que se guardaran), se sortea uno nuevo y queda guardado.
  */
 async function lookOf(app: App, post: Post, choice?: KindChoice): Promise<Pick<Look, 'kind' | 'style'>> {
-  const planned = parseImageKind(post.imageKind)
-  if (planned && post.imageStyle && (!choice || choice === 'mix' || choice === planned)) return { kind: planned, style: post.imageStyle }
+  const planned = parsePostKind(post.imageKind)
+  if (planned && (planned === 'text' || post.imageStyle) && (!choice || kindsIn(choice).includes(planned))) return { kind: planned, style: post.imageStyle ?? '' }
   const [look] = looksFor(manifestOf(app), app.designStyle, choice ?? kindOf(app), 1)
   await db.post.update({ where: { id: post.id }, data: { imageKind: look.kind, imageStyle: look.style } })
   return look
@@ -435,8 +446,10 @@ export async function renderPost(postId: string, opts: { regenerateImage?: boole
       html.push(t.text(brand, { ...d, screenshot: shots[0] }, size))
       continue
     }
-    const scene = s.imagePrompt ?? (i === 0 ? post.imagePrompt ?? undefined : post.imagePrompt ? `${post.imagePrompt}. Scene about: ${s.title}` : undefined)
-    const img = await background(app, post, i, scene, { force: opts.regenerateImage || opts.regenerate?.includes(i), references: refs.slice(0, 1), image, look })
+    // Sólo texto: la pieza va sin imagen. Un post de texto al que después se le pide imagen no tiene escenas: se usa el título.
+    const kind = look.kind
+    const scene = s.imagePrompt || (i === 0 ? post.imagePrompt : post.imagePrompt && `${post.imagePrompt}. Scene about: ${s.title}`) || s.title
+    const img = kind === 'text' ? undefined : await background(app, post, i, scene, { force: opts.regenerateImage || opts.regenerate?.includes(i), references: refs.slice(0, 1), image, look: { kind, style: look.style } })
     if (img && !refs.length) refs.push(img)
     html.push(layout === 'cover' ? t.cover(brand, { ...d, background: img }, size) : t.text(brand, { ...d, illustration: img }, size))
   }

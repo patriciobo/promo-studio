@@ -1,18 +1,21 @@
 // Variedad de las imágenes IA: cada post sortea su gente, escenario, encuadre, luz y una variación de la técnica,
 // así las semanas no repiten siempre las mismas personas ni el mismo dibujo. Dentro de un post se mantiene todo igual.
-import type { ImageKind, KindChoice } from './models'
+import { kindsIn, type ImageKind, type KindChoice, type PostKind } from './models'
 
 export type Rng = () => number
 
-/** Lo sorteado para un post: tipo de imagen, estética final y la escena que el modelo de texto usa en sus imagePrompts. */
+/**
+ * Lo sorteado para un post: tipo de imagen, estética final y la escena que el modelo de texto usa en sus imagePrompts.
+ * Sin gente, escenario, encuadre ni luz cuando manda el estilo propio del promo.yaml o el post es sólo texto.
+ */
 export interface Look {
-  kind: ImageKind
-  /** Estética completa (en inglés) que se manda con cada imagen del post. */
+  kind: PostKind
+  /** Estética completa (en inglés) que se manda con cada imagen del post ('' en sólo texto). */
   style: string
-  people: string
-  setting: string
-  framing: string
-  light: string
+  people?: string
+  setting?: string
+  framing?: string
+  light?: string
 }
 
 const pick = <T>(xs: readonly T[], rng: Rng): T => xs[Math.floor(rng() * xs.length) % xs.length]
@@ -138,12 +141,12 @@ export const forIllustration = (scene: string) =>
     .replace(/\s{2,}/g, ' ')
     .replace(/^[\s,.]+|[\s,.]+$/g, '')
 
-/** Tipo de imagen de cada post: en la mezcla, mitad y mitad repartidas al azar. */
-export function kindsFor(choice: KindChoice, n: number, rng: Rng = Math.random): ImageKind[] {
-  if (choice !== 'mix') return Array.from({ length: n }, () => choice)
-  const first: ImageKind = rng() < 0.5 ? 'illustration' : 'photo'
-  const half = Array.from({ length: n }, (_, i): ImageKind => ((i % 2 === 0) === (first === 'illustration') ? 'illustration' : 'photo'))
-  return shuffle(half, rng)
+/** Tipo de cada post: en una mezcla, mitad y mitad repartidas al azar. */
+export function kindsFor(choice: KindChoice, n: number, rng: Rng = Math.random): PostKind[] {
+  const kinds = kindsIn(choice)
+  if (kinds.length === 1) return Array.from({ length: n }, () => kinds[0])
+  const first = rng() < 0.5 ? 0 : 1
+  return shuffle(Array.from({ length: n }, (_, i) => kinds[(i + first) % 2]), rng)
 }
 
 function person(rng: Rng) {
@@ -159,12 +162,15 @@ function people(rng: Rng) {
 
 /**
  * Sortea el look de cada post. `base`: la estética del estilo para cada tipo; `free`: si se puede cambiar la técnica
- * de la ilustración entera (clásico sin estilo propio en el promo.yaml) o sólo darle un giro.
+ * de la ilustración entera (clásico sin estilo propio en el promo.yaml) o sólo darle un giro; `own`: los tipos con
+ * estética propia del promo.yaml, que se usa tal cual (sin sortear gente ni giros que la contradigan).
  */
-export function drawLooks(kinds: ImageKind[], base: Record<ImageKind, string>, opts: { free: boolean; colors: string[] }, rng: Rng = Math.random): Look[] {
+export function drawLooks(kinds: PostKind[], base: Record<ImageKind, string>, opts: { free: boolean; own?: Partial<Record<ImageKind, boolean>>; colors: string[] }, rng: Rng = Math.random): Look[] {
   const n = kinds.length
   const [settings, framings, lights, techniques, twists, captures] = [draw(SETTINGS, n, rng), draw(FRAMINGS, n, rng), draw(LIGHTS, n, rng), draw(TECHNIQUES, n, rng), draw(TWISTS, n, rng), draw(CAPTURES, n, rng)]
   return kinds.map((kind, i) => {
+    if (kind === 'text') return { kind, style: '' }
+    if (opts.own?.[kind]) return { kind, style: base[kind] }
     const lead = opts.colors.length ? ` Lead with ${pick(opts.colors, rng)} as the dominant brand color.` : ''
     const style =
       kind === 'photo'
