@@ -714,3 +714,16 @@ describe('isSafetyRejection', () => {
     expect(isSafetyRejection(new Error('safety system'))).toBe(false)
   })
 })
+
+describe('descargas de media', () => {
+  it('reconoce el tipo real y arma el nombre con esa extensión', async () => {
+    const { sniffMime, downloadName } = await import('../media')
+    expect(sniffMime(Buffer.from([0xff, 0xd8, 0xff, 0xe0]))).toBe('image/jpeg')
+    expect(sniffMime(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]))).toBe('image/png')
+    expect(sniffMime(Buffer.from('<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg"></svg>'))).toBe('image/svg+xml')
+    expect(sniffMime(Buffer.from('No encontrado'))).toBeNull()
+    expect(downloadName('café-r1-1-logo', 'image/png')).toBe('cafe-r1-1-logo.png')
+    expect(downloadName('icon-32.png', 'image/png')).toBe('icon-32.png')
+    expect(downloadName('favicon.ico', 'image/x-icon')).toBe('favicon.ico')
+  })
+})

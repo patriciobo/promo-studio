@@ -9,15 +9,16 @@ import { normalizeRepo } from '@/lib/github'
 import { addImages, imageFiles, inOrder } from '@/lib/images'
 import { enqueue, QUEUES } from '@/lib/jobs'
 import { actId, adAccounts, discoverAccounts, graph, token, type AdAccount } from '@/lib/instagram'
-import { manifestToYaml, parseManifest, type Manifest } from '@/lib/manifest'
+import { manifestToYaml, parseManifest, setYamlBrand, type Manifest } from '@/lib/manifest'
 import { parseImageChoice, parseImageKind, parseKindChoice } from '@/lib/models'
 import { estimateSuggestion, suggestCampaign, type SuggestInput } from '@/lib/ad-suggest'
 import { activateCampaign, campaignLink, deleteCampaign, estimateAudience, friendly, pauseCampaign, searchPlaces, searchTargeting, syncCampaign, DETAIL_TYPES, EDUCATION, type Detail, type DetailType, type GeoPlace, type Objective, type Targeting } from '@/lib/meta-ads'
 import { explain } from '@/lib/meta-errors'
-import { draftManifest, draftManifestFromText, logoFromRepo, proposeManifestPR, proposeStyleChange, repoContext } from '@/lib/onboarding/manifest-wizard'
+import { draftManifest, draftManifestFromText, logoFromMedia, logoFromRepo, proposeManifestPR, proposeStyleChange, repoContext } from '@/lib/onboarding/manifest-wizard'
 import { healthCheck, type Check } from '@/lib/onboarding/meta-health'
 import { buildProfileKit, type ProfileKit } from '@/lib/onboarding/profile-kit'
 import { setRepoLessLogo, syncApp } from '@/lib/pipeline'
+import { slugify } from '@/lib/view'
 import { fromLocalInput, nextMonday } from '@/lib/schedule'
 import { setSecret, type SecretKey } from '@/lib/settings'
 import { designStyle, parseDesignStyle, SAMPLE_MODEL, SAMPLE_QUALITIES } from '@/lib/styles'
@@ -50,7 +51,6 @@ async function requestImages(app: { id: string; slug: string }, f: FormData) {
 /** De quién es la cuenta: propia o de un cliente (con su nombre). */
 const ownerOf = (f: FormData) => (str(f, 'owner') === 'client' ? { owner: 'client', clientName: str(f, 'clientName').slice(0, 80) || null } : { owner: 'own', clientName: null })
 
-const slugify = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '')
 
 /** Con repositorio, el promo.yaml se lee de ahí; sin repositorio, se arma con la descripción del negocio y queda en la base. */
 export async function createApp(f: FormData) {
@@ -77,6 +77,7 @@ export async function createApp(f: FormData) {
 
 export async function updateSettings(slug: string, f: FormData) {
   await requireUser()
+  const before = await db.app.findUniqueOrThrow({ where: { slug }, select: { repo: true, branch: true } })
   await db.app.update({
     where: { slug },
     data: {
@@ -105,6 +106,8 @@ export async function updateSettings(slug: string, f: FormData) {
   // Al quitar el repositorio, el promo.yaml que se venía usando pasa a guardarse en la base.
   const now = await db.app.findUniqueOrThrow({ where: { slug } })
   if (!now.repo && !now.manifestYaml && now.manifest) await db.app.update({ where: { slug }, data: { manifestYaml: manifestToYaml(now.manifest as unknown as Manifest) } })
+  // Repo nuevo o cambiado: se lee enseguida (si todavía no tiene promo.yaml, sigue el guardado).
+  if (now.repo && (now.repo !== before.repo || now.branch !== before.branch)) await syncApp(now.id).catch((e) => console.error('[sync]', (e as Error).message))
   revalidatePath(`/apps/${slug}`, 'layout')
   // Estilo al promo.yaml (del repo o de la base), si se pidió y es distinto del que ya tiene.
   const style = parseDesignStyle(str(f, 'designStyle'))
@@ -430,10 +433,11 @@ export async function openManifestPR(slug: string, yaml: string): Promise<{ url?
     // Si el logo apunta a un archivo del repo fuera de .promo/, se copia ahí.
     const logo = r.manifest.brand.logo
     if (logo && !/^https?:/.test(logo) && !logo.startsWith('.promo/')) {
-      const copy = await logoFromRepo(app.repo, logo, app.branch)
+      // Si no está en el repo, puede ser el logo que la cuenta usaba sin repositorio (en la carpeta de media).
+      const copy = (await logoFromRepo(app.repo, logo, app.branch)) ?? (await logoFromMedia(slug, logo))
       if (copy) extra.push(copy)
     }
-    const fixedYaml = extra.length ? yaml.replace(logo!, extra[0].path) : yaml
+    const fixedYaml = extra.length ? setYamlBrand(yaml, { logo: extra[0].path }) : yaml
     return { url: await proposeManifestPR(app.id, fixedYaml, extra) }
   } catch (e) {
     return { error: (e as Error).message }

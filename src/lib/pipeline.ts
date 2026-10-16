@@ -30,8 +30,10 @@ import { extname } from 'node:path'
 
 export async function syncApp(appId: string) {
   const app = await db.app.findUniqueOrThrow({ where: { id: appId } })
-  // Sin repositorio, el promo.yaml es el que se guardó en la pestaña promo.yaml.
-  const file = app.repo ? await getFile(app.repo, app.manifestPath, app.branch) : app.manifestYaml ? { text: app.manifestYaml } : null
+  // Sin repositorio, el promo.yaml es el que se guardó en la pestaña promo.yaml. Con un repo recién cargado que todavía
+  // no lo tiene, se sigue usando el guardado hasta que llegue al repo (el PR del asistente lo sube con el logo).
+  const inRepo = app.repo ? await getFile(app.repo, app.manifestPath, app.branch) : null
+  const file = inRepo ?? (app.manifestYaml ? { text: app.manifestYaml } : null)
   if (!file) {
     await db.app.update({ where: { id: appId }, data: { manifestError: app.repo ? `No existe ${app.manifestPath} en ${app.repo}@${app.branch}. Creálo con el asistente.` : 'Todavía no hay promo.yaml. Armalo en la pestaña promo.yaml a partir de una descripción del negocio.', syncedAt: new Date() } })
     return { ok: false as const, error: 'sin manifiesto' }
@@ -41,7 +43,8 @@ export async function syncApp(appId: string) {
     await db.app.update({ where: { id: appId }, data: { manifestError: r.error, syncedAt: new Date() } })
     return r
   }
-  if (r.hash !== app.manifestHash) await cacheBrandFiles(app, r.manifest)
+  // Con el yaml guardado, el logo ya está en la carpeta de media: no se lo busca en el repo.
+  if (r.hash !== app.manifestHash) await cacheBrandFiles(inRepo ? app : { ...app, repo: null }, r.manifest)
   // En cada sincronización: las capturas pueden cambiar sin tocar el promo.yaml.
   const flows = await importFlowScreens(app, r.manifest).catch((e) => (console.error('[flujos]', e.message), { imported: 0, archived: 0 }))
   // brand.style manda sólo cuando cambia el yaml: así lo elegido en Ajustes no se pisa en cada sincronización.

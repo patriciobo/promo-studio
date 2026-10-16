@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { chooseBrandOption, describeBrandBrief, generateBrandRound, rereadBrandRepo, resetBrand, saveBrandAction, startBrand, updateBrandProject, vectorizeBrandOption } from '@/app/actions'
 import { BrandBriefFields } from '@/components/BrandBriefFields'
 import { BrandApplyForm, BrandSaveForm } from '@/components/BrandSaveForm'
@@ -9,8 +10,8 @@ import type { YamlField } from '@/lib/brand/plan'
 import { availableFields } from '@/lib/brand/save'
 import { db } from '@/lib/db'
 import { isLocalRepo } from '@/lib/github'
-import { mediaSrc } from '@/lib/media'
-import { fmtDate, usdSmall } from '@/lib/view'
+import { mediaPath, mediaSrc } from '@/lib/media'
+import { fmtDate, slugify, usdSmall } from '@/lib/view'
 
 /** Campos que no se pisan salvo que se marquen: el nombre y el tono suelen estar más trabajados en el yaml. */
 const OPT_IN: YamlField[] = ['name', 'tone']
@@ -94,6 +95,9 @@ export default async function BrandTab({ params, searchParams }: PageProps<'/app
   // /media se cachea como inmutable: la versión cambia cuando se actualiza el proyecto (p. ej. al vectorizar).
   const v = p.updatedAt.getTime()
   const src = (rel: string) => `${mediaSrc(rel)}?v=${v}`
+  // Descargas: sólo de archivos que están en el disco, con un nombre claro y la extensión de su contenido real.
+  const has = (rel: string | null | undefined): rel is string => !!rel && existsSync(mediaPath(rel))
+  const dl = (rel: string, name: string) => `${src(rel)}&dl=${encodeURIComponent(name)}`
   const saved = p.options.find((o) => o.id === p.savedOptionId)
 
   return (
@@ -256,6 +260,8 @@ export default async function BrandTab({ params, searchParams }: PageProps<'/app
                 const vectorizing = running && progress?.vector === o.id
                 const fields = availableFields(d, o, elements)
                 const icons = (o.iconFiles as Record<string, string> | null) ?? null
+                const file = (what: string) => `${slugify(d.brandName || app.name) || slug}-r${o.round}-${o.index + 1}-${what}`
+                const lost = [o.logoPath, o.vectorPath, o.boardPath, o.iconVector, ...Object.values(icons ?? {})].filter((r) => r && !has(r)).length
                 // Qué falta vectorizar: el logo (si es raster) y el ícono (de ahí sale el favicon.svg).
                 const needsLogoSvg = !!o.logoPath && !o.vectorPath && !o.logoPath.endsWith('.svg')
                 const needsFavicon = !!o.iconPath && !o.iconVector
@@ -319,29 +325,34 @@ export default async function BrandTab({ params, searchParams }: PageProps<'/app
                           {chosen ? 'Quitar elección' : 'Elegir'}
                         </SubmitButton>
                       </form>
-                      {o.logoPath && (
-                        <a className="btn sm" href={src(o.vectorPath ?? o.logoPath)} download>
-                          Logo {o.vectorPath ? 'SVG' : o.logoPath.split('.').pop()?.toUpperCase()}
+                      {has(o.vectorPath) && (
+                        <a className="btn sm" href={dl(o.vectorPath, file('logo.svg'))} download>
+                          Logo SVG
+                        </a>
+                      )}
+                      {has(o.logoPath) && !(o.vectorPath && o.logoPath.endsWith('.svg')) && (
+                        <a className="btn sm" href={dl(o.logoPath, file('logo'))} download>
+                          Logo {o.logoPath.split('.').pop()?.toUpperCase()}
                         </a>
                       )}
                       {icons && (
                         <details className="downloads">
                           <summary className="btn sm">Íconos</summary>
                           <div className="stack-sm xs" style={{ marginTop: 6 }}>
-                            {o.iconVector && (
-                              <a href={src(o.iconVector)} download="favicon.svg">
+                            {has(o.iconVector) && (
+                              <a href={dl(o.iconVector, 'favicon.svg')} download>
                                 favicon.svg
                               </a>
                             )}
-                            {icons.ico && (
-                              <a href={src(icons.ico)} download="favicon.ico">
+                            {has(icons.ico) && (
+                              <a href={dl(icons.ico, 'favicon.ico')} download>
                                 favicon.ico (16, 32 y 48 px)
                               </a>
                             )}
                             {Object.entries(icons)
-                              .filter(([k]) => k !== 'ico')
+                              .filter(([k, rel]) => k !== 'ico' && has(rel))
                               .map(([k, rel]) => (
-                                <a key={k} href={src(rel)} download={`icon-${k}.png`}>
+                                <a key={k} href={dl(rel, `icon-${k}.png`)} download>
                                   icon-{k}.png
                                 </a>
                               ))}
@@ -349,8 +360,8 @@ export default async function BrandTab({ params, searchParams }: PageProps<'/app
                           </div>
                         </details>
                       )}
-                      {o.boardPath && (
-                        <a className="btn sm" href={src(o.boardPath)} download>
+                      {has(o.boardPath) && (
+                        <a className="btn sm" href={dl(o.boardPath, file('lamina'))} download>
                           Lámina
                         </a>
                       )}
@@ -365,6 +376,7 @@ export default async function BrandTab({ params, searchParams }: PageProps<'/app
                         </form>
                       )}
                     </div>
+                    {lost > 0 && <p className="xs notice warn">Faltan {lost === 1 ? 'un archivo' : `${lost} archivos`} de esta alternativa en el servidor (se borraron o no llegaron a guardarse): esas descargas no aparecen. Generá otra ronda para tenerlos.</p>}
                     {o.logoPath && !o.iconPath && <p className="xs muted">Esta alternativa es anterior a los íconos: no tiene favicon. Generá una ronda nueva para tenerlo.</p>}
                     {(needsLogoSvg || needsFavicon) && !vectorizing && (
                       <p className="xs muted">

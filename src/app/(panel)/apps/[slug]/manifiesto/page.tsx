@@ -42,6 +42,11 @@ export default async function ManifestPage({ params, searchParams }: PageProps<'
         ) : (
           <p className="notice warn">Todavía no hay {app.manifestPath}{app.repo ? ' en el repo' : ''}. Generá un borrador abajo.</p>
         )}
+        {app.repo && !current && app.manifestYaml && (
+          <p className="notice warn">
+            {app.repo} todavía no tiene {app.manifestPath}: sigo usando el que estaba guardado acá. Abrí el pull request de abajo para subirlo al repo (con el logo en .promo/); al mergearlo, se lee de ahí.
+          </p>
+        )}
         <p className="small muted">
           {app.repo
             ? 'El promo.yaml describe la app (público, tono, marca, funciones, temas de contenido). Se lee del repo en cada sincronización; el logo, las capturas y la música pueden ir en la carpeta .promo/.'
@@ -73,7 +78,7 @@ export default async function ManifestPage({ params, searchParams }: PageProps<'
             ? 'Lee el README, package.json, llms.txt, íconos y estilos del repo y propone el manifiesto con el modelo de texto de la app (1 llamada).'
             : 'Propone el manifiesto a partir de una descripción del negocio con el modelo de texto de la cuenta (1 llamada). No inventa lo que la descripción no dice.'}
         </p>
-        <ManifestWizard slug={slug} repo={app.repo} initialYaml={(app.repo ? current?.text : app.manifestYaml) ?? ''} />
+        <ManifestWizard slug={slug} repo={app.repo} initialYaml={(app.repo ? (current?.text ?? app.manifestYaml) : app.manifestYaml) ?? ''} />
       </section>
     </div>
   )

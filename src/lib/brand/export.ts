@@ -3,10 +3,9 @@
 import type { App, BrandOption, BrandProject } from '@prisma/client'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { extname } from 'node:path'
 import { lum } from '@/templates/brand'
-import type { Manifest } from '../manifest'
-import { mediaPath } from '../media'
+import { manifestToYaml, setYamlBrand, type Manifest } from '../manifest'
+import { mediaPath, realExt } from '../media'
 import type { ZipEntry } from '../zip'
 import { BriefSchema, type Brief } from './brief'
 import { concept } from './concepts'
@@ -145,14 +144,14 @@ export function assetList(option: Pick<BrandOption, 'logoPath' | 'vectorPath' | 
   const out: { zip: string; rel: string; what: string }[] = []
   const add = (zip: string, rel: string | null | undefined, what: string) => rel && existsSync(mediaPath(rel)) && out.push({ zip, rel, what })
   add('logo/logo.svg', option.vectorPath, 'Logo vectorial: el que va en el sitio (header y footer).')
-  if (option.logoPath && !option.logoPath.endsWith('.svg')) add(`logo/logo${extname(option.logoPath) || '.png'}`, option.logoPath, 'Logo en alta (imagen): para redes y para cuando no se pueda usar el SVG.')
+  if (option.logoPath && !option.logoPath.endsWith('.svg')) add(`logo/logo${realExt(option.logoPath) || '.png'}`, option.logoPath, 'Logo en alta (imagen): para redes y para cuando no se pueda usar el SVG.')
   else add('logo/logo.svg', option.logoPath, 'Logo vectorial: el que va en el sitio (header y footer).')
-  add(`logo/simbolo${extname(option.iconPath ?? '') || '.png'}`, option.iconPath, 'Símbolo cuadrado, sin el nombre.')
+  add(`logo/simbolo${(option.iconPath && realExt(option.iconPath)) || '.png'}`, option.iconPath, 'Símbolo cuadrado, sin el nombre.')
   add('favicon/favicon.svg', option.iconVector, 'Favicon vectorial.')
   const icons = (option.iconFiles as Record<string, string> | null) ?? {}
   if (icons.ico) add('favicon/favicon.ico', icons.ico, 'Favicon para navegadores viejos (16, 32 y 48 px).')
   for (const [size, rel] of Object.entries(icons)) if (size !== 'ico') add(size === '180' ? 'favicon/apple-touch-icon.png' : `favicon/icon-${size}.png`, rel, `Ícono ${size}×${size} px.`)
-  add('lamina.png', option.boardPath, 'Lámina con toda la identidad, para presentar.')
+  add(`lamina${(option.boardPath && realExt(option.boardPath)) || '.jpg'}`, option.boardPath, 'Lámina con toda la identidad, para presentar.')
   return out.filter((a, i, all) => all.findIndex((b) => b.zip === a.zip) === i)
 }
 
@@ -258,6 +257,7 @@ export function designMd(s: BrandSpec, files: { zip: string; what: string }[], b
     '- `marca.json`: todo lo anterior en un solo JSON.',
     '- `tokens.css`: variables CSS listas para importar.',
     '- `design-tokens.json`: los mismos valores en formato W3C Design Tokens.',
+    '- `promo.yaml` (si viene): lo que Promo Studio sabe de la cuenta. Va en la raíz del repo, junto con `logo/` (si movés el logo, cambiá `brand.logo`). Al cargar el repo en Ajustes, se lee de ahí.',
   ]
   return lines.filter((l, i, a) => !(l === '' && a[i - 1] === '')).join('\n')
 }
@@ -276,5 +276,14 @@ export async function brandExport(project: BrandProject & { app: App }, option: 
     { path: 'tokens.css', data: tokensCss(spec, fontsUrl) },
     { path: 'design-tokens.json', data: JSON.stringify(designTokens(spec), null, 2) },
     ...(await Promise.all(files.map(async (f) => ({ path: f.zip, data: await readFile(mediaPath(f.rel)) })))),
+    ...promoYamlEntry(project.app, files),
   ]
+}
+
+/** El promo.yaml de la cuenta, para que el repo del sitio lo traiga desde el primer commit (con el logo del paquete). */
+export function promoYamlEntry(app: Pick<App, 'manifestYaml' | 'manifest' | 'manifestPath'>, files: { zip: string }[]): ZipEntry[] {
+  const yaml = app.manifestYaml ?? (app.manifest ? manifestToYaml(app.manifest as unknown as Manifest) : null)
+  if (!yaml) return []
+  const logo = files.find((f) => f.zip.startsWith('logo/logo.'))?.zip
+  return [{ path: app.manifestPath || 'promo.yaml', data: logo ? setYamlBrand(yaml, { logo }) : yaml }]
 }

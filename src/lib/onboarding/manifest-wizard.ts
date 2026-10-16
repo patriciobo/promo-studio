@@ -1,8 +1,10 @@
 // Asistente de promo.yaml: lee el repo (o una descripción del negocio, sin repo), le pide al modelo de texto un borrador y lo valida.
 import type { App } from '@prisma/client'
-import { writeFile } from 'node:fs/promises'
-import { extname, join } from 'node:path'
+import { existsSync } from 'node:fs'
+import { readFile, writeFile } from 'node:fs/promises'
+import { basename, extname, join } from 'node:path'
 import { db } from '../db'
+import { mediaPath } from '../media'
 import { getFile, getRawBytes, getRepo, listTree, openPullRequest } from '../github'
 import { ManifestSchema, manifestToYaml, setYamlStyle, type Manifest } from '../manifest'
 import { completeJson } from '../openrouter'
@@ -96,6 +98,16 @@ export async function proposeManifestPR(appId: string, yaml: string, extra: { pa
 export async function logoFromRepo(repo: string, path: string, branch?: string) {
   const b = await getRawBytes(repo, path, branch)
   return b ? { path: `.promo/logo${extname(path)}`, content: b } : null
+}
+
+/** El logo de una cuenta que no tenía repositorio (subido o aplicado desde Marca), para llevarlo a .promo/ del repo nuevo. */
+export async function logoFromMedia(slug: string, path: string) {
+  try {
+    const file = mediaPath(`apps/${slug}/${basename(path)}`)
+    return existsSync(file) ? { path: `.promo/logo${extname(path)}`, content: await readFile(file) } : null
+  } catch {
+    return null
+  }
 }
 
 /**

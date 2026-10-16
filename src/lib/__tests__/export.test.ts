@@ -6,7 +6,7 @@ vi.mock('../db', () => ({ db: {} }))
 
 import { emptyBrief } from '../brand/brief'
 import { mergeBrief } from '../brand/describe'
-import { brandSpec, businessInfo, contrast, designMd, designTokens, googleFontsUrl, onColor, tokensCss } from '../brand/export'
+import { brandSpec, businessInfo, contrast, designMd, designTokens, googleFontsUrl, onColor, promoYamlEntry, tokensCss } from '../brand/export'
 import { OptionSchema } from '../brand/generate'
 import { zip } from '../zip'
 
@@ -106,5 +106,16 @@ describe('brief desde texto', () => {
     expect(next.axes).toMatchObject({ modern: 0.5, playful: 0.8 })
     expect(next.uses).toEqual(['Sitio web o app'])
     expect(next.audience).toHaveLength(600)
+  })
+})
+
+describe('promoYamlEntry', () => {
+  it('lleva el promo.yaml con el logo del paquete', () => {
+    const yaml = 'name: Hoja\nbrand:\n  logo: logo.png # subido\n  primary: "#112233"\n'
+    const [e] = promoYamlEntry({ manifestYaml: yaml, manifest: null, manifestPath: 'promo.yaml' }, [{ zip: 'logo/logo.svg' }, { zip: 'lamina.jpg' }])
+    expect(e.path).toBe('promo.yaml')
+    expect(e.data).toContain('logo: logo/logo.svg')
+    expect(e.data).toContain('primary: "#112233"')
+    expect(promoYamlEntry({ manifestYaml: null, manifest: null, manifestPath: 'promo.yaml' }, [])).toEqual([])
   })
 })

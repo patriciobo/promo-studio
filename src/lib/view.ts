@@ -32,3 +32,6 @@ export const pct = (n: number) => `${(n * 100).toFixed(1)}%`
 
 /** Fecha de hace `n` días (para filtros de consultas). */
 export const daysAgo = (n: number) => new Date(Date.now() - n * 864e5)
+
+/** Texto a slug: minúsculas, sin acentos, guiones. */
+export const slugify = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '')
