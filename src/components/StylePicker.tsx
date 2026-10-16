@@ -19,6 +19,8 @@ export interface StyleAppProps {
   suggestions: StyleSuggestion[]
   /** brand.style del promo.yaml (null si no lo define). */
   yamlStyle: string | null
+  /** Sin repositorio el promo.yaml está en Promo Studio: se cambia directo, sin PR. */
+  hasRepo: boolean
   suggest: () => Promise<void>
 }
 
@@ -152,14 +154,14 @@ export function StylePicker({
       {app && (
         <div className="stack-sm">
           <label className="check">
-            <input type="checkbox" name="styleToYaml" checked={toYaml} onChange={(e) => setToYaml(e.target.checked)} disabled={app.yamlStyle === style} /> Guardar el estilo en el promo.yaml del repo (<code>brand.style</code>; abre un PR)
+            <input type="checkbox" name="styleToYaml" checked={toYaml} onChange={(e) => setToYaml(e.target.checked)} disabled={app.yamlStyle === style} /> Guardar el estilo en el promo.yaml{app.hasRepo ? ' del repo' : ''} (<code>brand.style</code>{app.hasRepo ? '; abre un PR' : ''})
           </label>
           <span className="xs muted">
             {app.yamlStyle
               ? app.yamlStyle === style
                 ? 'El promo.yaml ya tiene este estilo.'
-                : `El promo.yaml dice "${DESIGN_STYLES.find((s) => s.id === app.yamlStyle)?.label ?? app.yamlStyle}": si después cambia el yaml, vuelve a mandar ese. Guardalo en el repo para que quede este.`
-              : 'El promo.yaml no define estilo: el de acá alcanza. Guardarlo en el repo deja el estilo junto al resto de la marca.'}
+                : `El promo.yaml dice "${DESIGN_STYLES.find((s) => s.id === app.yamlStyle)?.label ?? app.yamlStyle}": si después cambia el yaml, vuelve a mandar ese. Guardalo en el promo.yaml para que quede este.`
+              : 'El promo.yaml no define estilo: el de acá alcanza. Guardarlo en el promo.yaml deja el estilo junto al resto de la marca.'}
           </span>
         </div>
       )}

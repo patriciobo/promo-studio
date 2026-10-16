@@ -26,6 +26,7 @@ export default async function Settings({ params, searchParams }: PageProps<'/app
     samples: mine,
     suggestions: (app.styleSuggestions as StyleSuggestion[] | null) ?? [],
     yamlStyle: manifest?.brand.style ?? null,
+    hasRepo: !!app.repo,
     suggest: suggestStylesAction.bind(null, slug, 'ajustes'),
   }
   return (
@@ -35,7 +36,7 @@ export default async function Settings({ params, searchParams }: PageProps<'/app
           Estilo guardado. Abrí un PR con el cambio en el promo.yaml: <a href={pr} target="_blank" rel="noreferrer">{pr}</a>. Al aprobarlo, la próxima sincronización lo toma.
         </p>
       )}
-      {aviso === 'yaml-escrito' && <p className="notice ok">Estilo guardado y escrito en el promo.yaml del repo local.</p>}
+      {aviso === 'yaml-escrito' && <p className="notice ok">Estilo guardado y escrito en el promo.yaml{app.repo ? ' del repo local' : ''}.</p>}
       {aviso === 'sugeridos' && <p className="notice ok">Listo: los estilos sugeridos quedaron primeros, con el porqué.</p>}
       {typeof error === 'string' && <p className="notice bad">{error}</p>}
       <section className="card stack">
@@ -47,7 +48,8 @@ export default async function Settings({ params, searchParams }: PageProps<'/app
           </label>
           <label>
             Repositorio
-            <input name="repo" defaultValue={app.repo} required />
+            <input name="repo" defaultValue={app.repo ?? ''} placeholder="Sin repositorio" />
+            <span className="hint">Vacío: la cuenta no tiene repo y el promo.yaml se guarda en Promo Studio (al vaciarlo se conserva el que ya usa).</span>
           </label>
           <label>
             Rama

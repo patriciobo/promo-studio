@@ -13,7 +13,14 @@ export default async function AppLayout({ children, params }: LayoutProps<'/apps
         <div>
           <h1>{app.name}</h1>
           <p>
-            {app.igUsername ? `@${app.igUsername}` : 'Instagram sin conectar'} · <a href={`https://github.com/${app.repo}`} target="_blank" rel="noreferrer">{app.repo}</a>
+            {app.igUsername ? `@${app.igUsername}` : 'Instagram sin conectar'} ·{' '}
+            {app.repo ? (
+              <a href={`https://github.com/${app.repo}`} target="_blank" rel="noreferrer">
+                {app.repo}
+              </a>
+            ) : (
+              'sin repositorio'
+            )}
             {app.owner === 'client' && <span className="badge" style={{ marginLeft: 8 }}>Cliente{app.clientName ? `: ${app.clientName}` : ''}</span>}
             {app.dryRun && <span className="badge info" style={{ marginLeft: 8 }}>Simulación: no publica en Instagram</span>}
             {app.paused && <span className="badge" style={{ marginLeft: 8 }}>Pausada</span>}

@@ -79,7 +79,10 @@ export async function slideImages(appId: string, ids: string[]) {
  * las de pasos o flujos que ya no están quedan archivadas.
  */
 export async function importFlowScreens(app: Pick<App, 'id' | 'slug' | 'repo' | 'branch'>, m: Manifest) {
-  const shas = m.flows.length ? await treeShas(app.repo, app.branch, '.promo/screens/') : new Map<string, string>()
+  const repo = app.repo
+  // Sin repositorio no hay capturas de flujos para importar.
+  if (!repo) return { imported: 0, archived: 0 }
+  const shas = m.flows.length ? await treeShas(repo, app.branch, '.promo/screens/') : new Map<string, string>()
   const existing = await db.appImage.findMany({ where: { appId: app.id, flowId: { not: null } } })
   const keep = new Set<string>()
   let imported = 0
@@ -93,7 +96,7 @@ export async function importFlowScreens(app: Pick<App, 'id' | 'slug' | 'repo' | 
       const prev = existing.find((i) => i.flowId === flow.id && i.step === n)
       let path = prev?.path ?? ''
       if (!prev || prev.sha !== sha || !existsSync(mediaPath(prev.path))) {
-        const bytes = await getRawBytes(app.repo, src, app.branch)
+        const bytes = await getRawBytes(repo, src, app.branch)
         if (!bytes) continue
         path = await saveMedia(`apps/${app.slug}/flows/${flow.id}/${n + 1}.png`, bytes)
         imported++

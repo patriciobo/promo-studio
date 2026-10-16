@@ -34,7 +34,7 @@ export default async function Home() {
       {!apps.length ? (
         <div className="card empty stack">
           <h2>Todavía no hay apps conectadas</h2>
-          <p>Conectá el repositorio de una app: el asistente arma su promo.yaml y después la cuenta de Instagram.</p>
+          <p>Conectá el repositorio de una app (o describí el negocio, si no tiene): el asistente arma su promo.yaml y después la cuenta de Instagram.</p>
           <div>
             <Link className="btn primary" href="/apps/nueva">
               Conectar la primera app
@@ -49,7 +49,7 @@ export default async function Home() {
                 <h2>{app.name}</h2>
                 {app.paused ? <span className="badge">Pausada</span> : app.dryRun ? <span className="badge info">Simulación</span> : <span className="badge ok">Publicando</span>}
               </div>
-              <p className="small muted">{app.igUsername ? `@${app.igUsername}` : 'Instagram sin conectar'} · {app.repo}</p>
+              <p className="small muted">{app.igUsername ? `@${app.igUsername}` : 'Instagram sin conectar'} · {app.repo ?? 'sin repositorio'}</p>
               {app.manifestError && <p className="notice bad small">promo.yaml: {app.manifestError}</p>}
               <div className="row" style={{ gap: 24 }}>
                 <div className="stat">

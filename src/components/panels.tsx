@@ -1,13 +1,15 @@
 'use client'
 // Paneles interactivos: asistente de promo.yaml, conexión con Meta y kit de perfil.
 import { useState, useTransition } from 'react'
-import { discover, draftManifestAction, openManifestPR, profileKitAction, profileKitDoneAction, runHealthCheck, saveConnection, validateManifestAction, type DiscoverResult } from '@/app/actions'
+import { discover, draftManifestAction, openManifestPR, profileKitAction, saveManifestAction, profileKitDoneAction, runHealthCheck, saveConnection, validateManifestAction, type DiscoverResult } from '@/app/actions'
 import type { Check } from '@/lib/onboarding/meta-health'
 import type { ProfileKit } from '@/lib/onboarding/profile-kit'
 import { CopyButton, Progress } from './client'
 
-export function ManifestWizard({ slug, initialYaml, repo }: { slug: string; initialYaml: string; repo: string }) {
+/** `repo` null: cuenta sin repositorio; el borrador sale de una descripción y el promo.yaml se guarda acá. */
+export function ManifestWizard({ slug, initialYaml, repo }: { slug: string; initialYaml: string; repo: string | null }) {
   const [yaml, setYaml] = useState(initialYaml)
+  const [description, setDescription] = useState('')
   const [msg, setMsg] = useState<{ tone: string; text: string; url?: string } | null>(null)
   const [pending, start] = useTransition()
   const [expect, setExpect] = useState(10)
@@ -17,21 +19,27 @@ export function ManifestWizard({ slug, initialYaml, repo }: { slug: string; init
   }
   return (
     <div className="stack">
+      {!repo && (
+        <label>
+          Descripción del negocio <span className="hint">Qué vende o hace, para quién, dónde, cómo se lo contacta y cómo quiere que se la vea. Generar un borrador reemplaza el promo.yaml de abajo (no se guarda hasta que toques Guardar).</span>
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={5} maxLength={4000} />
+        </label>
+      )}
       <div className="row">
         <button
           type="button"
           className="btn primary"
-          disabled={pending}
+          disabled={pending || (!repo && !description.trim())}
           onClick={() =>
             act(async () => {
-              setMsg({ tone: '', text: 'Leyendo el repositorio y armando el borrador…' })
-              const r = await draftManifestAction(slug)
+              setMsg({ tone: '', text: repo ? 'Leyendo el repositorio y armando el borrador…' : 'Armando el borrador con la descripción…' })
+              const r = await draftManifestAction(slug, repo ? undefined : description)
               if (r.yaml) setYaml(r.yaml)
               setMsg(r.error ? { tone: 'warn', text: `Borrador con ajustes pendientes: ${r.error}` } : { tone: 'ok', text: 'Borrador listo. Revisalo y editalo antes de guardarlo.' })
             }, 45)
           }
         >
-          {yaml ? 'Regenerar borrador desde el repo' : 'Generar borrador desde el repo'}
+          {repo ? (yaml ? 'Regenerar borrador desde el repo' : 'Generar borrador desde el repo') : 'Generar borrador desde la descripción'}
         </button>
         <button
           type="button"
@@ -46,19 +54,35 @@ export function ManifestWizard({ slug, initialYaml, repo }: { slug: string; init
         >
           Validar
         </button>
-        <button
-          type="button"
-          className="btn"
-          disabled={pending || !yaml}
-          onClick={() =>
-            act(async () => {
-              const r = await openManifestPR(slug, yaml)
-              setMsg(r.url ? { tone: 'ok', text: 'Pull request abierto. Al mergearlo, sincronizá la app.', url: r.url } : { tone: 'bad', text: r.error ?? 'Error' })
-            }, 10)
-          }
-        >
-          Abrir pull request en {repo}
-        </button>
+        {repo ? (
+          <button
+            type="button"
+            className="btn"
+            disabled={pending || !yaml}
+            onClick={() =>
+              act(async () => {
+                const r = await openManifestPR(slug, yaml)
+                setMsg(r.url ? { tone: 'ok', text: 'Pull request abierto. Al mergearlo, sincronizá la app.', url: r.url } : { tone: 'bad', text: r.error ?? 'Error' })
+              }, 10)
+            }
+          >
+            Abrir pull request en {repo}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn"
+            disabled={pending || !yaml}
+            onClick={() =>
+              act(async () => {
+                const r = await saveManifestAction(slug, yaml)
+                setMsg(r.ok ? { tone: 'ok', text: 'Guardado: las próximas publicaciones ya usan este promo.yaml.' } : { tone: 'bad', text: `Guardado, pero tiene errores: ${r.error}` })
+              }, 10)
+            }
+          >
+            Guardar
+          </button>
+        )}
         <a className="btn ghost" href={`data:text/yaml;charset=utf-8,${encodeURIComponent(yaml)}`} download="promo.yaml">
           Descargar
         </a>

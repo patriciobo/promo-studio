@@ -9,7 +9,7 @@ import { db } from '../db'
 import { commitFiles, getFile, isLocalRepo, openPullRequest, writeLocalFiles } from '../github'
 import { setYamlBrand, type BrandPatch } from '../manifest'
 import { mediaPath } from '../media'
-import { syncApp } from '../pipeline'
+import { setRepoLessLogo, syncApp } from '../pipeline'
 import { FoundSchema, type Found } from './brief'
 import { concept } from './concepts'
 import { iconSource, planFiles, REPO_DIR, type YamlField } from './plan'
@@ -86,7 +86,7 @@ export interface SaveOptions {
 }
 
 /** Contenido de los archivos planeados y el promo.yaml nuevo (si existe y cambia). */
-export async function repoFiles(app: Pick<App, 'name' | 'repo' | 'branch' | 'manifestPath'>, found: Found | null, option: BrandOption, opts: SaveOptions) {
+export async function repoFiles(app: Pick<App, 'name' | 'repo' | 'branch' | 'manifestPath'> & { repo: string }, found: Found | null, option: BrandOption, opts: SaveOptions) {
   const o = OptionSchema.parse(option.data)
   const yaml = await getFile(app.repo, app.manifestPath, app.branch)
   const plan = planFiles(app, found, option, opts, !!yaml)
@@ -116,8 +116,10 @@ export async function repoFiles(app: Pick<App, 'name' | 'repo' | 'branch' | 'man
 export async function saveBrandToRepo(project: BrandProject & { app: App }, optionId: string, opts: SaveOptions): Promise<{ url?: string; written?: string; yamlChanged: boolean; hasYaml: boolean; paths: string[] }> {
   const option = await db.brandOption.findFirstOrThrow({ where: { id: optionId, projectId: project.id } })
   const { app } = project
+  const repo = app.repo
+  if (!repo) throw new Error('La cuenta no tiene repositorio')
   const found = project.found ? FoundSchema.parse(project.found) : null
-  const { files, blocked, yamlChanged, hasYaml, option: o } = await repoFiles(app, found, option, opts)
+  const { files, blocked, yamlChanged, hasYaml, option: o } = await repoFiles({ ...app, repo }, found, option, opts)
   if (blocked.length) throw new Error(blocked.map((b) => `${b.path}: ${b.why}`).join('; '))
   if (!files.length) throw new Error('No hay nada para guardar: marcá al menos un campo, un ícono o la guía.')
   const c = concept(o.conceptId)
@@ -125,11 +127,32 @@ export async function saveBrandToRepo(project: BrandProject & { app: App }, opti
   const body = `Identidad elegida en Promo Studio (concepto ${c?.name ?? o.conceptId}, ronda ${option.round}). Archivos:\n\n${files.map((f) => `- \`${f.path}\``).join('\n')}\n\nNingún otro archivo cambia.${yamlChanged ? ` En \`${app.manifestPath}\` sólo cambian los valores elegidos; comentarios y formato quedan igual.` : ''}`
   let url: string | undefined
   let written: string | undefined
-  if (isLocalRepo(app.repo)) written = await writeLocalFiles(app.repo, files)
-  else if (opts.mode === 'commit') url = await commitFiles(app.repo, app.branch, files, title)
-  else url = await openPullRequest(app.repo, app.branch, `promo-studio/marca-${Date.now().toString(36)}`, files, title, body)
+  if (isLocalRepo(repo)) written = await writeLocalFiles(repo, files)
+  else if (opts.mode === 'commit') url = await commitFiles(repo, app.branch, files, title)
+  else url = await openPullRequest(repo, app.branch, `promo-studio/marca-${Date.now().toString(36)}`, files, title, body)
   await db.brandProject.update({ where: { id: project.id }, data: { savedOptionId: optionId, savedAt: new Date(), savedUrl: url ?? null, chosenId: optionId } })
   // Con PR el promo.yaml cambia recién al aprobarlo; con commit o repo local, ya.
   if (yamlChanged && (written || opts.mode === 'commit')) await syncApp(app.id).catch(() => null)
   return { url, written, yamlChanged, hasYaml, paths: files.map((f) => f.path) }
+}
+
+/**
+ * Cuentas sin repositorio: aplica la alternativa al promo.yaml guardado en la base (sólo los campos elegidos)
+ * y, si se marcó el logo, lo deja como logo de la cuenta. Las piezas nuevas ya salen con la marca.
+ */
+export async function applyBrandToApp(project: BrandProject & { app: App }, optionId: string, opts: Pick<SaveOptions, 'fields' | 'font'>): Promise<{ changed: string[] }> {
+  const option = await db.brandOption.findFirstOrThrow({ where: { id: optionId, projectId: project.id } })
+  const { app } = project
+  if (app.repo) throw new Error('La cuenta tiene repositorio: guardala ahí')
+  if (!app.manifestYaml) throw new Error('Primero armá el promo.yaml de la cuenta')
+  const o = OptionSchema.parse(option.data)
+  const logoSrc = opts.fields.includes('logo') ? (option.vectorPath ?? option.logoPath) : null
+  const ext = logoSrc ? extname(logoSrc) || '.png' : null
+  const patch = brandPatch(o, opts.fields, ext ? `logo${ext}` : null, opts.font)
+  const yaml = setYamlBrand(app.manifestYaml, patch)
+  await db.app.update({ where: { id: app.id }, data: { manifestYaml: yaml } })
+  if (logoSrc && ext && existsSync(mediaPath(logoSrc))) await setRepoLessLogo({ ...app, manifestYaml: yaml }, await readFile(mediaPath(logoSrc)), ext)
+  else await syncApp(app.id)
+  await db.brandProject.update({ where: { id: project.id }, data: { savedOptionId: optionId, savedAt: new Date(), savedUrl: null, chosenId: optionId } })
+  return { changed: Object.keys(patch) }
 }

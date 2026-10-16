@@ -105,3 +105,35 @@ export function BrandSaveForm(props: {
     </form>
   )
 }
+
+/** Cuentas sin repositorio: aplica la alternativa al promo.yaml guardado en Promo Studio (y el logo a la cuenta). */
+export function BrandApplyForm(props: { action: (f: FormData) => Promise<void>; fields: YamlField[]; optIn: YamlField[]; fonts?: { display: string; text: string }; isSaved: boolean }) {
+  const [fields, setFields] = useState<YamlField[]>(props.fields.filter((f) => !props.optIn.includes(f)))
+  const toggle = (v: YamlField, on: boolean) => setFields(on ? [...fields, v] : fields.filter((x) => x !== v))
+  return (
+    <form action={props.action} className="stack-sm" style={{ marginTop: 10 }}>
+      <span className="xs muted">Qué pasa a la cuenta (las publicaciones nuevas ya salen con esto; lo demás del promo.yaml queda igual)</span>
+      <div className="chips">
+        {YAML_FIELDS.filter((y) => props.fields.includes(y.id)).map((y) => (
+          <label key={y.id} className="chip" title={y.id === 'logo' ? 'El logo de las piezas' : y.hint}>
+            <input type="checkbox" name="fields" value={y.id} checked={fields.includes(y.id)} onChange={(e) => toggle(y.id, e.target.checked)} /> {y.label}
+          </label>
+        ))}
+      </div>
+      {fields.includes('font') && props.fonts && props.fonts.display !== props.fonts.text && (
+        <label>
+          Tipografía de las piezas
+          <select name="font" defaultValue="text">
+            <option value="text">{props.fonts.text} (la de textos: más legible)</option>
+            <option value="display">{props.fonts.display} (la de títulos: más personalidad)</option>
+          </select>
+        </label>
+      )}
+      <div>
+        <SubmitButton className="btn sm primary" pendingText="Aplicando…" expect={5}>
+          {props.isSaved ? 'Aplicar de nuevo' : 'Aplicar a la cuenta'}
+        </SubmitButton>
+      </div>
+    </form>
+  )
+}

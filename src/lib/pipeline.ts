@@ -9,7 +9,7 @@ import { buildReel, renderHtml } from '@/render/renderer'
 import { db } from './db'
 import { getFile, getRawBytes, latestReleases } from './github'
 import { imagesForPlan, importFlowScreens, slideImages, type PromptImage } from './images'
-import { DEFAULT_IMAGE_STYLE, DEFAULT_PHOTO_STYLE, FeedSchema, parseManifest, type Feed, type Manifest } from './manifest'
+import { DEFAULT_IMAGE_STYLE, DEFAULT_PHOTO_STYLE, FeedSchema, parseManifest, setYamlBrand, type Feed, type Manifest } from './manifest'
 import { bufferDataUri, dataUri, mediaPath, saveMedia } from './media'
 import { notify } from './notify'
 import { sendForReview } from './whatsapp'
@@ -21,7 +21,7 @@ import { MAX_CAROUSEL, parsePhotoMode, photoSetSlides, photoTreatment, type Phot
 import { completeJson, generateImage } from './openrouter'
 import { localParts, roundTime, weekSlots, zonedTime, type Slot } from './schedule'
 import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { readFile, rm } from 'node:fs/promises'
 import { extname } from 'node:path'
 
 // ---------------------------------------------------------------------------
@@ -30,9 +30,10 @@ import { extname } from 'node:path'
 
 export async function syncApp(appId: string) {
   const app = await db.app.findUniqueOrThrow({ where: { id: appId } })
-  const file = await getFile(app.repo, app.manifestPath, app.branch)
+  // Sin repositorio, el promo.yaml es el que se guardó en la pestaña promo.yaml.
+  const file = app.repo ? await getFile(app.repo, app.manifestPath, app.branch) : app.manifestYaml ? { text: app.manifestYaml } : null
   if (!file) {
-    await db.app.update({ where: { id: appId }, data: { manifestError: `No existe ${app.manifestPath} en ${app.repo}@${app.branch}. Creálo con el asistente.`, syncedAt: new Date() } })
+    await db.app.update({ where: { id: appId }, data: { manifestError: app.repo ? `No existe ${app.manifestPath} en ${app.repo}@${app.branch}. Creálo con el asistente.` : 'Todavía no hay promo.yaml. Armalo en la pestaña promo.yaml a partir de una descripción del negocio.', syncedAt: new Date() } })
     return { ok: false as const, error: 'sin manifiesto' }
   }
   const r = parseManifest(file.text)
@@ -51,7 +52,9 @@ export async function syncApp(appId: string) {
 
 /** Copia logo y capturas del repo (o URL) a la carpeta de media de la app. */
 async function cacheBrandFiles(app: App, m: Manifest) {
-  const fetchAsset = async (src: string) => (/^https?:/.test(src) ? Buffer.from(await (await fetch(src)).arrayBuffer()) : await getRawBytes(app.repo, src, app.branch))
+  // Sin repositorio sólo se bajan las URLs: el logo subido ya está en la carpeta de media.
+  const repo = app.repo
+  const fetchAsset = async (src: string) => (/^https?:/.test(src) ? Buffer.from(await (await fetch(src)).arrayBuffer()) : repo ? await getRawBytes(repo, src, app.branch) : null)
   if (m.brand.logo) {
     const b = await fetchAsset(m.brand.logo).catch(() => null)
     if (b) await saveMedia(`apps/${app.slug}/logo${extname(m.brand.logo) || '.png'}`, b)
@@ -64,6 +67,17 @@ async function cacheBrandFiles(app: App, m: Manifest) {
     const b = await fetchAsset(m.music).catch(() => null)
     if (b) await saveMedia(`apps/${app.slug}/music${extname(m.music) || '.mp3'}`, b)
   }
+}
+
+/**
+ * Cuentas sin repositorio: guarda el logo en la carpeta de la app (donde lo busca brandOf) y lo apunta en brand.logo
+ * del promo.yaml guardado en la base. Después sincroniza.
+ */
+export async function setRepoLessLogo(app: Pick<App, 'id' | 'slug' | 'manifestYaml'>, data: Buffer, ext: string) {
+  for (const old of ['.png', '.jpg', '.jpeg', '.webp', '.svg']) if (old !== ext) await rm(mediaPath(`apps/${app.slug}/logo${old}`), { force: true })
+  await saveMedia(`apps/${app.slug}/logo${ext}`, data)
+  if (app.manifestYaml) await db.app.update({ where: { id: app.id }, data: { manifestYaml: setYamlBrand(app.manifestYaml, { logo: `logo${ext}` }) } })
+  await syncApp(app.id)
 }
 
 export const manifestOf = (app: App) => {
@@ -257,7 +271,7 @@ async function planPosts(app: App, m: Manifest, batchId: string, weekStart: Date
   if (!slots.length) return db.batch.update({ where: { id: batch.id }, data: { status: 'READY', notes: 'Cadencia semanal en 0' } })
   const [src, releases, recent, scored, images] = await Promise.all([
     sources(m),
-    latestReleases(app.repo),
+    app.repo ? latestReleases(app.repo) : [],
     db.post.findMany({ where: { appId }, orderBy: { createdAt: 'desc' }, take: 30, select: { pillar: true, hook: true } }),
     db.post.groupBy({ by: ['pillar'], where: { appId, score: { not: null } }, _avg: { score: true } }),
     imagesForPlan(appId, imageIds),

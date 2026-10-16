@@ -53,11 +53,13 @@ export default async function Calendar({ params, searchParams }: PageProps<'/app
             {!app.imageModel && <p className="notice warn small">Sin modelo de imagen: las piezas se arman con el color de la marca. Elegí uno en Ajustes.</p>}
           </div>
           <div className="row">
-            <form action={syncNow.bind(null, slug)}>
-              <SubmitButton className="btn" pendingText="Sincronizando…" expect={8}>
-                Sincronizar repo
-              </SubmitButton>
-            </form>
+            {app.repo && (
+              <form action={syncNow.bind(null, slug)}>
+                <SubmitButton className="btn" pendingText="Sincronizando…" expect={8}>
+                  Sincronizar repo
+                </SubmitButton>
+              </form>
+            )}
             <form id="generar-semana" action={generateWeek.bind(null, slug)} className="row">
               <input type="date" name="week" defaultValue={nm} style={{ width: 160 }} aria-label="Lunes de la semana" />
               <ModelSelect app={app} />

@@ -9,24 +9,26 @@ import { normalizeRepo } from '@/lib/github'
 import { addImages, imageFiles, inOrder } from '@/lib/images'
 import { enqueue, QUEUES } from '@/lib/jobs'
 import { actId, adAccounts, discoverAccounts, graph, token, type AdAccount } from '@/lib/instagram'
-import { parseManifest, type Manifest } from '@/lib/manifest'
+import { manifestToYaml, parseManifest, type Manifest } from '@/lib/manifest'
 import { parseImageChoice, parseImageKind, parseKindChoice } from '@/lib/models'
 import { estimateSuggestion, suggestCampaign, type SuggestInput } from '@/lib/ad-suggest'
 import { activateCampaign, campaignLink, deleteCampaign, estimateAudience, friendly, pauseCampaign, searchPlaces, searchTargeting, syncCampaign, DETAIL_TYPES, EDUCATION, type Detail, type DetailType, type GeoPlace, type Objective, type Targeting } from '@/lib/meta-ads'
 import { explain } from '@/lib/meta-errors'
-import { draftManifest, logoFromRepo, proposeManifestPR, proposeStyleChange, repoContext } from '@/lib/onboarding/manifest-wizard'
+import { draftManifest, draftManifestFromText, logoFromRepo, proposeManifestPR, proposeStyleChange, repoContext } from '@/lib/onboarding/manifest-wizard'
 import { healthCheck, type Check } from '@/lib/onboarding/meta-health'
 import { buildProfileKit, type ProfileKit } from '@/lib/onboarding/profile-kit'
-import { syncApp } from '@/lib/pipeline'
+import { setRepoLessLogo, syncApp } from '@/lib/pipeline'
 import { fromLocalInput, nextMonday } from '@/lib/schedule'
 import { setSecret, type SecretKey } from '@/lib/settings'
 import { designStyle, parseDesignStyle, SAMPLE_MODEL, SAMPLE_QUALITIES } from '@/lib/styles'
 import { allItems, parseSampleItems, setSamplesState } from '@/lib/style-samples'
 import { suggestStyles } from '@/lib/style-suggest'
 import { rm } from 'node:fs/promises'
+import { extname } from 'node:path'
 import { BriefSchema, missingElements, parseBriefForm, parseElements, projectDir, type ElementId, type Found } from '@/lib/brand/brief'
 import { readRepoBrand } from '@/lib/brand/repo'
-import { saveBrandToRepo, YAML_FIELDS, type YamlField } from '@/lib/brand/save'
+import { applyBrandToApp, saveBrandToRepo, YAML_FIELDS, type YamlField } from '@/lib/brand/save'
+import { briefFromText } from '@/lib/brand/describe'
 import { mediaPath, saveMedia } from '@/lib/media'
 import { TEXT_MODELS } from '@/lib/models'
 import { digits, sendForReview } from '@/lib/whatsapp'
@@ -48,13 +50,29 @@ async function requestImages(app: { id: string; slug: string }, f: FormData) {
 /** De quién es la cuenta: propia o de un cliente (con su nombre). */
 const ownerOf = (f: FormData) => (str(f, 'owner') === 'client' ? { owner: 'client', clientName: str(f, 'clientName').slice(0, 80) || null } : { owner: 'own', clientName: null })
 
+const slugify = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '')
+
+/** Con repositorio, el promo.yaml se lee de ahí; sin repositorio, se arma con la descripción del negocio y queda en la base. */
 export async function createApp(f: FormData) {
   await requireUser()
-  const repo = normalizeRepo(str(f, 'repo'))
-  const slug = (str(f, 'slug') || repo.split('/')[1]).toLowerCase().replace(/[^a-z0-9-]+/g, '-')
-  const app = await db.app.create({ data: { slug, repo, name: str(f, 'name') || repo.split('/')[1], branch: str(f, 'branch') || 'main', ...ownerOf(f), imageModel: str(f, 'imageModel') || null, imageQuality: str(f, 'imageQuality') || null, imageKind: parseKindChoice(str(f, 'imageKind')) ?? null, designStyle: parseDesignStyle(str(f, 'designStyle')) ?? null } })
+  const repo = str(f, 'repo') ? normalizeRepo(str(f, 'repo')) : null
+  const name = str(f, 'name') || repo?.split('/')[1] || ''
+  const slug = slugify(str(f, 'slug') || name)
+  if (!slug) return
+  const app = await db.app.create({ data: { slug, repo, name, branch: str(f, 'branch') || 'main', ...ownerOf(f), imageModel: str(f, 'imageModel') || null, imageQuality: str(f, 'imageQuality') || null, imageKind: parseKindChoice(str(f, 'imageKind')) ?? null, designStyle: parseDesignStyle(str(f, 'designStyle')) ?? null } })
+  const description = str(f, 'description').slice(0, 4000)
+  let q = ''
+  if (!repo && description) {
+    try {
+      const r = await draftManifestFromText(description, app.textModel, { name })
+      await db.app.update({ where: { id: app.id }, data: { manifestYaml: r.yaml } })
+      q = r.error ? `?aviso=borrador-incompleto` : '?aviso=borrador'
+    } catch (e) {
+      q = `?error=${encodeURIComponent(`No se pudo armar el promo.yaml: ${(e as Error).message}`)}`
+    }
+  }
   await syncApp(app.id).catch(() => null)
-  redirect(`/apps/${app.slug}/manifiesto`)
+  redirect(`/apps/${app.slug}/manifiesto${q}`)
 }
 
 export async function updateSettings(slug: string, f: FormData) {
@@ -63,7 +81,7 @@ export async function updateSettings(slug: string, f: FormData) {
     where: { slug },
     data: {
       name: str(f, 'name'),
-      repo: normalizeRepo(str(f, 'repo')),
+      repo: str(f, 'repo') ? normalizeRepo(str(f, 'repo')) : null,
       branch: str(f, 'branch') || 'main',
       textModel: str(f, 'textModel'),
       imageModel: str(f, 'imageModel') || null,
@@ -84,8 +102,11 @@ export async function updateSettings(slug: string, f: FormData) {
       ...ownerOf(f),
     },
   })
+  // Al quitar el repositorio, el promo.yaml que se venía usando pasa a guardarse en la base.
+  const now = await db.app.findUniqueOrThrow({ where: { slug } })
+  if (!now.repo && !now.manifestYaml && now.manifest) await db.app.update({ where: { slug }, data: { manifestYaml: manifestToYaml(now.manifest as unknown as Manifest) } })
   revalidatePath(`/apps/${slug}`, 'layout')
-  // Estilo al promo.yaml del repo, si se pidió y es distinto del que ya tiene.
+  // Estilo al promo.yaml (del repo o de la base), si se pidió y es distinto del que ya tiene.
   const style = parseDesignStyle(str(f, 'designStyle'))
   if (f.get('styleToYaml') !== 'on' || !style) return
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
@@ -374,10 +395,16 @@ export async function runHealthCheck(slug: string, withContainer: boolean): Prom
 
 // --- Manifiesto ---------------------------------------------------------------
 
-export async function draftManifestAction(slug: string): Promise<{ yaml: string; error?: string }> {
+/** Borrador del promo.yaml: desde el repo o, sin repositorio, desde `description`. */
+export async function draftManifestAction(slug: string, description?: string): Promise<{ yaml: string; error?: string }> {
   await requireUser()
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
   try {
+    if (!app.repo) {
+      if (!description?.trim()) return { yaml: '', error: 'Escribí una descripción del negocio.' }
+      const r = await draftManifestFromText(description.slice(0, 4000), app.textModel, { name: app.name, igUsername: app.igUsername })
+      return { yaml: r.yaml, error: r.error }
+    }
     const ctx = await repoContext(app.repo)
     const r = await draftManifest(ctx, app.textModel)
     return { yaml: r.yaml, error: r.error }
@@ -397,6 +424,7 @@ export async function openManifestPR(slug: string, yaml: string): Promise<{ url?
   const r = parseManifest(yaml)
   if (!r.ok) return { error: r.error }
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  if (!app.repo) return { error: 'La cuenta no tiene repositorio: guardá el promo.yaml acá.' }
   try {
     const extra = []
     // Si el logo apunta a un archivo del repo fuera de .promo/, se copia ahí.
@@ -410,6 +438,29 @@ export async function openManifestPR(slug: string, yaml: string): Promise<{ url?
   } catch (e) {
     return { error: (e as Error).message }
   }
+}
+
+/** Cuentas sin repositorio: guarda el promo.yaml en la base y sincroniza (aunque tenga errores, para no perder lo escrito). */
+export async function saveManifestAction(slug: string, yaml: string): Promise<{ ok: boolean; error?: string }> {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  if (app.repo) return { ok: false, error: 'Esta cuenta lee el promo.yaml del repo: abrí un pull request.' }
+  await db.app.update({ where: { id: app.id }, data: { manifestYaml: yaml } })
+  const r = await syncApp(app.id)
+  revalidatePath(`/apps/${slug}`, 'layout')
+  return r.ok ? { ok: true } : { ok: false, error: 'error' in r ? r.error : 'promo.yaml inválido' }
+}
+
+/** Cuentas sin repositorio: sube el logo a la carpeta de la app y lo pone en brand.logo. */
+export async function uploadLogoAction(slug: string, f: FormData) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  const file = f.get('logo')
+  if (app.repo || !(file instanceof File) || !file.size) return
+  const ext = extname(file.name).toLowerCase()
+  if (!['.png', '.jpg', '.jpeg', '.webp', '.svg'].includes(ext)) redirect(`/apps/${slug}/manifiesto?error=${encodeURIComponent('El logo tiene que ser PNG, JPG, WebP o SVG.')}`)
+  await setRepoLessLogo(app, Buffer.from(await file.arrayBuffer()), ext)
+  revalidatePath(`/apps/${slug}`, 'layout')
 }
 
 // --- Perfil -------------------------------------------------------------------
@@ -625,13 +676,17 @@ const textModelOf = (f: FormData, fallback: string) => {
 
 const brandBack = (slug: string, q = '') => `/apps/${slug}/marca${q ? `?${q}` : ''}`
 
-/** Arranca la identidad de la app: brief con lo que dice el promo.yaml y lo que se encuentra en el repo. */
+/**
+ * Arranca la identidad de la app: brief con lo que dice el promo.yaml y lo que se encuentra en el repo.
+ * `mode`: repo (lee el repo) | cero (nada del repo) | texto (el modelo de texto completa el brief con `description`).
+ */
 export async function startBrand(slug: string, f: FormData) {
   await requireUser()
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
   const m = app.manifest as unknown as Manifest | null
-  const fresh = str(f, 'mode') === 'cero'
-  const brief = BriefSchema.parse({
+  const mode = str(f, 'mode')
+  const fresh = mode !== 'repo' || !app.repo
+  let brief = BriefSchema.parse({
     name: m?.name ?? app.name,
     industry: m?.category ?? '',
     offer: m?.description ?? m?.tagline ?? '',
@@ -641,7 +696,15 @@ export async function startBrand(slug: string, f: FormData) {
   })
   let found: Found | null = null
   let error: string | null = null
-  if (!fresh) {
+  const description = str(f, 'description').slice(0, 4000)
+  if (mode === 'texto' && description) {
+    try {
+      brief = await briefFromText(description, brief, { appId: app.id, textModel: app.textModel })
+    } catch (e) {
+      error = `No pude completar el brief con la descripción: ${(e as Error).message}`
+    }
+  }
+  if (!fresh && app.repo) {
     try {
       found = (await readRepoBrand(app.repo, app.branch, slug)).found
     } catch (e) {
@@ -654,7 +717,24 @@ export async function startBrand(slug: string, f: FormData) {
     create: { appId: app.id, brief, found: found ?? undefined, elements, textModel: app.textModel, error },
     update: { brief, found: found ?? Prisma.DbNull, elements, error },
   })
-  redirect(brandBack(slug, fresh ? 'aviso=cero' : 'aviso=repo'))
+  redirect(brandBack(slug, mode === 'texto' ? 'aviso=texto' : fresh ? 'aviso=cero' : 'aviso=repo'))
+}
+
+/** Completa el brief guardado con lo que dice una descripción en texto (lo que no menciona queda igual). */
+export async function describeBrandBrief(slug: string, f: FormData) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug }, include: { brand: true } })
+  const description = str(f, 'description').slice(0, 4000)
+  if (!app.brand || !description) redirect(brandBack(slug))
+  let to = 'aviso=texto'
+  try {
+    const brief = await briefFromText(description, BriefSchema.parse(app.brand.brief), { appId: app.id, textModel: app.brand.textModel })
+    await db.brandProject.update({ where: { id: app.brand.id }, data: { brief } })
+  } catch (e) {
+    to = `error=${encodeURIComponent(`No pude completar el brief: ${(e as Error).message}`)}`
+  }
+  revalidatePath(brandBack(slug))
+  redirect(brandBack(slug, to))
 }
 
 export async function updateBrandProject(slug: string, f: FormData) {
@@ -699,6 +779,7 @@ export async function vectorizeBrandOption(slug: string, optionId: string) {
 export async function rereadBrandRepo(slug: string) {
   await requireUser()
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
+  if (!app.repo) return
   try {
     const { found } = await readRepoBrand(app.repo, app.branch, slug)
     await db.brandProject.update({ where: { appId: app.id }, data: { found, error: null } })
@@ -725,6 +806,17 @@ export async function saveBrandAction(slug: string, optionId: string, f: FormDat
   if (!app.brand) redirect(brandBack(slug))
   const fields = f.getAll('fields').map(String).filter((x): x is YamlField => YAML_FIELDS.some((y) => y.id === x))
   let to: string
+  // Sin repositorio: se aplica al promo.yaml de la cuenta (guardado en la base).
+  if (!app.repo) {
+    try {
+      const r = await applyBrandToApp({ ...app.brand, app }, optionId, { fields, font: str(f, 'font') === 'display' ? 'display' : 'text' })
+      to = `aviso=aplicada&archivos=${encodeURIComponent(r.changed.join(','))}`
+    } catch (e) {
+      to = `error=${encodeURIComponent(`No se pudo aplicar a la cuenta: ${(e as Error).message}`)}`
+    }
+    revalidatePath(`/apps/${slug}`, 'layout')
+    redirect(brandBack(slug, to))
+  }
   try {
     const r = await saveBrandToRepo({ ...app.brand, app }, optionId, {
       fields,

@@ -1,6 +1,6 @@
-import { chooseBrandOption, generateBrandRound, rereadBrandRepo, resetBrand, saveBrandAction, startBrand, updateBrandProject, vectorizeBrandOption } from '@/app/actions'
+import { chooseBrandOption, describeBrandBrief, generateBrandRound, rereadBrandRepo, resetBrand, saveBrandAction, startBrand, updateBrandProject, vectorizeBrandOption } from '@/app/actions'
 import { BrandBriefFields } from '@/components/BrandBriefFields'
-import { BrandSaveForm } from '@/components/BrandSaveForm'
+import { BrandApplyForm, BrandSaveForm } from '@/components/BrandSaveForm'
 import { AutoRefresh, ConfirmButton, Progress, SubmitButton } from '@/components/client'
 import { BriefSchema, ELEMENTS, FoundSchema, missingInBrief, type ElementId } from '@/lib/brand/brief'
 import { concept } from '@/lib/brand/concepts'
@@ -22,6 +22,19 @@ const AVISOS: Record<string, string> = {
   generando: 'Generando las 3 alternativas: el worker las arma de a una y esta página se actualiza sola.',
   escrito: 'Listo: los archivos y el promo.yaml quedaron escritos en el repo local y la app se volvió a sincronizar.',
   'guardado-repo': 'Listo: guardado en el repo.',
+  texto: 'Completé el brief con la descripción. Revisalo abajo (sobre todo personalidad y ejes) antes de generar.',
+  aplicada: 'Listo: la identidad quedó aplicada a la cuenta. Las publicaciones nuevas ya salen con ella.',
+}
+
+/** Descripción del negocio en texto libre: el modelo de texto completa el brief con lo que dice. */
+function DescriptionField({ required = false }: { required?: boolean }) {
+  return (
+    <label>
+      Descripción del negocio y de la marca que busca
+      <textarea name="description" rows={6} maxLength={4000} required={required} placeholder="Ej.: Estudio contable para pymes de Rosario, 15 años de trayectoria. Clientes: dueños de comercios y profesionales independientes. Queremos vernos confiables pero cercanos, nada de corbata. Nos gustan los verdes y azules, no el rojo. La marca va a ir en la web, redes y papelería." />
+      <span className="hint">Qué hace, para quién, dónde, qué la diferencia, cómo quiere que se la perciba, colores que le gustan o no y dónde se va a usar. Lo que no digas queda para completar a mano.</span>
+    </label>
+  )
 }
 
 export default async function BrandTab({ params, searchParams }: PageProps<'/apps/[slug]/marca'>) {
@@ -29,7 +42,7 @@ export default async function BrandTab({ params, searchParams }: PageProps<'/app
   const { aviso, guardado, error, sinyaml, archivos } = await searchParams
   const app = await db.app.findUniqueOrThrow({ where: { slug }, include: { brand: { include: { options: { orderBy: [{ round: 'desc' }, { index: 'asc' }] } } } } })
   const p = app.brand
-  const local = isLocalRepo(app.repo)
+  const local = app.repo ? isLocalRepo(app.repo) : false
 
   if (!p)
     return (
@@ -37,25 +50,36 @@ export default async function BrandTab({ params, searchParams }: PageProps<'/app
         <div className="stack-sm">
           <h2>Identidad de marca</h2>
           <p className="small muted">
-            Generá 3 alternativas de identidad (logo, ícono, paleta, tipografías, tono de voz, frase y gráfico de apoyo), elegí una y guardala en el repo: sólo lo que tiene uso (el logo que usa el promo.yaml, los íconos que ya tiene el sitio y los campos del promo.yaml que elijas).
+            Generá 3 alternativas de identidad (logo, ícono, paleta, tipografías, tono de voz, frase y gráfico de apoyo), elegí una y {app.repo ? 'guardala en el repo: sólo lo que tiene uso (el logo que usa el promo.yaml, los íconos que ya tiene el sitio y los campos del promo.yaml que elijas)' : 'aplicala a la cuenta'}. Cada alternativa se exporta en un paquete para hacer el sitio institucional.
           </p>
         </div>
         {typeof error === 'string' && <p className="notice bad small">{error}</p>}
-        <div className="row">
-          <form action={startBrand.bind(null, slug)}>
-            <input type="hidden" name="mode" value="repo" />
-            <SubmitButton pendingText="Leyendo el repo…" expect={15}>
-              Partir de lo que hay en el repo
+        <form action={startBrand.bind(null, slug)} className="stack">
+          <input type="hidden" name="mode" value="texto" />
+          <DescriptionField required />
+          <div>
+            <SubmitButton pendingText="Leyendo la descripción…" expect={20}>
+              Empezar desde la descripción
             </SubmitButton>
-          </form>
+          </div>
+        </form>
+        <div className="row">
+          {app.repo && (
+            <form action={startBrand.bind(null, slug)}>
+              <input type="hidden" name="mode" value="repo" />
+              <SubmitButton className="btn" pendingText="Leyendo el repo…" expect={15}>
+                Partir de lo que hay en el repo
+              </SubmitButton>
+            </form>
+          )}
           <form action={startBrand.bind(null, slug)}>
             <input type="hidden" name="mode" value="cero" />
             <SubmitButton className="btn" pendingText="Creando…">
-              Identidad nueva desde cero
+              {app.repo ? 'Identidad nueva desde cero' : 'Completar el brief a mano'}
             </SubmitButton>
           </form>
         </div>
-        <p className="xs muted">Desde el repo se toman colores, tipografías, logo y frase del promo.yaml o de los estilos, y se genera sólo lo que falta.</p>
+        {app.repo && <p className="xs muted">Desde el repo se toman colores, tipografías, logo y frase del promo.yaml o de los estilos, y se genera sólo lo que falta.</p>}
       </section>
     )
 
@@ -87,7 +111,7 @@ export default async function BrandTab({ params, searchParams }: PageProps<'/app
       )}
       {typeof archivos === 'string' && archivos && (
         <div className="notice small">
-          Archivos escritos (nada más cambió):
+          {aviso === 'aplicada' ? 'Cambió en el promo.yaml de la cuenta:' : 'Archivos escritos (nada más cambió):'}
           <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
             {archivos.split(',').map((f) => (
               <li key={f}>
@@ -107,7 +131,7 @@ export default async function BrandTab({ params, searchParams }: PageProps<'/app
           {saved && p.savedAt && (
             <>
               {' '}
-              · guardada en el repo: alternativa {saved.index + 1} de la ronda {saved.round} ({fmtDate(p.savedAt, app.timezone)})
+              · {app.repo ? 'guardada en el repo' : 'aplicada a la cuenta'}: alternativa {saved.index + 1} de la ronda {saved.round} ({fmtDate(p.savedAt, app.timezone)})
               {p.savedUrl && (
                 <>
                   {' '}
@@ -161,14 +185,14 @@ export default async function BrandTab({ params, searchParams }: PageProps<'/app
           </div>
           {found.sources.length > 0 && <p className="xs muted">Fuentes: {found.sources.join(' · ')}</p>}
         </section>
-      ) : (
+      ) : app.repo ? (
         <form action={rereadBrandRepo.bind(null, slug)} className="row">
           <span className="small muted">Identidad desde cero: no se toma nada del repo.</span>
           <SubmitButton className="btn sm" pendingText="Leyendo…">
             Leer el repo igual
           </SubmitButton>
         </form>
-      )}
+      ) : null}
 
       <section className="card stack">
         <div className="stack-sm">
@@ -249,7 +273,7 @@ export default async function BrandTab({ params, searchParams }: PageProps<'/app
                       </h3>
                       <span className="row" style={{ gap: 6 }}>
                         {chosen && <span className="badge ok">Elegida</span>}
-                        {isSaved && <span className="badge info">En el repo</span>}
+                        {isSaved && <span className="badge info">{app.repo ? 'En el repo' : 'Aplicada'}</span>}
                       </span>
                     </div>
                     <p className="xs muted">
@@ -330,6 +354,9 @@ export default async function BrandTab({ params, searchParams }: PageProps<'/app
                           Lámina
                         </a>
                       )}
+                      <a className="btn sm" href={`/apps/${slug}/marca/exportar/${o.id}`} download title="ZIP con logo, íconos, marca.json, tokens.css, design-tokens.json y DESIGN.md (reglas de uso para el sitio)">
+                        Exportar para la web
+                      </a>
                       {(needsLogoSvg || needsFavicon) && (
                         <form action={vectorizeBrandOption.bind(null, slug, o.id)}>
                           <SubmitButton className="btn sm" pendingText="Encolando…">
@@ -345,7 +372,15 @@ export default async function BrandTab({ params, searchParams }: PageProps<'/app
                         {needsLogoSvg ? 'El logo en SVG se ve nítido en cualquier tamaño. ' : ''}Lo redibuja Recraft V4.1 Vector (~{usdSmall(VECTOR_EACH)} cada uno); los PNG y el favicon.ico ya están listos en Íconos.
                       </p>
                     )}
-                    {chosen && (
+                    {chosen && !app.repo && (
+                      <details className="save-repo" open={!isSaved}>
+                        <summary className="small">
+                          <strong>Aplicar a la cuenta</strong>
+                        </summary>
+                        <BrandApplyForm action={saveBrandAction.bind(null, slug, o.id)} fields={fields} optIn={OPT_IN} fonts={d.fonts} isSaved={isSaved} />
+                      </details>
+                    )}
+                    {chosen && app.repo && (
                       <details className="save-repo" open={!isSaved}>
                         <summary className="small">
                           <strong>Guardar en el repo</strong>
@@ -377,6 +412,14 @@ export default async function BrandTab({ params, searchParams }: PageProps<'/app
           <summary>
             <strong>Brief</strong> <span className="small muted">{missing.length ? `faltan: ${missing.join(', ')}` : 'completo'}</span>
           </summary>
+          <form action={describeBrandBrief.bind(null, slug)} className="stack" style={{ marginTop: 16 }}>
+            <DescriptionField required />
+            <div>
+              <SubmitButton className="btn sm" pendingText="Leyendo la descripción…" expect={20}>
+                Completar el brief con la descripción
+              </SubmitButton>
+            </div>
+          </form>
           <form action={updateBrandProject.bind(null, slug)} className="stack" style={{ marginTop: 16 }}>
             <BrandBriefFields brief={brief} textModel={p.textModel} referenceSrc={p.referencePath ? src(p.referencePath) : null} />
             <div>

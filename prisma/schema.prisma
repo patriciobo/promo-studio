@@ -13,11 +13,12 @@ model App {
   id               String    @id @default(cuid())
   slug             String    @unique
   name             String
-  repo             String // owner/name en GitHub
+  repo             String? // owner/name en GitHub (null = cuenta sin repositorio: el promo.yaml vive en manifestYaml)
   branch           String    @default("main")
   manifestPath     String    @default("promo.yaml")
   manifest         Json? // último promo.yaml válido (ya parseado)
   manifestHash     String?
+  manifestYaml     String? // texto del promo.yaml de las cuentas sin repositorio (se edita en la pestaña promo.yaml)
   manifestError    String?
   syncedAt         DateTime?
   // Meta / Instagram
