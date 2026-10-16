@@ -92,7 +92,24 @@ export const aspectFor = (model: string, aspect: AspectRatio): AspectRatio => (a
  * el de chat con salida de imagen (modelos tipo Gemini Image).
  * `references` (data URIs) sirve para mantener el estilo entre las piezas de un post.
  */
-export async function generateImage(opts: { appId: string | null; model: string; prompt: string; aspectRatio: AspectRatio; purpose: string; quality?: string | null; references?: string[]; kind?: ImageKind; withText?: boolean }): Promise<{ data: Buffer; mime: string; cost: number }> {
+type ImageOpts = { appId: string | null; model: string; prompt: string; aspectRatio: AspectRatio; purpose: string; quality?: string | null; references?: string[]; kind?: ImageKind; withText?: boolean }
+
+/** Modelo de respaldo cuando el filtro de seguridad de un proveedor rechaza el pedido (suele pasar con OpenAI ante palabras sueltas del prompt). */
+export const SAFETY_FALLBACK_MODEL = 'google/gemini-3.1-flash-image'
+
+export const isSafetyRejection = (e: unknown) => e instanceof OpenRouterError && /safety system|content policy|moderation|safety_violations|content_filter/i.test(e.message)
+
+export async function generateImage(opts: ImageOpts): Promise<{ data: Buffer; mime: string; cost: number }> {
+  try {
+    return await generateImageWith(opts)
+  } catch (e) {
+    if (!isSafetyRejection(e) || opts.model === SAFETY_FALLBACK_MODEL) throw e
+    console.warn(`[imagen] ${opts.model} rechazó por seguridad "${opts.purpose}"; reintento con ${SAFETY_FALLBACK_MODEL}`)
+    return generateImageWith({ ...opts, model: SAFETY_FALLBACK_MODEL, quality: null, purpose: `${opts.purpose} (respaldo: ${opts.model} lo rechazó por seguridad)` })
+  }
+}
+
+async function generateImageWith(opts: ImageOpts): Promise<{ data: Buffer; mime: string; cost: number }> {
   await assertBudget(opts.appId, 0.1)
   const info = imageModel(opts.model)
   const refs = info?.references ? (opts.references ?? []).slice(0, 4) : []
@@ -101,7 +118,7 @@ export async function generateImage(opts: { appId: string | null; model: string;
   if (info?.api !== 'chat') {
     // Una calidad que el catálogo ya no ofrece (p. ej. "high" guardada de antes) usa la por defecto.
     const quality = info?.qualities ? (opts.quality && opts.quality in info.qualities ? opts.quality : info.defaultQuality) : undefined
-    const body = () => ({ model: opts.model, prompt: opts.prompt, aspect_ratio: aspect, n: 1, output_format: 'jpeg', resolution: '1K', ...(quality ? { quality } : {}), ...(refs.length ? { input_references: refs.map(imagePart) } : {}) })
+    const body = () => ({ model: opts.model, prompt: opts.prompt, aspect_ratio: aspect, n: 1, output_format: 'jpeg', resolution: '1K', ...(quality ? { quality } : {}), ...(opts.model.startsWith('openai/') ? { moderation: 'low' } : {}), ...(refs.length ? { input_references: refs.map(imagePart) } : {}) })
     try {
       let r
       try {

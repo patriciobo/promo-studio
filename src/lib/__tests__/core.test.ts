@@ -705,3 +705,12 @@ describe('parseJsonLoose', () => {
     expect(parseJsonLoose('{"options":[{"conceptId":"micro","title":"Traz')).toBeUndefined()
   })
 })
+
+describe('isSafetyRejection', () => {
+  it('reconoce el rechazo del filtro de OpenAI y no otros errores', async () => {
+    const { isSafetyRejection, OpenRouterError } = await import('../openrouter')
+    expect(isSafetyRejection(new OpenRouterError(400, 'Your request was rejected by the safety system. If you believe this is an error, contact us'))).toBe(true)
+    expect(isSafetyRejection(new OpenRouterError(429, 'Rate limit exceeded'))).toBe(false)
+    expect(isSafetyRejection(new Error('safety system'))).toBe(false)
+  })
+})
