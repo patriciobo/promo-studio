@@ -48,7 +48,7 @@ export default async function Calendar({ params, searchParams }: PageProps<'/app
         <div className="row between">
           <div className="stack-sm">
             <h2>Lote semanal</h2>
-            <p className="small muted">Se genera solo cada domingo a las 18:00. Podés adelantarlo, rehacer una semana que falló o generar otra tanda de una semana ya hecha: trae ideas distintas, 2 h más tarde que la anterior, y te quedás con las que apruebes.</p>
+            <p className="small muted">{app.autoWeekly ? 'Se genera solo cada domingo a las 18:00. Podés adelantarlo,' : 'Se genera a mano (la generación automática de los domingos está apagada en Ajustes). Podés generarla,'} rehacer una semana que falló o generar otra tanda de una semana ya hecha: trae ideas distintas, 2 h más tarde que la anterior, y te quedás con las que apruebes.</p>
             {app.manifestError && <p className="notice bad small">El promo.yaml tiene errores: {app.manifestError}</p>}
             {!app.imageModel && <p className="notice warn small">Sin modelo de imagen: las piezas se arman con el color de la marca. Elegí uno en Ajustes.</p>}
           </div>

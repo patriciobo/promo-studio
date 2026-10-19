@@ -34,6 +34,7 @@ model App {
   photoMode        String   @default("fondo") // fotos elegidas: fondo | marco | mezcla
   starterDismissed Boolean  @default(false) // no ofrecer el kit inicial (la cuenta ya tiene contenido)
   autoRevise       Boolean  @default(true) // aplicar solos (con el modelo de texto) los cambios que pide el cliente por WhatsApp
+  autoWeekly       Boolean  @default(false) // generar solo el lote semanal cada domingo 18:00 (si no, se genera a mano desde el Calendario)
   designStyle      String? // estilo de las piezas (src/lib/styles.ts; null = clasico). brand.style del promo.yaml lo pisa al cambiar el yaml
   profileKit       Json? // último kit de perfil generado (textos y rutas de las imágenes)
   profileKitDone   Json? // qué partes del kit ya se aplicaron en Instagram

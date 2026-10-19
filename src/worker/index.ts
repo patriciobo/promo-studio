@@ -67,7 +67,7 @@ async function main() {
   })
 
   await boss.work(QUEUES.weekly, async () => {
-    const apps = await db.app.findMany({ where: { paused: false } })
+    const apps = await db.app.findMany({ where: { paused: false, autoWeekly: true } })
     const weekStart = nextMonday()
     for (const a of apps) await boss.send(QUEUES.runWeekly, { appId: a.id, weekStart: weekStart.toISOString() }, { singletonKey: `${a.id}-${weekStart.toISOString()}-1` })
   })

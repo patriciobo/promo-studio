@@ -100,6 +100,7 @@ export async function updateSettings(slug: string, f: FormData) {
       photoMode: parsePhotoMode(str(f, 'photoMode')) ?? 'fondo',
       starterDismissed: f.get('offerStarter') !== 'on',
       autoRevise: f.get('autoRevise') === 'on',
+      autoWeekly: f.get('autoWeekly') === 'on',
       ...ownerOf(f),
     },
   })

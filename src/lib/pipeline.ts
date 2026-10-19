@@ -159,7 +159,7 @@ const PHOTO_LAYOUT: Record<PhotoMode, string> = {
 }
 
 /** Carrusel de fotos: una diapositiva por foto elegida, en orden. */
-const photoSetRules = (n: number) => `${n} slides, exactly one per focus appImage in the given order (slide i uses the i-th focus image as imageId). Slide 1 is the hook; each slide talks about what its photo shows; the last slide also carries the call to action over its photo. No slide without a photo.`
+const photoSetRules = (n: number) => `${n} slides, exactly one per focus appImage in the given order (slide i uses the i-th focus image as imageId). Slide 1 is the hook; each slide's text talks about the business (a benefit, a feature, a reason to choose it) with its photo as backdrop, never describing the photo; the last slide also carries the call to action over its photo. No slide without a photo.`
 
 const SLIDE_RULES: Record<PostType, string> = {
   IMAGE: '1 slide: title (max 70 chars) + body (max 140 chars).',
@@ -208,12 +208,13 @@ Image prompts are in English. Each slot has a "visual" brief drawn at random so 
 - imageType "photo": describe a realistic photo in that style that looks candid, unposed and a bit imperfect, like a snapshot a friend took with a phone, with screens angled or out of focus. Ordinary-looking people as they really are, never models, a photoshoot or a studio.` : ''}
 ${drawn ? `Show people using the app or the problem it solves: when the visual brief has people, setting, framing and light, use them (describe the people concretely: age, look, build and clothes) and change them only if they contradict the slide or the app's audience; never default to young good-looking people. ` : ''}${styled ? `When the visual brief has only a style, that style rules the subject and composition: show the slide's idea the way it describes, and add people only if the style includes them. ` : ''}No readable text, letters, numbers or logos anywhere; fit the brand colors ${m.brand.colors.join(', ')} and leave calm space for overlaid text.
 Every slide (or reel scene) also gets its own imagePrompt${kinds.has('text') ? ' (except in "text" posts)' : ''}: the same people, setting and style as the rest of its post, showing that slide's idea.${images.length ? `
-appImages are real images of the app uploaded by the user (SCREENSHOT = a screen of the app, PHOTO = a photo). A slide can show one instead of a generated image: set its "imageId" and write that slide's text about what the image really shows (never invent features that are not visible). ${PHOTO_LAYOUT[ctx.photoMode ?? 'fondo']} Use each image at most once per post${ctx.photoSet ? '' : ' and never on the last call-to-action slide'}.` : ''}
+appImages are real images of the app uploaded by the user (SCREENSHOT = a screen of the app, PHOTO = a photo). A slide can show one instead of a generated image: set its "imageId". Use what the image shows only as context to pick the right topic (a SCREENSHOT tells which feature to talk about, a PHOTO which part of the business); never invent features that are not visible. ${PHOTO_LAYOUT[ctx.photoMode ?? 'fondo']} Use each image at most once per post${ctx.photoSet ? '' : ' and never on the last call-to-action slide'}.` : ''}
+NEVER describe the images in any user-facing text (titles, bodies, items, captions): the reader already sees them. Do not mention their colors, walls, furniture, decor, objects, materials, light, composition or what is "in the photo"; talk about the business instead: what it offers, why it matters to the audience and how to get it.
 Captions: first line is a hook, 2-5 short lines of value, then the CTA "${m.cta}", then 3-5 specific hashtags (from: ${m.hashtags.join(' ') || 'choose relevant ones'}).
 altText describes the image for accessibility and includes keywords people would search.
 Answer only with JSON: {"posts":[{"slot":number,"pillar":string,"hook":string,"caption":string,"hashtags":string[],"altText":string,"imagePrompt":string,"sourceId":string|null,"slides":[{"eyebrow"?:string,"title":string,"body"?:string,"items"?:string[],"imagePrompt":string${images.length ? ',"imageId"?:string|null' : ''}}]}]}`
   const focusRule = focus.length
-    ? ` The user wants this content based on the appImages marked focus:true (also attached as images): ${slots.length > 1 ? 'spread them across the week and use each one in at least one post' : 'use them in this post (a step-by-step if they show a flow, in order)'}, and build the text around what they show.`
+    ? ` The user wants this content based on the appImages marked focus:true (also attached as images): ${slots.length > 1 ? 'spread them across the week and use each one in at least one post' : 'use them in this post (a step-by-step if they show a flow, in order)'}, and build the text around the business topic they point to (never a description of the images).`
     : images.length
       ? ' Use appImages when they fit the post.'
       : ''

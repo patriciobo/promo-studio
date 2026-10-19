@@ -62,7 +62,7 @@ export default async function Settings({ params, searchParams }: PageProps<'/app
         <h2>Modelos de OpenRouter</h2>
         <div className="stack-sm">
           <strong>Estilo y modelo de imagen para la generación automática</strong>
-          <span className="hint">Lo usa el lote semanal de cada domingo y es el que aparece preseleccionado junto a los botones de generar (Calendario, Crear ahora, Revisión), donde lo podés cambiar para esa vez. Genera una ilustración por diapositiva o escena; el texto lo pone la plantilla.</span>
+          <span className="hint">Lo usa el lote semanal automático de los domingos (si está activado en Publicación) y es el que aparece preseleccionado junto a los botones de generar (Calendario, Crear ahora, Revisión), donde lo podés cambiar para esa vez. Genera una ilustración por diapositiva o escena; el texto lo pone la plantilla.</span>
           <ImageModelPicker current={app.imageModel} quality={app.imageQuality} kind={app.imageKind} imagesPerMonth={imagesPerMonth(cadence, (app.manifest as unknown as Manifest | null)?.daily)} budget={app.monthlyBudgetUsd} available={images} designStyle={app.designStyle} samples={generic} styleApp={styleApp} />
         </div>
         <PhotoModePicker current={app.photoMode} legend="Cómo se muestran las fotos que elegís (de la biblioteca o subidas) en las piezas. Se puede cambiar en cada publicación desde Crear ahora o Revisión." />
@@ -106,6 +106,9 @@ export default async function Settings({ params, searchParams }: PageProps<'/app
         </label>
         <label className="check">
           <input type="checkbox" name="autoRevise" defaultChecked={app.autoRevise} /> Aplicar solos los cambios que pide el cliente por WhatsApp (“cambios 2: …”): el modelo de texto corrige la publicación, se vuelve a armar y se le manda de nuevo. Lo que no puede resolver solo (una foto que va a mandar, algo confuso) te queda a vos en Revisión.
+        </label>
+        <label className="check">
+          <input type="checkbox" name="autoWeekly" defaultChecked={app.autoWeekly} /> Generar sola la semana siguiente cada domingo a las 18:00 (si no, se genera a mano desde el Calendario)
         </label>
         <label className="check">
           <input type="checkbox" name="offerStarter" defaultChecked={!app.starterDismissed} /> Ofrecer el kit de publicaciones iniciales en el Calendario (desmarcalo si la cuenta ya tiene contenido)
