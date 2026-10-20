@@ -91,7 +91,8 @@ export function containerRequests(p: PublishInput): { children: Params[]; main: 
   return { children: [], main: { image_url: m.url, alt_text: p.altText, ...common } }
 }
 
-export async function publish(g: GraphClient, p: PublishInput, wait = { tries: 60, everyMs: 5000 }): Promise<{ mediaId: string; permalink?: string }> {
+/** `onContainer` recibe el contenedor antes de media_publish, para poder comprobar después si quedó publicado. */
+export async function publish(g: GraphClient, p: PublishInput, wait = { tries: 60, everyMs: 5000 }, onContainer?: (id: string) => Promise<unknown>): Promise<{ mediaId: string; permalink?: string }> {
   const { children, main } = containerRequests(p)
   if (children.length) {
     const ids: string[] = []
@@ -101,9 +102,25 @@ export async function publish(g: GraphClient, p: PublishInput, wait = { tries: 6
   }
   const container = await g.post<{ id: string }>(`${p.igUserId}/media`, main)
   await waitReady(g, container.id, wait)
+  await onContainer?.(container.id)
   const published = await g.post<{ id: string }>(`${p.igUserId}/media_publish`, { creation_id: container.id })
   const { permalink } = await g.get<{ permalink?: string }>(published.id, { fields: 'permalink' }).catch(() => ({ permalink: undefined }))
   return { mediaId: published.id, permalink }
+}
+
+/**
+ * ¿Un intento anterior ya quedó en Instagram? media_publish a veces devuelve error (o se corta) aunque publicó:
+ * se mira el estado del contenedor y, en el feed, si hay una publicación reciente con el mismo texto.
+ */
+export async function alreadyPublished(g: GraphClient, p: PublishInput, containerId?: string | null): Promise<{ mediaId?: string; permalink?: string } | null> {
+  const status = containerId ? await g.get<{ status_code?: string }>(containerId, { fields: 'status_code' }).then((r) => r.status_code, () => undefined) : undefined
+  const caption = p.caption.trim()
+  if (p.kind !== 'STORY' && caption) {
+    const recent = await g.get<{ data?: { id: string; permalink?: string; caption?: string }[] }>(`${p.igUserId}/media`, { fields: 'id,permalink,caption', limit: 10 })
+    const same = recent.data?.find((m) => m.caption?.trim() === caption)
+    if (same) return { mediaId: same.id, permalink: same.permalink }
+  }
+  return status === 'PUBLISHED' ? {} : null
 }
 
 export async function publishingQuota(g: GraphClient, igUserId: string) {

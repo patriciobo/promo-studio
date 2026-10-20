@@ -105,6 +105,7 @@ model Post {
   reviewDueAt DateTime?
   publishedAt DateTime?
   igMediaId   String?
+  igContainerId String? // contenedor del último intento: si Instagram lo publicó aunque devolviera error, no se publica de nuevo
   permalink   String?
   attempts    Int        @default(0)
   error       String?

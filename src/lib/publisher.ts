@@ -1,7 +1,7 @@
 // Tareas periódicas: aprobar lo vencido, publicar lo programado, juntar métricas y puntuar.
 import type { Asset, Post, PostType } from '@prisma/client'
 import { db } from './db'
-import { dryGraph, graph, mediaInsights, publish, token, type GraphClient, type PublishInput } from './instagram'
+import { alreadyPublished, dryGraph, graph, mediaInsights, publish, token, type GraphClient, type PublishInput } from './instagram'
 import { mediaUrl } from './media'
 import { explain } from './meta-errors'
 import { notify } from './notify'
@@ -46,9 +46,12 @@ export async function publishDue(now = new Date(), log: (s: string) => void = co
         if (!tokens.has(app.owner)) tokens.set(app.owner, await token(app))
         g = graph(tokens.get(app.owner)!)
       }
-      const r = await publish(g, publishInput(post, app.igUserId ?? 'sim'), app.dryRun ? { tries: 1, everyMs: 0 } : undefined)
-      await db.post.update({ where: { id: post.id }, data: { status: 'PUBLISHED', igMediaId: app.dryRun ? null : r.mediaId, permalink: app.dryRun ? null : r.permalink, publishedAt: new Date(), error: app.dryRun ? 'Simulación: no se publicó en Instagram' : null } })
-      if (!app.dryRun && post.type !== 'STORY') await announce(app, `✅ ${app.name}: publicado ${r.permalink ?? ''}\nRespondé los comentarios en la primera hora: es cuando más se distribuye.`)
+      const input = publishInput(post, app.igUserId ?? 'sim')
+      // Reintento: si el intento anterior llegó a Instagram (aunque haya devuelto error) se da por publicado, sin repetirlo.
+      const before = !app.dryRun && (post.attempts > 0 || post.igContainerId) ? await alreadyPublished(g, input, post.igContainerId) : null
+      const r = before ?? (await publish(g, input, app.dryRun ? { tries: 1, everyMs: 0 } : undefined, (id) => db.post.update({ where: { id: post.id }, data: { igContainerId: id } })))
+      await db.post.update({ where: { id: post.id }, data: { status: 'PUBLISHED', igMediaId: app.dryRun ? null : (r.mediaId ?? null), permalink: app.dryRun ? null : (r.permalink ?? null), publishedAt: new Date(), error: app.dryRun ? 'Simulación: no se publicó en Instagram' : null } })
+      if (!app.dryRun && !before && post.type !== 'STORY') await announce(app, `✅ ${app.name}: publicado ${r.permalink ?? ''}\nRespondé los comentarios en la primera hora: es cuando más se distribuye.`)
     } catch (e) {
       const x = explain(e)
       const attempts = post.attempts + 1

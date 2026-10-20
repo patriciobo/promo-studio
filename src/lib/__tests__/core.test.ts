@@ -7,7 +7,7 @@ import { flowScreenPath, parseManifest, setYamlStyle } from '../manifest'
 import { inOrder } from '../images'
 import { fromLocalInput, localParts, roundTime, toLocalInput, weekSlots, zonedTime } from '../schedule'
 import { adCandidates, engagement, median, relativeScore } from '../score'
-import { containerRequests, publish, type GraphClient } from '../instagram'
+import { alreadyPublished, containerRequests, publish, type GraphClient } from '../instagram'
 import { explain, MetaError } from '../meta-errors'
 import { buildSuggestPrompt, mockSuggestion, SuggestionSchema } from '../ad-suggest'
 import { adMessage, adOnlyCreative, boostCreative, budgetError, campaignLink, campaignRequests, plannedSpend } from '../meta-ads'
@@ -151,6 +151,36 @@ describe('instagram', () => {
     const r = await publish(g, { igUserId: 'ig', kind: 'CAROUSEL', caption: 'c', media: [{ url: '1' }, { url: '2' }] }, { tries: 1, everyMs: 0 })
     expect(r).toEqual({ mediaId: 'c4', permalink: 'https://instagram.com/p/x' })
     expect(calls.filter((c) => c.startsWith('POST'))).toEqual(['POST ig/media item', 'POST ig/media item', 'POST ig/media CAROUSEL', 'POST ig/media_publish c3'])
+  })
+  it('avisa el contenedor antes de media_publish', async () => {
+    const order: string[] = []
+    const g: GraphClient = {
+      async get() {
+        return { status_code: 'FINISHED' } as never
+      },
+      async post(path) {
+        order.push(path)
+        return { id: 'c1' } as never
+      },
+    }
+    await publish(g, { igUserId: 'ig', kind: 'IMAGE', caption: 'c', media: [{ url: '1' }] }, { tries: 1, everyMs: 0 }, async (id) => order.push(`contenedor ${id}`))
+    expect(order).toEqual(['ig/media', 'contenedor c1', 'ig/media_publish'])
+  })
+  it('detecta que un intento anterior ya quedó publicado', async () => {
+    const g = (status: string, captions: string[]): GraphClient => ({
+      async get(path) {
+        if (path === 'ig/media') return { data: captions.map((caption, i) => ({ id: `m${i}`, permalink: `p${i}`, caption })) } as never
+        return { status_code: status } as never
+      },
+      async post() {
+        throw new Error('no debería publicar')
+      },
+    })
+    const input = { igUserId: 'ig', kind: 'CAROUSEL' as const, caption: 'Edición del día ', media: [{ url: '1' }] }
+    expect(await alreadyPublished(g('FINISHED', ['otra', 'Edición del día']), input, 'c1')).toEqual({ mediaId: 'm1', permalink: 'p1' })
+    expect(await alreadyPublished(g('PUBLISHED', []), input, 'c1')).toEqual({})
+    expect(await alreadyPublished(g('PUBLISHED', []), { ...input, kind: 'STORY' }, 'c1')).toEqual({})
+    expect(await alreadyPublished(g('FINISHED', ['otra']), input, 'c1')).toBeNull()
   })
 })
 
