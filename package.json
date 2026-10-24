@@ -16,22 +16,22 @@
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
-    "next": "16.3.8",
+    "next": "16.4.3",
     "next-auth": "^5.0.0-beta.32",
     "pg-boss": "^12.35.1",
     "prisma": "^6.19.3",
-    "puppeteer-core": "^25.12.0",
+    "puppeteer-core": "^25.16.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "yaml": "^2.9.1",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.3.8",
+    "eslint-config-next": "16.4.3",
     "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^5.0.3"

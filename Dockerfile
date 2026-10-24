@@ -1,5 +1,5 @@
 # Imagen única para web y worker (el worker necesita Chromium y ffmpeg para renderizar).
-FROM node:22-bookworm-slim
+FROM node:22.23.4-bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       chromium ffmpeg fonts-noto fonts-noto-color-emoji ca-certificates openssl \
