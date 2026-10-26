@@ -68,12 +68,19 @@ export interface PublishInput {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-export async function waitReady(g: GraphClient, containerId: string, opts = { tries: 60, everyMs: 5000 }) {
-  for (let i = 0; i < opts.tries; i++) {
+export interface WaitOpts {
+  tries: number
+  everyMs: number
+  /** Tope de la espera entre consultas: arranca en everyMs y crece ×1,5 (cada consulta cuenta para el límite de pedidos de Meta). */
+  maxMs?: number
+}
+
+export async function waitReady(g: GraphClient, containerId: string, opts: WaitOpts = { tries: 30, everyMs: 2000, maxMs: 20000 }) {
+  for (let i = 0, wait = opts.everyMs; i < opts.tries; i++, wait = Math.min(wait * 1.5, opts.maxMs ?? opts.everyMs)) {
     const { status_code } = await g.get<{ status_code: string }>(containerId, { fields: 'status_code' })
     if (status_code === 'FINISHED') return
     if (status_code === 'ERROR' || status_code === 'EXPIRED') throw new MetaError(undefined, undefined, `contenedor en estado ${status_code}`, containerId)
-    await sleep(opts.everyMs)
+    await sleep(wait)
   }
   throw new MetaError(9007, undefined, 'media not ready (tiempo agotado)', containerId)
 }
@@ -92,12 +99,12 @@ export function containerRequests(p: PublishInput): { children: Params[]; main: 
 }
 
 /** `onContainer` recibe el contenedor antes de media_publish, para poder comprobar después si quedó publicado. */
-export async function publish(g: GraphClient, p: PublishInput, wait = { tries: 60, everyMs: 5000 }, onContainer?: (id: string) => Promise<unknown>): Promise<{ mediaId: string; permalink?: string }> {
+export async function publish(g: GraphClient, p: PublishInput, wait?: WaitOpts, onContainer?: (id: string) => Promise<unknown>): Promise<{ mediaId: string; permalink?: string }> {
   const { children, main } = containerRequests(p)
   if (children.length) {
     const ids: string[] = []
     for (const c of children) ids.push((await g.post<{ id: string }>(`${p.igUserId}/media`, c)).id)
-    for (const id of ids) await waitReady(g, id, wait)
+    await Promise.all(ids.map((id) => waitReady(g, id, wait)))
     main.children = ids.join(',')
   }
   const container = await g.post<{ id: string }>(`${p.igUserId}/media`, main)

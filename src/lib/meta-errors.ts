@@ -17,6 +17,8 @@ export interface Explained {
   fix: string
   /** Si conviene reintentar más tarde. */
   retry: boolean
+  /** Código y mensaje originales de Meta, para diagnosticar lo que la traducción no distingue. */
+  detail?: string
 }
 
 const RULES: { match: (e: MetaError) => boolean; x: Explained }[] = [
@@ -54,8 +56,12 @@ const RULES: { match: (e: MetaError) => boolean; x: Explained }[] = [
     x: { title: 'La media todavía se está procesando', cause: 'Se intentó publicar antes de que Instagram terminara.', fix: 'Se reintenta solo.', retry: true },
   },
   {
-    match: (e) => [4, 17, 32, 613].includes(e.code ?? -1) || e.code === 9 || /limit/i.test(e.metaMessage),
-    x: { title: 'Límite de la API alcanzado', cause: 'Demasiados pedidos o el cupo de 100 publicaciones por día.', fix: 'Se reprograma solo. Si se repite, bajá el ritmo de la app.', retry: true },
+    match: (e) => e.subcode === 2207042 || /maximum number of posts|content_publishing_limit/i.test(e.metaMessage),
+    x: { title: 'Cupo diario de publicaciones agotado', cause: 'La cuenta llegó a las 100 publicaciones en 24 h.', fix: 'Se reprograma solo.', retry: true },
+  },
+  {
+    match: (e) => [4, 9, 17, 32, 613, 80002].includes(e.code ?? -1) || /(request|rate|call) limit|too many (calls|requests)/i.test(e.metaMessage),
+    x: { title: 'Límite de pedidos a la API alcanzado', cause: 'Demasiados pedidos a Meta en poco tiempo (no es el cupo de publicaciones).', fix: 'Se reprograma solo. Si se repite, bajá el ritmo de la app.', retry: true },
   },
   {
     match: (e) => /stories/i.test(e.metaMessage) && /(creator|business|account type)/i.test(e.metaMessage),
@@ -78,8 +84,8 @@ const RULES: { match: (e: MetaError) => boolean; x: Explained }[] = [
 export function explain(e: unknown): Explained {
   if (e instanceof MetaError) {
     const hit = RULES.find((r) => r.match(e))
-    if (hit) return hit.x
-    return { title: 'Error de Meta', cause: e.metaMessage, fix: 'Revisá el mensaje; si persiste, probá la conexión desde la app.', retry: false }
+    if (hit) return { ...hit.x, detail: e.message }
+    return { title: 'Error de Meta', cause: e.metaMessage, fix: 'Revisá el mensaje; si persiste, probá la conexión desde la app.', retry: false, detail: e.message }
   }
   const msg = e instanceof Error ? e.message : String(e)
   return { title: 'Error', cause: msg, fix: 'Revisá la configuración.', retry: /ECONN|ETIMEDOUT|fetch failed/i.test(msg) }
