@@ -9,8 +9,8 @@ export type Tier = 'pruebas' | 'mejor-calidad'
 /** Sin calidad alta: cuesta el triple que la media y en las piezas (con texto encima) casi no se nota. */
 export type ImageQuality = 'low' | 'medium'
 export type ImageKind = 'illustration' | 'photo'
-/** Tipo de un post: con imagen IA (ilustración o foto) o sólo texto, una pieza tipográfica sin imagen generada. */
-export type PostKind = ImageKind | 'text'
+/** Tipo de un post: con imagen IA (ilustración o foto), sólo texto (pieza tipográfica) o capturas reales de la app; los dos últimos sin imagen generada. */
+export type PostKind = ImageKind | 'text' | 'screens'
 /** Qué tan bien le sale cada tipo de imagen a un modelo. */
 export type Fit = 'ideal' | 'bien' | 'flojo'
 
@@ -26,11 +26,12 @@ export type KindChoice = PostKind | 'mix' | 'text+photo' | 'text+illustration'
 const MIXES: Partial<Record<KindChoice, [PostKind, PostKind]>> = { mix: ['illustration', 'photo'], 'text+photo': ['text', 'photo'], 'text+illustration': ['text', 'illustration'] }
 
 export const kindsIn = (k: KindChoice): PostKind[] => MIXES[k] ?? [k as PostKind]
-/** Los tipos con imagen IA de una elección (ninguno en sólo texto). */
-export const imageKindsIn = (k: KindChoice): ImageKind[] => kindsIn(k).filter((x): x is ImageKind => x !== 'text')
+/** Los tipos con imagen IA de una elección (ninguno en sólo texto ni en capturas). */
+export const imageKindsIn = (k: KindChoice): ImageKind[] => kindsIn(k).filter((x): x is ImageKind => x === 'illustration' || x === 'photo')
 
 export const KIND_CHOICES: { id: KindChoice; label: string; hint: string }[] = [
   ...IMAGE_KINDS,
+  { id: 'screens', label: 'Capturas de la app', hint: 'Las pantallas reales de la app (las de Imágenes, los flujos y el promo.yaml) enmarcadas junto al texto, sin imagen IA. No gasta en imágenes.' },
   { id: 'text', label: 'Sólo texto', hint: 'Piezas tipográficas con los colores de la marca, sin imagen IA: el título lleva la idea (un dato, una pregunta, un checklist). No gasta en imágenes.' },
   { id: 'mix', label: 'Mezcla: ilustración y foto', hint: 'Cada publicación sale en ilustración o en foto realista, repartidas mitad y mitad.' },
   { id: 'text+photo', label: 'Mezcla: texto y foto', hint: 'Mitad de las publicaciones sólo con texto y mitad con foto realista.' },
@@ -42,6 +43,7 @@ export const KIND_PLURAL: Record<KindChoice, string> = {
   illustration: 'ilustraciones',
   photo: 'fotos',
   text: 'sólo texto',
+  screens: 'las capturas',
   mix: 'la mezcla de ilustraciones y fotos',
   'text+photo': 'las fotos',
   'text+illustration': 'las ilustraciones',
@@ -165,7 +167,7 @@ export function imagesPerMonth(c: Cadence, daily?: { types: ('CAROUSEL' | 'IMAGE
 
 export const parseImageKind = (v: string | null | undefined): ImageKind | undefined => (v === 'illustration' || v === 'photo' ? v : undefined)
 
-export const parsePostKind = (v: string | null | undefined): PostKind | undefined => (v === 'text' ? v : parseImageKind(v))
+export const parsePostKind = (v: string | null | undefined): PostKind | undefined => (v === 'text' || v === 'screens' ? v : parseImageKind(v))
 
 export const parseKindChoice = (v: string | null | undefined): KindChoice | undefined => KIND_CHOICES.find((k) => k.id === v)?.id
 

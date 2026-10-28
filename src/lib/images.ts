@@ -54,10 +54,13 @@ export type PromptImage = { id: string; kind: AppImageKind; description: string 
  * Imágenes para planificar: las elegidas (`focusIds`, se le muestran al modelo) y las de la biblioteca (sólo texto).
  * Las que todavía no tienen descripción se describen ahora.
  */
-/** `shown`: cuántas de las elegidas se le adjuntan al modelo para que las vea (el carrusel de fotos las manda todas). */
-export async function imagesForPlan(appId: string, focusIds: string[] = [], shown = FOCUS_SHOWN) {
+/**
+ * `shown`: cuántas de las elegidas se le adjuntan al modelo para que las vea (el carrusel de fotos las manda todas).
+ * `screensFirst`: en los posts de capturas, la biblioteca trae primero las capturas (si no, las fotos recientes las tapan).
+ */
+export async function imagesForPlan(appId: string, focusIds: string[] = [], shown = FOCUS_SHOWN, screensFirst = false) {
   const focus = focusIds.length ? inOrder(focusIds, await db.appImage.findMany({ where: { appId, id: { in: focusIds } } })) : []
-  const library = await db.appImage.findMany({ where: { appId, archived: false, id: { notIn: focusIds } }, orderBy: { createdAt: 'desc' }, take: LIBRARY_IN_PROMPT })
+  const library = await db.appImage.findMany({ where: { appId, archived: false, id: { notIn: focusIds } }, orderBy: screensFirst ? [{ kind: 'asc' }, { createdAt: 'desc' }] : { createdAt: 'desc' }, take: LIBRARY_IN_PROMPT })
   const all = [...focus, ...library].filter((i) => existsSync(mediaPath(i.path)))
   const described = await Promise.all(all.map((i) => (i.description ? i : describeImage(i.id).catch(() => i))))
   const prompt: PromptImage[] = described.map((i) => ({ id: i.id, kind: i.kind, description: i.description, note: i.note, focus: focusIds.includes(i.id) }))
@@ -71,6 +74,12 @@ export async function slideImages(appId: string, ids: string[]) {
   const out = new Map<string, { kind: AppImageKind; src: string }>()
   for (const i of imgs) if (existsSync(mediaPath(i.path))) out.set(i.id, { kind: i.kind, src: await dataUri(i.path) })
   return out
+}
+
+/** Capturas de la biblioteca (subidas y de flujos) para los posts de capturas, salvo las que el post ya usa. */
+export async function libraryScreens(appId: string, skip: string[] = []) {
+  const imgs = await db.appImage.findMany({ where: { appId, kind: 'SCREENSHOT', archived: false, id: { notIn: skip } }, orderBy: [{ flowId: 'asc' }, { step: 'asc' }, { createdAt: 'desc' }], take: 12 })
+  return Promise.all(imgs.filter((i) => existsSync(mediaPath(i.path))).map((i) => dataUri(i.path)))
 }
 
 /**

@@ -384,6 +384,21 @@ describe('planificación', () => {
     expect(JSON.parse(none.user).appImages).toBeUndefined()
     expect(none.system).not.toMatch(/imageId/)
   })
+  it('capturas de la app: sin imagen IA y cada diapositiva con una captura de la biblioteca', () => {
+    const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 1, stories: 0 }, '10:00', 'UTC')
+    const images = [{ id: 's1', kind: 'SCREENSHOT' as const, description: 'agenda de turnos', note: null, focus: false }]
+    const p = buildPlanPrompt(m, slots, { feed: [], texts: [], releases: [], recent: [], bestPillars: [], kind: 'screens', images })
+    expect(p.system).toMatch(/imageType "screens"/)
+    expect(p.system).toMatch(/set "imageId" to the SCREENSHOT appImage/)
+    expect(p.system).not.toMatch(/Show people/)
+    expect(JSON.parse(p.user).week[0].visual).toEqual({ imageType: 'screens' })
+    // Sin capturas en la biblioteca no se le pide imageId (el render usa las del promo.yaml o queda sólo texto).
+    expect(buildPlanPrompt(m, slots, { feed: [], texts: [], releases: [], recent: [], bestPillars: [], kind: 'screens' }).system).not.toMatch(/set "imageId"/)
+    expect(looksFor(m, null, 'screens', 1)).toEqual([{ kind: 'screens', style: '' }])
+    expect(parseKindChoice('screens')).toBe('screens')
+    expect(fitFor({ fit: { illustration: 'flojo', photo: 'bien' } }, 'screens')).toBe('ideal')
+  })
+
   it('carrusel de fotos: una diapositiva por foto, en orden, y el texto según el tratamiento', () => {
     const slot = { type: 'CAROUSEL' as const, day: 0, at: new Date() }
     const images = ['a', 'b', 'c'].map((id) => ({ id, kind: 'PHOTO' as const, description: `foto ${id}`, note: null, focus: true }))

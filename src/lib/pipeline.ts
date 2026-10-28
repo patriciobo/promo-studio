@@ -8,7 +8,7 @@ import { TEMPLATES } from '@/templates/styles'
 import { buildReel, renderHtml } from '@/render/renderer'
 import { db } from './db'
 import { getFile, getRawBytes, latestReleases } from './github'
-import { imagesForPlan, importFlowScreens, slideImages, type PromptImage } from './images'
+import { imagesForPlan, importFlowScreens, libraryScreens, slideImages, type PromptImage } from './images'
 import { DEFAULT_IMAGE_STYLE, DEFAULT_PHOTO_STYLE, FeedSchema, parseManifest, setYamlBrand, type Feed, type Manifest } from './manifest'
 import { bufferDataUri, dataUri, mediaPath, saveMedia } from './media'
 import { notify } from './notify'
@@ -190,24 +190,26 @@ export function looksFor(m: Manifest, design: string | null | undefined, choice:
 }
 
 /** Lo que el modelo de texto tiene que respetar en las imagePrompts de cada post. */
-const visualOf = (l: Look) => (l.kind === 'text' ? { imageType: l.kind } : { imageType: l.kind, style: l.style, people: l.people, setting: l.setting, framing: l.framing, light: l.light })
+const visualOf = (l: Look) => (l.kind === 'text' || l.kind === 'screens' ? { imageType: l.kind } : { imageType: l.kind, style: l.style, people: l.people, setting: l.setting, framing: l.framing, light: l.light })
 
 export function buildPlanPrompt(m: Manifest, slots: Slot[], ctx: { feed: Feed['items']; texts: string[]; releases: { name: string; body: string }[]; recent: { pillar: string | null; hook: string | null }[]; bestPillars: string[]; topic?: string; daily?: { date: string; report: string }; images?: PromptImage[]; kind?: KindChoice; design?: string | null; brief?: string | null; starter?: { theme: string; goal: string; pin?: boolean }[]; photoMode?: PhotoMode; photoSet?: string[]; looks?: Look[] }) {
   const images = ctx.images ?? []
-  const looks: Look[] = ctx.looks ?? kindsFor(ctx.kind ?? 'illustration', slots.length).map((kind) => ({ kind, style: kind === 'text' ? '' : styleFor(m, kind, ctx.design) }))
+  const looks: Look[] = ctx.looks ?? kindsFor(ctx.kind ?? 'illustration', slots.length).map((kind) => ({ kind, style: kind === 'text' || kind === 'screens' ? '' : styleFor(m, kind, ctx.design) }))
   const kinds = new Set(looks.map((l) => l.kind))
   const drawn = looks.some((l) => l.people)
-  const styled = looks.some((l) => l.kind !== 'text' && !l.people)
+  const styled = looks.some((l) => l.kind !== 'text' && l.kind !== 'screens' && !l.people)
+  const shots = images.some((i) => i.kind === 'SCREENSHOT')
   const focus = images.filter((i) => i.focus)
   const system = `You are the social media manager of the app "${m.name}". You write Instagram content that promotes the app with real value for its audience, never clickbait.
 Write ALL user-facing text in ${m.languages[0]} with this tone: ${m.tone}.
 Never mention: ${m.avoid.join('; ') || 'nothing in particular'}.
 Image prompts are in English. Each slot has a "visual" brief drawn at random so the feed never looks the same: follow its imageType and style exactly.${kinds.has('text') ? `
-- imageType "text": the post has no image at all, only the brand typography. Set every imagePrompt to "" and let the words carry the post: a title that works on its own (a figure, a direct question or a clear statement) and items or a checklist on the middle slides.` : ''}${kinds.has('illustration') ? `
+- imageType "text": the post has no image at all, only the brand typography. Set every imagePrompt to "" and let the words carry the post: a title that works on its own (a figure, a direct question or a clear statement) and items or a checklist on the middle slides.` : ''}${kinds.has('screens') ? `
+- imageType "screens": the post shows real screens of the app, never a generated image. Set every imagePrompt to ""${shots ? ' and, on every slide except the last call-to-action, set "imageId" to the SCREENSHOT appImage that best shows that slide\'s idea (a different one per slide when there are enough)' : ''}. Talk about what each feature does for the user, never describe the screen.` : ''}${kinds.has('illustration') ? `
 - imageType "illustration": describe an illustration in that style, with simplified UI shapes. Never use photographic words (photo, realistic, camera, lens, bokeh, cinematic): it must not look like a photo.` : ''}${kinds.has('photo') ? `
 - imageType "photo": describe a realistic photo in that style that looks candid, unposed and a bit imperfect, like a snapshot a friend took with a phone, with screens angled or out of focus. Ordinary-looking people as they really are, never models, a photoshoot or a studio.` : ''}
 ${drawn ? `Show people using the app or the problem it solves: when the visual brief has people, setting, framing and light, use them (describe the people concretely: age, look, build and clothes) and change them only if they contradict the slide or the app's audience; never default to young good-looking people. ` : ''}${styled ? `When the visual brief has only a style, that style rules the subject and composition: show the slide's idea the way it describes, and add people only if the style includes them. ` : ''}No readable text, letters, numbers or logos anywhere; fit the brand colors ${m.brand.colors.join(', ')} and leave calm space for overlaid text.
-Every slide (or reel scene) also gets its own imagePrompt${kinds.has('text') ? ' (except in "text" posts)' : ''}: the same people, setting and style as the rest of its post, showing that slide's idea.${images.length ? `
+Every slide (or reel scene) also gets its own imagePrompt${kinds.has('text') || kinds.has('screens') ? ' (except in "text" and "screens" posts)' : ''}: the same people, setting and style as the rest of its post, showing that slide's idea.${images.length ? `
 appImages are real images of the app uploaded by the user (SCREENSHOT = a screen of the app, PHOTO = a photo). A slide can show one instead of a generated image: set its "imageId". Use what the image shows only as context to pick the right topic (a SCREENSHOT tells which feature to talk about, a PHOTO which part of the business); never invent features that are not visible. ${PHOTO_LAYOUT[ctx.photoMode ?? 'fondo']} Use each image at most once per post${ctx.photoSet ? '' : ' and never on the last call-to-action slide'}.` : ''}
 NEVER describe the images in any user-facing text (titles, bodies, items, captions): the reader already sees them. Do not mention their colors, walls, furniture, decor, objects, materials, light, composition or what is "in the photo"; talk about the business instead: what it offers, why it matters to the audience and how to get it.
 Captions: first line is a hook, 2-5 short lines of value, then the CTA "${m.cta}", then 3-5 specific hashtags (from: ${m.hashtags.join(' ') || 'choose relevant ones'}).
@@ -278,7 +280,7 @@ async function planPosts(app: App, m: Manifest, batchId: string, weekStart: Date
     app.repo ? latestReleases(app.repo) : [],
     db.post.findMany({ where: { appId }, orderBy: { createdAt: 'desc' }, take: 30, select: { pillar: true, hook: true } }),
     db.post.groupBy({ by: ['pillar'], where: { appId, score: { not: null } }, _avg: { score: true } }),
-    imagesForPlan(appId, imageIds),
+    imagesForPlan(appId, imageIds, undefined, kindsIn(kind).includes('screens')),
   ])
   const bestPillars = scored
     .filter((s) => s.pillar)
@@ -420,7 +422,7 @@ export function imagePromptFor(m: Manifest, scene: string, look: { kind: ImageKi
  */
 async function lookOf(app: App, post: Post, choice?: KindChoice): Promise<Pick<Look, 'kind' | 'style'>> {
   const planned = parsePostKind(post.imageKind)
-  if (planned && (planned === 'text' || post.imageStyle) && (!choice || kindsIn(choice).includes(planned))) return { kind: planned, style: post.imageStyle ?? '' }
+  if (planned && (planned === 'text' || planned === 'screens' || post.imageStyle) && (!choice || kindsIn(choice).includes(planned))) return { kind: planned, style: post.imageStyle ?? '' }
   const [look] = looksFor(manifestOf(app), app.designStyle, choice ?? kindOf(app), 1)
   await db.post.update({ where: { id: post.id }, data: { imageKind: look.kind, imageStyle: look.style } })
   return look
@@ -442,6 +444,9 @@ export async function renderPost(postId: string, opts: { regenerateImage?: boole
   const t = TEMPLATES[designStyle(app.designStyle).id]
   const mode = parsePhotoMode(post.photoMode) ?? parsePhotoMode(app.photoMode) ?? 'fondo'
   const look = slides.some((s) => !s.imageId) ? await lookOf(app, post, opts.image?.kind) : { kind: 'illustration' as const, style: '' }
+  // Post de capturas: las diapositivas sin captura elegida toman, en orden, las de la biblioteca y las del promo.yaml.
+  const pool = look.kind === 'screens' ? [...(await libraryScreens(app.id, [...own.keys()])), ...shots] : []
+  let next = 0
   // Una ilustración por diapositiva (salvo el cierre y la de la captura), en orden: la primera es la referencia de estilo.
   const html: string[] = []
   const refs: string[] = []
@@ -458,6 +463,11 @@ export async function renderPost(postId: string, opts: { regenerateImage?: boole
     }
     if (layout === 'cta') {
       html.push(t.cta(brand, d, size))
+      continue
+    }
+    // Sin capturas disponibles queda como sólo texto: nunca se genera una imagen.
+    if (look.kind === 'screens') {
+      html.push(t.text(brand, { ...d, screenshot: pool.length ? pool[next++ % pool.length] : undefined }, size))
       continue
     }
     if (layout === 'text-shot') {
@@ -568,7 +578,7 @@ export async function createOnDemand(postId: string, topic: string, image?: Imag
     const [src, recent, images] = await Promise.all([
       sources(m),
       db.post.findMany({ where: { appId: app.id, id: { not: postId } }, orderBy: { createdAt: 'desc' }, take: 30, select: { pillar: true, hook: true } }),
-      imagesForPlan(app.id, imageIds, photoSet ? MAX_CAROUSEL : undefined),
+      imagesForPlan(app.id, imageIds, photoSet ? MAX_CAROUSEL : undefined, kindsIn(kindOf(app, image)).includes('screens')),
     ])
     const set = photoSet ? imageIds.slice(0, MAX_CAROUSEL) : undefined
     const photoMode = parsePhotoMode(post.photoMode) ?? parsePhotoMode(app.photoMode)

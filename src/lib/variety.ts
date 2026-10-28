@@ -6,11 +6,11 @@ export type Rng = () => number
 
 /**
  * Lo sorteado para un post: tipo de imagen, estética final y la escena que el modelo de texto usa en sus imagePrompts.
- * Sin gente, escenario, encuadre ni luz cuando manda el estilo propio del promo.yaml o el post es sólo texto.
+ * Sin gente, escenario, encuadre ni luz cuando manda el estilo propio del promo.yaml o el post es sólo texto o de capturas.
  */
 export interface Look {
   kind: PostKind
-  /** Estética completa (en inglés) que se manda con cada imagen del post ('' en sólo texto). */
+  /** Estética completa (en inglés) que se manda con cada imagen del post ('' en sólo texto y en capturas). */
   style: string
   people?: string
   setting?: string
@@ -169,7 +169,7 @@ export function drawLooks(kinds: PostKind[], base: Record<ImageKind, string>, op
   const n = kinds.length
   const [settings, framings, lights, techniques, twists, captures] = [draw(SETTINGS, n, rng), draw(FRAMINGS, n, rng), draw(LIGHTS, n, rng), draw(TECHNIQUES, n, rng), draw(TWISTS, n, rng), draw(CAPTURES, n, rng)]
   return kinds.map((kind, i) => {
-    if (kind === 'text') return { kind, style: '' }
+    if (kind === 'text' || kind === 'screens') return { kind, style: '' }
     if (opts.own?.[kind]) return { kind, style: base[kind] }
     const lead = opts.colors.length ? ` Lead with ${pick(opts.colors, rng)} as the dominant brand color.` : ''
     const style =
