@@ -1,6 +1,6 @@
 # Promo Studio
 
-Servicio que genera y publica contenido de Instagram (posts, carruseles, reels y stories) para promocionar tus apps,
+Servicio que genera y publica contenido de Instagram (posts, carruseles y stories) para promocionar tus apps,
 cada una con su propia cuenta. Lee la información de cada app desde su repositorio (`promo.yaml`), arma un lote semanal
 con un modelo de texto y otro de imagen de OpenRouter, te lo deja para revisar, lo publica a horario, mide cómo rinde
 y crea anuncios **en pausa** con los mejores posts.
@@ -18,7 +18,7 @@ y crea anuncios **en pausa** con los mejores posts.
 | Medir | 24 h, 72 h y 7 días | Alcance, guardados, compartidos… → puntaje de **potencial** |
 | Anunciar | a pedido | Campaña, conjunto y anuncio con el post como creatividad, **siempre en pausa** |
 
-**Ritmo por defecto** (configurable en `promo.yaml → cadence`): 3 posts de feed (lunes carrusel, miércoles imagen, viernes reel)
+**Ritmo por defecto** (configurable en `promo.yaml → cadence`): 3 posts de feed (lunes carrusel, miércoles imagen, viernes carrusel; no se generan reels)
 y 2 stories por semana. Unas 5 imágenes de IA por app y por semana: con modelos de ~US$ 0,03–0,04 por imagen, **US$ 2–3 por mes
 para las 3 apps**. Hay tope mensual por app y uno global; al llegar, deja de generar y te avisa.
 
@@ -85,7 +85,7 @@ links: [{ label: Ver demo, url: "https://miapp.com/demo" }]
 sources:                                       # opcional: ideas que publica la app
   - { type: feed, url: "https://miapp.com/promo-feed.json" }   # { items: [{ id, title, body, bullets, pillar, url }] }
   - { type: url, url: "https://miapp.com/llms.txt" }
-cadence: { feed: 3, reels: 1, stories: 2 }     # por semana
+cadence: { feed: 3, stories: 2 }               # por semana
 ```
 
 ## Identidad de marca

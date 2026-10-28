@@ -17,7 +17,7 @@ export default async function Settings({ params, searchParams }: PageProps<'/app
   const { aviso, pr, error } = await searchParams
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
   const manifest = app.manifest as unknown as Manifest | null
-  const cadence = manifest?.cadence ?? { feed: 3, reels: 1, stories: 2 }
+  const cadence = manifest?.cadence ?? { feed: 3, stories: 2 }
   const [images, texts, spent, generic, mine, origin] = await Promise.all([imageModels().catch(() => []), textModels().catch(() => []), spentThisMonth(app.id), listSamples(), listSamples(app.slug, app.imageKind), genericOrigin()])
   const styleApp = {
     name: app.name,
@@ -82,7 +82,7 @@ export default async function Settings({ params, searchParams }: PageProps<'/app
       </section>
       <section className="card stack">
         <h2>Publicación</h2>
-        <p className="small muted">La cantidad por semana (feed, reels, stories) se define en el promo.yaml (cadence).</p>
+        <p className="small muted">La cantidad por semana (feed y stories) se define en el promo.yaml (cadence).</p>
         <div className="form-grid">
           <label>
             Hora de publicación

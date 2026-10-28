@@ -247,7 +247,7 @@ export async function dismissStarter(slug: string) {
 
 // --- A pedido ----------------------------------------------------------------
 
-const POST_TYPES: PostType[] = ['IMAGE', 'CAROUSEL', 'REEL', 'STORY']
+const POST_TYPES: PostType[] = ['IMAGE', 'CAROUSEL', 'STORY']
 
 export async function createPostNow(slug: string, f: FormData) {
   await requireUser()
@@ -274,7 +274,7 @@ export async function createFlowPost(slug: string, flowId: string, f: FormData) 
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
   const flow = (app.manifest as unknown as Manifest | null)?.flows.find((x) => x.id === flowId)
   const type = str(f, 'type') as PostType
-  if (!flow || !['CAROUSEL', 'REEL'].includes(type)) return
+  if (!flow || type !== 'CAROUSEL') return
   const shots = await db.appImage.findMany({ where: { appId: app.id, flowId, archived: false }, orderBy: { step: 'asc' }, select: { id: true } })
   if (!shots.length) return
   const topic = `Cómo ${flow.name.charAt(0).toLowerCase()}${flow.name.slice(1)}${flow.description ? `: ${flow.description}` : ''}. Paso a paso, una captura por paso en este orden.`
@@ -549,7 +549,8 @@ export async function createCampaign(slug: string, _prev: { error?: string } | n
   const newType = str(f, 'newPostType') as PostType
   const topic = str(f, 'newPostTopic').slice(0, 500)
   let fresh: string | null = null
-  if (AD_POST_TYPES.includes(newType) && topic && app.manifest) {
+  // Los reels ya existentes se pueden anunciar, pero no se generan nuevos.
+  if (AD_POST_TYPES.includes(newType) && newType !== 'REEL' && topic && app.manifest) {
     const post = await db.post.create({ data: { appId: app.id, type: newType, status: 'DRAFT', hook: topic.slice(0, 200), adOnly: true } })
     await enqueue(QUEUES.createPost, { postId: post.id, topic: `${topic}. Es un anuncio pago: una sola idea clara y un llamado a la acción concreto.`, image: parseImageChoice(str(f, 'imageChoice'), str(f, 'imageKind')), imageIds: [] })
     fresh = post.id

@@ -85,7 +85,7 @@ export const ManifestSchema = z.object({
   avoid: z.array(z.string()).default([]),
   cta: z.string().default('Link en la bio'),
   location: z.string().optional(),
-  music: z.string().optional(), // ruta o URL a un audio libre de derechos para reels
+  music: z.string().optional(), // ruta o URL a un audio libre de derechos (sólo lo usaban los reels, que ya no se generan)
   links: z
     .array(z.object({ label: z.string(), url: z.url() }))
     .default([]),
@@ -101,10 +101,9 @@ export const ManifestSchema = z.object({
   cadence: z
     .object({
       feed: z.number().int().min(0).max(7).default(3),
-      reels: z.number().int().min(0).max(3).default(1),
       stories: z.number().int().min(0).max(7).default(2),
     })
-    .default({ feed: 3, reels: 1, stories: 2 }),
+    .default({ feed: 3, stories: 2 }),
   /**
    * Edición diaria (apps de noticias): cada día lee `source` (con {fecha} = AAAA-MM-DD en la zona de la app),
    * arma los posts sólo con ese contenido y los programa a `time`. Quedan en revisión y se aprueban solos al llegar la hora.

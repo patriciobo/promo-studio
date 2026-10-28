@@ -47,7 +47,7 @@ describe('manifest', () => {
     const r = parseManifest(YAML)
     expect(r.ok).toBe(true)
     if (r.ok) {
-      expect(r.manifest.cadence).toEqual({ feed: 3, reels: 1, stories: 2 })
+      expect(r.manifest.cadence).toEqual({ feed: 3, stories: 2 })
       expect(r.hash).toHaveLength(16)
     }
   })
@@ -103,9 +103,9 @@ describe('schedule', () => {
   it('convierte hora local a UTC (Buenos Aires = UTC-3)', () => {
     expect(zonedTime(2026, 10, 5, 10, 0, 'America/Argentina/Buenos_Aires').toISOString()).toBe('2026-10-05T13:00:00.000Z')
   })
-  it('reparte 3 feed (último reel) y 2 stories en días distintos', () => {
-    const s = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 3, reels: 1, stories: 2 }, '10:00', 'America/Argentina/Buenos_Aires')
-    expect(s.map((x) => `${x.day}:${x.type}`)).toEqual(['0:CAROUSEL', '1:STORY', '2:IMAGE', '3:STORY', '4:REEL'])
+  it('reparte 3 feed (sin reels) y 2 stories en días distintos', () => {
+    const s = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 3, stories: 2 }, '10:00', 'America/Argentina/Buenos_Aires')
+    expect(s.map((x) => `${x.day}:${x.type}`)).toEqual(['0:CAROUSEL', '1:STORY', '2:IMAGE', '3:STORY', '4:CAROUSEL'])
     expect(s[0].at.toISOString()).toBe('2026-10-05T13:00:00.000Z')
     expect(s[1].at.toISOString()).toBe('2026-10-06T22:00:00.000Z')
   })
@@ -297,7 +297,7 @@ describe('anuncios', () => {
 describe('planificación', () => {
   const m = (parseManifest(YAML) as unknown as { manifest: never }).manifest
   it('el prompt incluye reglas por tipo, lo que no hay que repetir y lo que hay que evitar', () => {
-    const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 1, reels: 0, stories: 1 }, '10:00', 'UTC')
+    const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 1, stories: 1 }, '10:00', 'UTC')
     const p = buildPlanPrompt(m, slots, { feed: [], texts: [], releases: [], recent: [{ pillar: 'táctica', hook: 'Cómo ganarle al frontón' }], bestPillars: ['ejercicio'] })
     expect(p.system).toMatch(/promesas médicas/)
     expect(p.user).toMatch(/Cómo ganarle al frontón/)
@@ -306,7 +306,7 @@ describe('planificación', () => {
     expect(p.system).toMatch(/own imagePrompt/)
   })
   it('con tipo foto pide fotos realistas en vez de ilustraciones', () => {
-    const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 1, reels: 0, stories: 0 }, '10:00', 'UTC')
+    const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 1, stories: 0 }, '10:00', 'UTC')
     const p = buildPlanPrompt(m, slots, { feed: [], texts: [], releases: [], recent: [], bestPillars: [], kind: 'photo' })
     expect(p.system).toMatch(/realistic photo/)
     expect(p.system).toMatch(/never models/)
@@ -327,13 +327,13 @@ describe('planificación', () => {
     // En un estilo de diseño, se mantiene su estética y sólo se le da un giro.
     expect(looksFor(m, 'collage', 'illustration', 3, rng).every((l) => l.style.includes('paper collage'))).toBe(true)
     expect(kindsFor('photo', 3)).toEqual(['photo', 'photo', 'photo'])
-    const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 2, reels: 0, stories: 0 }, '10:00', 'UTC')
+    const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 2, stories: 0 }, '10:00', 'UTC')
     const p = buildPlanPrompt(m, slots, { feed: [], texts: [], releases: [], recent: [], bestPillars: [], looks: looks.slice(0, 2) })
     expect(JSON.parse(p.user).week[1].visual.people).toBe(looks[1].people)
   })
   it('sólo texto: sin imagen ni estética, y las mezclas con texto reparten mitad y mitad', () => {
     const rng = () => 0.3
-    const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 1, reels: 0, stories: 0 }, '10:00', 'UTC')
+    const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 1, stories: 0 }, '10:00', 'UTC')
     const p = buildPlanPrompt(m, slots, { feed: [], texts: [], releases: [], recent: [], bestPillars: [], kind: 'text' })
     expect(p.system).toMatch(/imageType "text"/)
     expect(p.system).not.toMatch(/Show people/)
@@ -353,7 +353,7 @@ describe('planificación', () => {
     const own = { ...base, brand: { ...base.brand, imageStyle: 'flat diagram, no people', photoStyle: 'two people at a table, uncluttered background' } }
     const looks = looksFor(own, null, 'mix', 4)
     expect(looks.every((l) => !l.people && !l.setting && (l.style === 'flat diagram, no people' || l.style === 'two people at a table, uncluttered background'))).toBe(true)
-    const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 2, reels: 0, stories: 0 }, '10:00', 'UTC')
+    const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 2, stories: 0 }, '10:00', 'UTC')
     const p = buildPlanPrompt(own, slots, { feed: [], texts: [], releases: [], recent: [], bestPillars: [], looks: looks.slice(0, 2) })
     expect(p.system).not.toMatch(/Show people/)
     expect(p.system).toMatch(/that style rules the subject/)
@@ -367,7 +367,7 @@ describe('planificación', () => {
     expect(imagePromptFor(m, 'A man at a bus stop', { kind: 'photo', style: 'x' })).toMatch(/not models|no studio lighting/)
   })
   it('pasa las imágenes subidas al prompt y pide basarse en las elegidas', () => {
-    const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 2, reels: 0, stories: 0 }, '10:00', 'UTC')
+    const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 2, stories: 0 }, '10:00', 'UTC')
     const images = [
       { id: 'a', kind: 'SCREENSHOT' as const, description: 'Pantalla para agendar un turno', note: 'paso 1', focus: true },
       { id: 'b', kind: 'PHOTO' as const, description: 'Cancha de tenis', note: null, focus: false },
@@ -414,7 +414,7 @@ describe('planificación', () => {
     const plan = { posts: [{ slot: 0, pillar: 'x', hook: 'h', caption: 'c', hashtags: [], altText: '', imagePrompt: 'p', slides: [{ title: '1', imageId: 'a' }, { title: '2', imageId: 'inventada' }] }] }
     const kept = keepKnownImages(plan, [{ id: 'a', kind: 'SCREENSHOT', description: null, note: null, focus: true }])
     expect(kept.posts[0].slides.map((s) => s.imageId)).toEqual(['a', null])
-    const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 2, reels: 0, stories: 0 }, '10:00', 'UTC')
+    const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 2, stories: 0 }, '10:00', 'UTC')
     const mock = mockPlan(m, slots, [], ['a', 'b'])
     expect(mock.posts.map((p) => p.slides.map((s) => (s as { imageId?: string }).imageId).find(Boolean))).toEqual(['a', 'b'])
   })
@@ -482,7 +482,7 @@ describe('edición diaria', () => {
     expect(u.instructions).toMatch(/ONLY facts/)
   })
   it('suma las ilustraciones diarias al estimado mensual', () => {
-    expect(imagesPerMonth({ feed: 0, reels: 0, stories: 0 }, { types: ['CAROUSEL', 'STORY'] })).toBe(180)
+    expect(imagesPerMonth({ feed: 0, stories: 0 }, { types: ['CAROUSEL', 'STORY'] })).toBe(180)
   })
 })
 
@@ -493,9 +493,9 @@ describe('modelos de imagen', () => {
     for (const m of IMAGE_MODELS) expect(m.level && m.uses && m.popularity && m.priceUsd > 0).toBeTruthy()
   })
   it('estima las imágenes por mes según la cadencia (una por diapositiva o escena)', () => {
-    // carrusel 5 + imagen 1 + reel 4 + 2 stories = 12 por semana
-    expect(imagesPerMonth({ feed: 3, reels: 1, stories: 2 })).toBe(52)
-    expect(imagesPerMonth({ feed: 0, reels: 0, stories: 0 })).toBe(0)
+    // 2 carruseles 5 + imagen 1 + 2 stories = 13 por semana
+    expect(imagesPerMonth({ feed: 3, stories: 2 })).toBe(56)
+    expect(imagesPerMonth({ feed: 0, stories: 0 })).toBe(0)
   })
   it('el precio depende de la calidad en los modelos que cobran por tokens', () => {
     const gpt = IMAGE_MODELS.find((m) => m.qualities)!
@@ -644,7 +644,7 @@ describe('muestras de estilo', () => {
 
 describe('consigna de la semana', () => {
   const m = (parseManifest(YAML) as unknown as { manifest: never }).manifest
-  const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 1, reels: 0, stories: 1 }, '10:00', 'UTC')
+  const slots = weekSlots(new Date('2026-10-05T00:00:00Z'), { feed: 1, stories: 1 }, '10:00', 'UTC')
   const ctx = { feed: [], texts: [], releases: [], recent: [], bestPillars: [] }
   it('el plan sigue la consigna del usuario cuando la hay', () => {
     expect(JSON.parse(buildPlanPrompt(m, slots, { ...ctx, brief: 'Semana del Día del Padre' }).user).instructions).toContain('brief from the user for the week: "Semana del Día del Padre"')

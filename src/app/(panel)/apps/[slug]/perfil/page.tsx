@@ -5,7 +5,7 @@ import type { ProfileKit } from '@/lib/onboarding/profile-kit'
 import { daysAgo } from '@/lib/view'
 
 const TIPS = [
-  'Horario fijo y mezcla de formatos: reels para llegar a quien no te sigue, carruseles para guardados, stories para tus seguidores.',
+  'Horario fijo y mezcla de formatos: carruseles para guardados y compartidos, imágenes con un gancho fuerte, stories para tus seguidores.',
   'Gancho en la primera línea, 3–5 hashtags específicos (no 30) y palabras clave en la descripción y en el texto alternativo: Instagram los usa en la búsqueda.',
   'Respondé los comentarios en la primera hora: te llega un aviso por WhatsApp cuando se publica.',
   'Fijá 3 posts: qué es la app, el de mejor puntaje y uno de prueba social. Actualizalos cada mes según Rendimiento.',

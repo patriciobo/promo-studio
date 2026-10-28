@@ -45,10 +45,10 @@ export const STARTER_TOPICS: StarterTopic[] = [
   },
   {
     id: 'problema',
-    type: 'REEL',
+    type: 'CAROUSEL',
     label: 'El problema que resolvemos',
-    why: 'Los reels son lo que más llega a gente que todavía no te sigue: una situación con la que se identifiquen.',
-    brief: 'A relatable everyday situation of the audience that shows the problem (first scene is the hook, a pain they recognize), then how this business solves it. No hard selling.',
+    why: 'Una situación con la que se identifiquen: es lo que más se comparte con alguien que todavía no te sigue.',
+    brief: 'A relatable everyday situation of the audience that shows the problem (first slide is the hook, a pain they recognize), then how this business solves it. No hard selling.',
   },
   {
     id: 'como-funciona',
@@ -73,7 +73,7 @@ export const STARTER_TOPICS: StarterTopic[] = [
   },
   {
     id: 'historia',
-    type: 'REEL',
+    type: 'CAROUSEL',
     label: 'Nuestra historia',
     why: 'La parte humana: por qué empezó. Genera confianza y comentarios.',
     brief: 'The origin story: why it was created and what drives it, told in a human way from the description in the app data. If the data does not tell the story, focus on the purpose and the day to day without inventing facts, names or dates.',

@@ -15,7 +15,6 @@ const TYPES: { value: PostType | 'PHOTOS'; label: string; hint: string }[] = [
   { value: 'IMAGE', label: 'Imagen', hint: '1 pieza 4:5 para el feed' },
   { value: 'CAROUSEL', label: 'Carrusel', hint: '4 a 7 diapositivas que enseñan algo' },
   { value: 'PHOTOS', label: 'Carrusel de fotos', hint: `una diapositiva por foto elegida, en orden, de 2 a ${MAX_CAROUSEL}` },
-  { value: 'REEL', label: 'Reel', hint: 'video vertical de ~15 s' },
   { value: 'STORY', label: 'Story', hint: '1 pieza vertical, dura 24 h' },
 ]
 

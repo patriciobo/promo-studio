@@ -72,10 +72,7 @@ export default async function Flows({ params }: PageProps<'/apps/[slug]/flujos'>
                   <input name="topic" maxLength={300} />
                 </label>
                 <div className="row">
-                  <select name="type" defaultValue="CAROUSEL" aria-label="Tipo" className="model-select">
-                    <option value="CAROUSEL">Carrusel</option>
-                    <option value="REEL">Reel</option>
-                  </select>
+                  <input type="hidden" name="type" value="CAROUSEL" />
                   <ModelSelect app={app} label="Modelo para la portada" />
                   <SubmitButton pendingText="Encolando…">Crear post de este flujo</SubmitButton>
                 </div>
