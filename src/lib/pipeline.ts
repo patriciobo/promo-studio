@@ -14,7 +14,7 @@ import { bufferDataUri, dataUri, mediaPath, saveMedia } from './media'
 import { notify } from './notify'
 import { sendForReview } from './whatsapp'
 import { localDay, starterSlots, STARTER_TOPICS } from './starter'
-import { kindsIn, parseKindChoice, parsePostKind, type ImageChoice, type ImageKind, type KindChoice } from './models'
+import { kindsIn, noAiImage, parseKindChoice, parsePostKind, type ImageChoice, type ImageKind, type KindChoice } from './models'
 import { drawLooks, forIllustration, ILLUSTRATION_ONLY, kindsFor, NATURAL_PHOTO, type Look, type Rng } from './variety'
 import { designStyle, parseDesignStyle } from './styles'
 import { MAX_CAROUSEL, parsePhotoMode, photoSetSlides, photoTreatment, type PhotoMode } from './photos'
@@ -22,6 +22,7 @@ import { assertBudget } from './budget'
 import { completeJson, generateImage, generateVideo } from './openrouter'
 import { END_CARD_SECONDS, MAX_REEL_SCENES, reelPlan, videoModelOf } from './video-models'
 import { keepKnownTrends, trendSlotsFor, trendsForApp, type PromptTrend } from './trends'
+import { creditsOf, findStock, withCredits } from './stock'
 import { localParts, roundTime, weekSlots, zonedTime, type Slot } from './schedule'
 import { existsSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
@@ -142,7 +143,7 @@ const PlanSchema = z.object({
       imagePrompt: z.string(),
       sourceId: z.string().optional().nullable(),
       trendId: z.string().optional().nullable(),
-      slides: z.array(z.object({ eyebrow: z.string().optional(), title: z.string(), body: z.string().optional(), items: z.array(z.string()).optional(), imagePrompt: z.string().optional(), videoPrompt: z.string().optional(), imageId: z.string().optional().nullable() })).min(1),
+      slides: z.array(z.object({ eyebrow: z.string().optional(), title: z.string(), body: z.string().optional(), items: z.array(z.string()).optional(), imagePrompt: z.string().optional(), videoPrompt: z.string().optional(), stockQuery: z.string().optional().nullable(), imageId: z.string().optional().nullable() })).min(1),
     }),
   ),
 })
@@ -194,14 +195,14 @@ export function looksFor(m: Manifest, design: string | null | undefined, choice:
 }
 
 /** Lo que el modelo de texto tiene que respetar en las imagePrompts de cada post. */
-const visualOf = (l: Look) => (l.kind === 'text' || l.kind === 'screens' ? { imageType: l.kind } : { imageType: l.kind, style: l.style, people: l.people, setting: l.setting, framing: l.framing, light: l.light })
+const visualOf = (l: Look) => (noAiImage(l.kind) ? { imageType: l.kind } : { imageType: l.kind, style: l.style, people: l.people, setting: l.setting, framing: l.framing, light: l.light })
 
 export function buildPlanPrompt(m: Manifest, slots: Slot[], ctx: { feed: Feed['items']; texts: string[]; releases: { name: string; body: string }[]; recent: { pillar: string | null; hook: string | null }[]; bestPillars: string[]; topic?: string; daily?: { date: string; report: string }; images?: PromptImage[]; kind?: KindChoice; design?: string | null; brief?: string | null; starter?: { theme: string; goal: string; pin?: boolean }[]; photoMode?: PhotoMode; photoSet?: string[]; looks?: Look[]; trends?: PromptTrend[]; algo?: string[]; trendSlots?: number; forcedTrend?: string | null }) {
   const images = ctx.images ?? []
-  const looks: Look[] = ctx.looks ?? kindsFor(ctx.kind ?? 'illustration', slots.length).map((kind) => ({ kind, style: kind === 'text' || kind === 'screens' ? '' : styleFor(m, kind, ctx.design) }))
+  const looks: Look[] = ctx.looks ?? kindsFor(ctx.kind ?? 'illustration', slots.length).map((kind) => ({ kind, style: noAiImage(kind) ? '' : styleFor(m, kind as ImageKind, ctx.design) }))
   const kinds = new Set(looks.map((l) => l.kind))
   const drawn = looks.some((l) => l.people)
-  const styled = looks.some((l) => l.kind !== 'text' && l.kind !== 'screens' && !l.people)
+  const styled = looks.some((l) => !noAiImage(l.kind) && !l.people)
   const shots = images.some((i) => i.kind === 'SCREENSHOT')
   const focus = images.filter((i) => i.focus)
   const trends = ctx.trends ?? []
@@ -212,19 +213,20 @@ Write ALL user-facing text in ${m.languages[0]} with this tone: ${m.tone}.
 Never mention: ${m.avoid.join('; ') || 'nothing in particular'}.
 Image prompts are in English. Each slot has a "visual" brief drawn at random so the feed never looks the same: follow its imageType and style exactly.${kinds.has('text') ? `
 - imageType "text": the post has no image at all, only the brand typography. Set every imagePrompt to "" and let the words carry the post: a title that works on its own (a figure, a direct question or a clear statement) and items or a checklist on the middle slides.` : ''}${kinds.has('screens') ? `
-- imageType "screens": the post shows real screens of the app, never a generated image. Set every imagePrompt to ""${shots ? ' and, on every slide except the last call-to-action, set "imageId" to the SCREENSHOT appImage that best shows that slide\'s idea (a different one per slide when there are enough)' : ''}. Talk about what each feature does for the user, never describe the screen.` : ''}${kinds.has('illustration') ? `
+- imageType "screens": the post shows real screens of the app, never a generated image. Set every imagePrompt to ""${shots ? ' and, on every slide except the last call-to-action, set "imageId" to the SCREENSHOT appImage that best shows that slide\'s idea (a different one per slide when there are enough)' : ''}. Talk about what each feature does for the user, never describe the screen.` : ''}${kinds.has('real') ? `
+- imageType "real": only REAL photos and videos, never a generated image (this account shows real places and an AI image would invent them). Set every imagePrompt to "". On every slide${reels ? ' and reel scene' : ''} except a closing call-to-action, set "imageId" to the appImage that shows exactly what that slide talks about${reels ? ' (in REEL scenes prefer appImages with "video" seconds; a photo gets gentle natural motion)' : ''}, a different one per slide. When no appImage fits, set imageId null and "stockQuery": a short search in English for a free stock bank naming the specific place and region and what to see (e.g. "Los Gigantes Cordoba Argentina rocky peaks", "Mina Clavero river Cordoba Argentina"). Name a specific place in the text only when its appImage description confirms it or the slide searches for it.` : ''}${kinds.has('illustration') ? `
 - imageType "illustration": describe an illustration in that style, with simplified UI shapes. Never use photographic words (photo, realistic, camera, lens, bokeh, cinematic): it must not look like a photo.` : ''}${kinds.has('photo') ? `
 - imageType "photo": describe a realistic photo in that style that looks candid, unposed and a bit imperfect, like a snapshot a friend took with a phone, with screens angled or out of focus. Ordinary-looking people as they really are, never models, a photoshoot or a studio.` : ''}
 ${drawn ? `Show people using the app or the problem it solves: when the visual brief has people, setting, framing and light, use them (describe the people concretely: age, look, build and clothes) and change them only if they contradict the slide or the app's audience; never default to young good-looking people. ` : ''}${styled ? `When the visual brief has only a style, that style rules the subject and composition: show the slide's idea the way it describes, and add people only if the style includes them. ` : ''}No readable text, letters, numbers or logos anywhere; fit the brand colors ${m.brand.colors.join(', ')} and leave calm space for overlaid text.
-Every slide (or reel scene) also gets its own imagePrompt${kinds.has('text') || kinds.has('screens') ? ' (except in "text" and "screens" posts)' : ''}: the same people, setting and style as the rest of its post, showing that slide's idea.${reels ? `
+Every slide (or reel scene) also gets its own imagePrompt${kinds.has('text') || kinds.has('screens') || kinds.has('real') ? ' (except in "text", "screens" and "real" posts)' : ''}: the same people, setting and style as the rest of its post, showing that slide's idea.${reels ? `
 REEL scenes: the imagePrompt is the FIRST FRAME of the clip and "videoPrompt" (English) describes one continuous shot that starts there: the concrete action that happens (people moving, reacting, using the app on a phone, something changing), the camera (handheld phone, push-in, whip pan, POV, over-the-shoulder), the setting and the natural sound (ambience, effects; no voice-over unless it is a short natural line). It must feel like a native Instagram Reel shot by a real person, not an ad and never a slideshow or a slow zoom over a still. Keep the same people and setting across the scenes so it reads as one story. No on-screen text, letters, logos or watermarks in the video (the title is overlaid later). In "text" or "screens" reels the imagePrompt is "" but videoPrompt is still required.` : ''}${trends.length ? `
 "trends" are formats, memes and sounds trending right now on Instagram and TikTok for this audience (stage "emerging" = new, "peak" = at its best; yourResult = how this account did with it before). ${forced ? `This post MUST be based on the trend "${forced.name}" (set trendId "${forced.id}"): adapt its format (structure, joke, hook, editing pattern) to the topic.` : `Base at most ${ctx.trendSlots ?? 1} post(s) on one of them, only when it genuinely fits the app and its audience (prefer feed posts and reels, and trends that did well for this account): set its trendId and adapt the FORMAT (structure, joke, hook, editing pattern) to the app's topic. If none fits naturally, use none (trendId null): a forced trend hurts more than it helps.`} Never copy anyone else's images, characters, footage, brand or copyrighted audio: recreate the format with the app's own world. A trend-based post still gives real value about the app.` : ''}${ctx.algo?.length ? `
 Current Instagram ranking notes (apply them when writing hooks, captions and formats): ${ctx.algo.join(' | ')}` : ''}${images.length ? `
-appImages are real images of the app uploaded by the user (SCREENSHOT = a screen of the app, PHOTO = a photo). A slide can show one instead of a generated image: set its "imageId". Use what the image shows only as context to pick the right topic (a SCREENSHOT tells which feature to talk about, a PHOTO which part of the business); never invent features that are not visible. ${PHOTO_LAYOUT[ctx.photoMode ?? 'fondo']} Use each image at most once per post${ctx.photoSet ? '' : ' and never on the last call-to-action slide'}.` : ''}
+appImages are real images of the app uploaded by the user (SCREENSHOT = a screen of the app, PHOTO = a photo; "video" = it is a video clip of that many seconds, "source" = taken from a free stock bank). A slide can show one instead of a generated image: set its "imageId". Use what the image shows only as context to pick the right topic (a SCREENSHOT tells which feature to talk about, a PHOTO which part of the business); never invent features that are not visible. ${PHOTO_LAYOUT[ctx.photoMode ?? 'fondo']} Use each image at most once per post${ctx.photoSet ? '' : ' and never on the last call-to-action slide'}.` : ''}
 NEVER describe the images in any user-facing text (titles, bodies, items, captions): the reader already sees them. Do not mention their colors, walls, furniture, decor, objects, materials, light, composition or what is "in the photo"; talk about the business instead: what it offers, why it matters to the audience and how to get it.
 Captions: first line is a hook, 2-5 short lines of value, then the CTA "${m.cta}", then 3-5 specific hashtags (from: ${m.hashtags.join(' ') || 'choose relevant ones'}).
 altText describes the image for accessibility and includes keywords people would search.
-Answer only with JSON: {"posts":[{"slot":number,"pillar":string,"hook":string,"caption":string,"hashtags":string[],"altText":string,"imagePrompt":string,"sourceId":string|null${trends.length ? ',"trendId":string|null' : ''},"slides":[{"eyebrow"?:string,"title":string,"body"?:string,"items"?:string[],"imagePrompt":string${reels ? ',"videoPrompt"?:string' : ''}${images.length ? ',"imageId"?:string|null' : ''}}]}]}`
+Answer only with JSON: {"posts":[{"slot":number,"pillar":string,"hook":string,"caption":string,"hashtags":string[],"altText":string,"imagePrompt":string,"sourceId":string|null${trends.length ? ',"trendId":string|null' : ''},"slides":[{"eyebrow"?:string,"title":string,"body"?:string,"items"?:string[],"imagePrompt":string${reels ? ',"videoPrompt"?:string' : ''}${kinds.has('real') ? ',"stockQuery"?:string|null' : ''}${images.length ? ',"imageId"?:string|null' : ''}}]}]}`
   const focusRule = focus.length
     ? ` The user wants this content based on the appImages marked focus:true (also attached as images): ${slots.length > 1 ? 'spread them across the week and use each one in at least one post' : 'use them in this post (a step-by-step if they show a flow, in order)'}, and build the text around the business topic they point to (never a description of the images).`
     : images.length
@@ -239,7 +241,7 @@ Answer only with JSON: {"posts":[{"slot":number,"pillar":string,"hook":string,"c
     doNotRepeat: ctx.recent.map((r) => `${r.pillar}: ${r.hook}`),
     bestPerformingPillars: ctx.bestPillars,
     todaysEdition: ctx.daily ? { date: ctx.daily.date, report: ctx.daily.report } : undefined,
-    appImages: images.length ? images.map((i) => ({ id: i.id, kind: i.kind, shows: i.description, userNote: i.note ?? undefined, focus: i.focus || undefined })) : undefined,
+    appImages: images.length ? images.map((i) => ({ id: i.id, kind: i.kind, shows: i.description, userNote: i.note ?? undefined, focus: i.focus || undefined, video: i.video, source: i.source })) : undefined,
     trends: trends.length ? trends : undefined,
     instructions: (ctx.daily
       ? `Create exactly one post per slot about TODAY's edition (${ctx.daily.date}) in todaysEdition. Use ONLY facts stated in that report: no other news, no opinions, no predictions, no invented figures; attribute claims to the sources as the report does. CAROUSEL: slide 1 is a cover with the date as eyebrow and the day's main story as title; then 3-5 slides with the most relevant regions or the trade/commodities climate (title + up to 4 short items each); last slide invites to read the full edition and subscribe. STORY: the 3 main headlines of the day, very short. Captions summarize the day in 2-4 lines and invite to read the full edition.`
@@ -291,7 +293,7 @@ async function planPosts(app: App, m: Manifest, batchId: string, weekStart: Date
     app.repo ? latestReleases(app.repo) : [],
     db.post.findMany({ where: { appId }, orderBy: { createdAt: 'desc' }, take: 30, select: { pillar: true, hook: true } }),
     db.post.groupBy({ by: ['pillar'], where: { appId, score: { not: null } }, _avg: { score: true } }),
-    imagesForPlan(appId, imageIds, undefined, kindsIn(kind).includes('screens')),
+    imagesForPlan(appId, imageIds, undefined, kindsIn(kind).includes('screens') ? 'screens' : kindsIn(kind).includes('real') ? 'real' : false),
     // El kit inicial explica el negocio: sin tendencias.
     starter ? { trends: [], algo: [] } : trendsForApp(app, m).catch((e) => (console.error('[tendencias]', e.message), { trends: [], algo: [] })),
   ])
@@ -305,9 +307,11 @@ async function planPosts(app: App, m: Manifest, batchId: string, weekStart: Date
   let textCost = 0
   const raw = process.env.OPENROUTER_MOCK === '1' ? mockPlan(m, slots, src.feed, imageIds) : await completeJson({ appId, model: app.textModel, system, user, images: images.shown, purpose: `${starter ? 'kit inicial' : 'plan'} ${weekStart.toISOString().slice(0, 10)}`, onCost: (c) => (textCost = c) })
   const plan = keepKnownTrends(keepKnownImages(PlanSchema.parse(raw), images.prompt), trending.trends)
+  const stockSkip = new Set<string>()
   for (const [i, slot] of slots.entries()) {
     const p = plan.posts.find((x) => x.slot === i) ?? plan.posts[i]
     if (!p) continue
+    if (looks[i].kind === 'real') await fillFromStock(app, m, p, slot.type, stockSkip)
     // Una llamada planifica toda la semana: cada post carga su parte.
     await db.post.create({ data: { ...postFromPlan(app, batch.id, slot, p, looks[i]), textCostUsd: textCost / slots.length } })
   }
@@ -324,6 +328,35 @@ async function withoutStarterDays(app: App, slots: Slot[]) {
   const taken = await db.post.findMany({ where: { appId: app.id, batch: { kind: 'STARTER' }, status: { notIn: ['REJECTED', 'FAILED'] }, scheduledAt: { gte: new Date(from.getTime() - 864e5), lte: new Date(to.getTime() + 864e5) } }, select: { scheduledAt: true } })
   const days = new Set(taken.map((p) => localDay(p.scheduledAt!, app.timezone)))
   return slots.filter((s) => s.type === 'STORY' || !days.has(localDay(s.at, app.timezone)))
+}
+
+/** Búsquedas en bancos por post, como mucho (cada una es una llamada barata al modelo de visión). */
+const MAX_STOCK_PER_POST = 6
+
+/**
+ * Material real: las diapositivas que no encontraron nada en la biblioteca y pidieron una búsqueda (stockQuery) se
+ * completan con un banco libre; el modelo de visión elige el que de verdad muestra ese lugar y se importa a la
+ * biblioteca. En los reels se busca video y, si no hay, foto (que se anima suave). Lo que no aparece queda sin imagen.
+ */
+export async function fillFromStock(app: App, m: Manifest, p: PlannedPost, type: PostType, skip: Set<string>) {
+  if (process.env.OPENROUTER_MOCK === '1') return
+  const place = m.location ?? (m.audience.countries.length ? `${m.name} (${m.audience.countries.join(', ')})` : undefined)
+  const used = new Set(p.slides.flatMap((s) => (s.imageId ? [s.imageId] : [])))
+  let left = MAX_STOCK_PER_POST
+  for (const s of p.slides) {
+    if (s.imageId || !s.stockQuery?.trim() || left-- <= 0) continue
+    const q = s.stockQuery.trim().slice(0, 100)
+    try {
+      let img = await findStock(app, q, type === 'REEL' ? 'video' : 'photo', place, skip)
+      if (!img && type === 'REEL') img = await findStock(app, q, 'photo', place, skip)
+      if (img && !used.has(img.id)) {
+        s.imageId = img.id
+        used.add(img.id)
+      }
+    } catch (e) {
+      console.error(`[material real] ${q}: ${(e as Error).message}`)
+    }
+  }
 }
 
 /**
@@ -439,7 +472,7 @@ export function imagePromptFor(m: Manifest, scene: string, look: { kind: ImageKi
  */
 async function lookOf(app: App, post: Post, choice?: KindChoice): Promise<Pick<Look, 'kind' | 'style'>> {
   const planned = parsePostKind(post.imageKind)
-  if (planned && (planned === 'text' || planned === 'screens' || post.imageStyle) && (!choice || kindsIn(choice).includes(planned))) return { kind: planned, style: post.imageStyle ?? '' }
+  if (planned && (noAiImage(planned) || post.imageStyle) && (!choice || kindsIn(choice).includes(planned))) return { kind: planned, style: post.imageStyle ?? '' }
   const [look] = looksFor(manifestOf(app), app.designStyle, choice ?? kindOf(app), 1)
   await db.post.update({ where: { id: post.id }, data: { imageKind: look.kind, imageStyle: look.style } })
   return look
@@ -493,6 +526,11 @@ export async function renderPost(postId: string, opts: { regenerateImage?: boole
       html.push(t.text(brand, { ...d, screenshot: shots[0] }, size))
       continue
     }
+    // Material real sin foto que encaje: va como pieza de texto (nunca se inventa el lugar con IA).
+    if (look.kind === 'real') {
+      html.push(layout === 'cover' ? t.cover(brand, d, size) : t.text(brand, d, size))
+      continue
+    }
     // Sólo texto: la pieza va sin imagen. Un post de texto al que después se le pide imagen no tiene escenas: se usa el título.
     const kind = look.kind
     const scene = s.imagePrompt || (i === 0 ? post.imagePrompt : post.imagePrompt && `${post.imagePrompt}. Scene about: ${s.title}`) || s.title
@@ -522,6 +560,13 @@ export async function renderPost(postId: string, opts: { regenerateImage?: boole
       await db.asset.create({ data: { postId, kind: 'SLIDE', path: rel, width: size.w, height: size.h, position: i } })
     }
   }
+  await applyCredits(post, [...own.values()])
+}
+
+/** Atribución obligatoria del material de bancos usado (Commons con CC BY / BY-SA), al final de la descripción. */
+async function applyCredits(post: Pick<Post, 'id' | 'caption'>, used: { credit?: string | null }[]) {
+  const caption = withCredits(post.caption, creditsOf(used.map((u) => ({ credit: u.credit ?? null }))))
+  if (caption !== post.caption) await db.post.update({ where: { id: post.id }, data: { caption } })
 }
 
 /**
@@ -530,6 +575,9 @@ export async function renderPost(postId: string, opts: { regenerateImage?: boole
  */
 export function videoPromptFor(m: Manifest, scene: string, look: { kind: string; style: string }) {
   const colors = m.brand.colors.join(', ')
+  // Foto real de un lugar: sólo movimiento natural, sin tocar el paisaje (la IA no tiene que inventar el lugar).
+  if (look.kind === 'real')
+    return `Vertical 9:16 Instagram Reel shot. Bring this real photo to life${scene ? ` (${scene})` : ''}: only subtle natural motion such as wind in grass and trees, flowing water, drifting clouds and changing light, with a slow steady camera drift. Do not add, remove or change any element of the landscape, buildings or people; keep everything exactly as in the photo. No on-screen text, captions, letters, logos or watermarks.`
   const style = look.kind === 'illustration' ? `Animated in this illustration style: ${look.style}.` : `Realistic, candid handheld phone footage, natural light, ordinary-looking people (never models or a studio)${look.style && look.kind === 'photo' ? `; look: ${look.style}` : ''}.`
   return `Vertical 9:16 Instagram Reel shot. ${scene}. ${style} Subtle touches of the brand colors ${colors}. Real continuous motion and action in the scene, not a slideshow or a slow zoom over a still image. No on-screen text, captions, subtitles, letters, logos or watermarks.`
 }
@@ -551,26 +599,38 @@ async function renderReel(app: App, post: Post, all: Slide[], brand: Brand, opts
   const image = opts.image ?? { model: app.imageModel, quality: app.imageQuality }
   const look = await lookOf(app, post, opts.image?.kind)
   const own = await slideImages(app.id, scenes.flatMap((s) => (s.imageId ? [s.imageId] : [])))
+  // Material real: las escenas sin nada elegido toman, en orden, videos (y si no, fotos) de la biblioteca que el post no usa.
+  const picked = scenes.map((s) => (s.imageId ? own.get(s.imageId) : undefined))
+  if (look.kind === 'real' && picked.some((x) => !x)) {
+    const spare = await db.appImage.findMany({ where: { appId: app.id, archived: false, kind: 'PHOTO', id: { notIn: [...own.keys()] } }, orderBy: [{ videoPath: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }], take: 12, select: { id: true } })
+    const pool = [...(await slideImages(app.id, spare.map((x) => x.id))).values()].sort((a, b) => Number(!!b.video) - Number(!!a.video))
+    let next = 0
+    for (const [i, x] of picked.entries()) if (!x && pool.length) picked[i] = pool[next++ % pool.length]
+    const empty = picked.findIndex((x) => !x)
+    if (empty >= 0) throw new Error(`no hay material real para la escena ${empty + 1}: subí o importá videos o fotos en Imágenes (o cargá la clave de Pexels o Pixabay en Configuración para que se busquen solos)`)
+  }
   const force = (i: number) => !!(opts.regenerateImage || opts.regenerate?.includes(i))
+  // Las escenas con un video real no generan nada; las demás, un clip.
+  const generated = picked.map((x) => !x?.video)
   // Los clips salen en paralelo: se controla el tope con el costo de todos los que faltan antes de pedir el primero.
-  const missing = await Promise.all(scenes.map(async (_, i) => force(i) || !(await db.asset.count({ where: { postId: post.id, kind: 'CLIP', position: i } }))))
+  const missing = await Promise.all(scenes.map(async (_, i) => generated[i] && (force(i) || !(await db.asset.count({ where: { postId: post.id, kind: 'CLIP', position: i } })))))
   await assertBudget(app.id, missing.filter(Boolean).length * plan.seconds * vm.pricePerSec)
 
   // 1. Primeros cuadros, en orden: el primero es la referencia de estilo y de gente de los demás.
   const frames: (string | undefined)[] = []
   const refs: string[] = []
   for (const [i, s] of scenes.entries()) {
-    const mine = s.imageId ? own.get(s.imageId) : undefined
+    const mine = picked[i]
     if (mine?.kind === 'PHOTO') {
       frames.push(mine.src)
       continue
     }
-    if (look.kind === 'text' || look.kind === 'screens') {
+    if (noAiImage(look.kind)) {
       frames.push(undefined)
       continue
     }
     const scene = s.imagePrompt || post.imagePrompt || s.title
-    const img = await background(app, post, i, scene, { force: force(i), references: refs.slice(0, 1), image, look: { kind: look.kind, style: look.style } })
+    const img = await background(app, post, i, scene, { force: force(i), references: refs.slice(0, 1), image, look: { kind: look.kind as ImageKind, style: look.style } })
     if (img && !refs.length) refs.push(img)
     frames.push(img)
   }
@@ -578,6 +638,8 @@ async function renderReel(app: App, post: Post, all: Slide[], brand: Brand, opts
   // 2. Clips: en paralelo (cada uno tarda uno o dos minutos).
   const clips = await Promise.all(
     scenes.map(async (s, i) => {
+      const real = picked[i]?.video
+      if (real) return readFile(mediaPath(real))
       const prev = await db.asset.findFirst({ where: { postId: post.id, kind: 'CLIP', position: i }, orderBy: { createdAt: 'desc' } })
       if (prev && !force(i) && existsSync(mediaPath(prev.path))) return readFile(mediaPath(prev.path))
       const prompt = videoPromptFor(m, s.videoPrompt || s.imagePrompt || `${post.imagePrompt ?? ''} ${s.title}`.trim(), look)
@@ -594,7 +656,7 @@ async function renderReel(app: App, post: Post, all: Slide[], brand: Brand, opts
   const musicRel = m.music ? `apps/${app.slug}/music${extname(m.music) || '.mp3'}` : null
   const music = musicRel && existsSync(mediaPath(musicRel)) ? await readFile(mediaPath(musicRel)) : undefined
   const video = await composeReel(
-    clips.map((clip, i) => ({ clip, overlay: overlays[i] })),
+    clips.map((clip, i) => ({ clip, overlay: overlays[i], ...realCut(picked[i], plan.seconds) })),
     endCard,
     { endSeconds: END_CARD_SECONDS, music },
   )
@@ -610,6 +672,15 @@ async function renderReel(app: App, post: Post, all: Slide[], brand: Brand, opts
       { postId: post.id, kind: 'SLIDE', path: coverRel, width: size.w, height: size.h, position: 0 },
     ],
   })
+  await applyCredits(post, picked.flatMap((x) => (x ? [x] : [])))
+}
+
+/** Tramo de un video real para una escena: unos `seconds` (+1 si alcanza), empezando un poco después del arranque. */
+export function realCut(item: { video?: string; duration?: number | null } | undefined, seconds: number) {
+  if (!item?.video) return {}
+  const d = item.duration ?? seconds
+  const len = Math.max(2, Math.min(d, seconds + 1))
+  return { start: Math.round(Math.max(0, (d - len) * 0.3) * 10) / 10, seconds: len }
 }
 
 /** Posts del lote que falta renderizar: los nuevos y los que fallaron al generarse. Lo revisado no se toca. */
@@ -684,7 +755,7 @@ async function planOne(post: Post & { app: App }, topic: string, opts: { image?:
   const [src, recent, images, trending] = await Promise.all([
     sources(m),
     db.post.findMany({ where: { appId: app.id, id: { not: post.id } }, orderBy: { createdAt: 'desc' }, take: 30, select: { pillar: true, hook: true } }),
-    imagesForPlan(app.id, imageIds, opts.photoSet ? MAX_CAROUSEL : undefined, kindsIn(kindOf(app, opts.image)).includes('screens')),
+    imagesForPlan(app.id, imageIds, opts.photoSet ? MAX_CAROUSEL : undefined, kindsIn(kindOf(app, opts.image)).includes('screens') ? 'screens' : kindsIn(kindOf(app, opts.image)).includes('real') ? 'real' : false),
     useTrends ? trendsForApp(opts.trendId ? { ...app, useTrends: true } : app, m, opts.trendId).catch(() => ({ trends: [], algo: [] })) : { trends: [] as PromptTrend[], algo: [] as string[] },
   ])
   const trends = trending.trends.filter((x) => x.id !== opts.skipTrend)
@@ -700,6 +771,7 @@ async function planOne(post: Post & { app: App }, topic: string, opts: { image?:
   const p = keepKnownTrends(keepKnownImages(PlanSchema.parse(raw), images.prompt), trends).posts[0]
   if (!p) throw new Error('El modelo no devolvió ninguna publicación')
   if (opts.trendId && trends.some((x) => x.id === opts.trendId)) p.trendId = opts.trendId
+  if (looks[0].kind === 'real') await fillFromStock(app, m, p, post.type, new Set())
   if (set) p.slides = photoSetSlides(p.slides, set, p.hook)
   const { pillar, hook, caption, altText, slides, imagePrompt, imageKind, imageStyle, trendId } = postFromPlan(app, null, slot, p, looks[0])
   await db.post.update({ where: { id: post.id }, data: { pillar: post.pillar ?? pillar, hook, caption, altText, slides, imagePrompt, imageKind, imageStyle, trendId, textCostUsd: textCost } })

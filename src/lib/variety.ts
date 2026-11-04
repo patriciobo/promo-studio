@@ -169,7 +169,7 @@ export function drawLooks(kinds: PostKind[], base: Record<ImageKind, string>, op
   const n = kinds.length
   const [settings, framings, lights, techniques, twists, captures] = [draw(SETTINGS, n, rng), draw(FRAMINGS, n, rng), draw(LIGHTS, n, rng), draw(TECHNIQUES, n, rng), draw(TWISTS, n, rng), draw(CAPTURES, n, rng)]
   return kinds.map((kind, i) => {
-    if (kind === 'text' || kind === 'screens') return { kind, style: '' }
+    if (kind === 'text' || kind === 'screens' || kind === 'real') return { kind, style: '' }
     if (opts.own?.[kind]) return { kind, style: base[kind] }
     const lead = opts.colors.length ? ` Lead with ${pick(opts.colors, rng)} as the dominant brand color.` : ''
     const style =

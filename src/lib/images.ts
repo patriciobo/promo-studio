@@ -5,7 +5,8 @@ import { existsSync } from 'node:fs'
 import { db } from './db'
 import { getRawBytes, treeShas } from './github'
 import { flowScreenPath, type Manifest } from './manifest'
-import { dataUri, mediaPath, saveMedia } from './media'
+import { bufferDataUri, dataUri, mediaPath, saveMedia } from './media'
+import { contactSheet } from '@/render/renderer'
 import { completeJson } from './openrouter'
 
 const TYPES: Record<string, string> = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' }
@@ -31,14 +32,18 @@ export async function addImages(app: Pick<App, 'id' | 'slug'>, files: File[], no
 /** Una llamada barata con visión: qué tipo de imagen es y qué muestra. */
 export async function describeImage(imageId: string) {
   const img = await db.appImage.findUniqueOrThrow({ where: { id: imageId }, include: { app: true } })
-  if (img.description || !existsSync(mediaPath(img.path))) return img
+  if (img.description || !img.path || !existsSync(mediaPath(img.path))) return img
   if (process.env.OPENROUTER_MOCK === '1') return db.appImage.update({ where: { id: imageId }, data: { description: img.note ?? 'Imagen subida' } })
+  // Videos: cuatro cuadros repartidos, para describir todo el clip y no un instante.
+  const video = img.videoPath && existsSync(mediaPath(img.videoPath))
+  const shown = video ? bufferDataUri(await contactSheet(mediaPath(img.videoPath!), img.duration ?? 6), 'image/jpeg') : await dataUri(img.path)
+  const context = [img.note && `Nota del usuario: ${img.note}`, img.sourceInfo && `Título y etiquetas en el banco (pueden estar mal): ${img.sourceInfo}`].filter(Boolean).join('\n')
   const r = await completeJson<{ kind?: string; description?: string }>({
     appId: img.appId,
     model: img.app.textModel,
-    system: 'You describe images for a social media planner. Answer only with JSON: {"kind":"SCREENSHOT"|"PHOTO","description":string}. kind is SCREENSHOT for an app or web screen, PHOTO for anything else. description, in Spanish, max 300 characters: what the image shows, which feature or step of the app is visible and any readable key text. Do not guess what is not visible.',
-    user: img.note ? `Nota del usuario: ${img.note}` : 'Describí la imagen.',
-    images: [await dataUri(img.path)],
+    system: `You describe ${video ? 'videos (the image is a 2x2 grid of 4 frames from the same clip, in order)' : 'images'} for a social media planner. Answer only with JSON: {"kind":"SCREENSHOT"|"PHOTO","description":string}. kind is SCREENSHOT for an app or web screen, PHOTO for anything else. description, in Spanish, max 300 characters: what it shows${video ? ' and what happens or moves (camera movement, water, people)' : ''}, which feature or step of the app is visible and any readable key text. For landscapes and places, say the kind of place (sierra, río, cascada, dique, pueblo…) and name the specific place only if the note or the bank title says it AND nothing visible contradicts it; if what you see contradicts the title (another country, a city instead of nature), say so. Do not guess what is not visible.`,
+    user: context || 'Describí la imagen.',
+    images: [shown],
     purpose: 'describir imagen',
   })
   const kind: AppImageKind = r.kind === 'PHOTO' ? 'PHOTO' : 'SCREENSHOT'
@@ -48,7 +53,7 @@ export async function describeImage(imageId: string) {
 /** Filas en el orden de `ids` (los pasos de un flujo tienen que llegar en orden). */
 export const inOrder = <T extends { id: string }>(ids: string[], rows: T[]) => ids.flatMap((id) => rows.filter((r) => r.id === id))
 
-export type PromptImage = { id: string; kind: AppImageKind; description: string | null; note: string | null; focus: boolean }
+export type PromptImage = { id: string; kind: AppImageKind; description: string | null; note: string | null; focus: boolean; video?: number; source?: string }
 
 /**
  * Imágenes para planificar: las elegidas (`focusIds`, se le muestran al modelo) y las de la biblioteca (sólo texto).
@@ -58,21 +63,28 @@ export type PromptImage = { id: string; kind: AppImageKind; description: string 
  * `shown`: cuántas de las elegidas se le adjuntan al modelo para que las vea (el carrusel de fotos las manda todas).
  * `screensFirst`: en los posts de capturas, la biblioteca trae primero las capturas (si no, las fotos recientes las tapan).
  */
-export async function imagesForPlan(appId: string, focusIds: string[] = [], shown = FOCUS_SHOWN, screensFirst = false) {
+export async function imagesForPlan(appId: string, focusIds: string[] = [], shown = FOCUS_SHOWN, first: boolean | 'screens' | 'real' = false) {
   const focus = focusIds.length ? inOrder(focusIds, await db.appImage.findMany({ where: { appId, id: { in: focusIds } } })) : []
-  const library = await db.appImage.findMany({ where: { appId, archived: false, id: { notIn: focusIds } }, orderBy: screensFirst ? [{ kind: 'asc' }, { createdAt: 'desc' }] : { createdAt: 'desc' }, take: LIBRARY_IN_PROMPT })
-  const all = [...focus, ...library].filter((i) => existsSync(mediaPath(i.path)))
+  // Capturas primero en los posts de capturas; fotos y videos primero en los de material real.
+  const order = first === true || first === 'screens' ? [{ kind: 'asc' as const }, { createdAt: 'desc' as const }] : first === 'real' ? [{ kind: 'desc' as const }, { createdAt: 'desc' as const }] : { createdAt: 'desc' as const }
+  const library = await db.appImage.findMany({ where: { appId, archived: false, id: { notIn: focusIds } }, orderBy: order, take: LIBRARY_IN_PROMPT })
+  // Sin path: un video que todavía se está procesando.
+  const all = [...focus, ...library].filter((i) => i.path && existsSync(mediaPath(i.path)))
   const described = await Promise.all(all.map((i) => (i.description ? i : describeImage(i.id).catch(() => i))))
-  const prompt: PromptImage[] = described.map((i) => ({ id: i.id, kind: i.kind, description: i.description, note: i.note, focus: focusIds.includes(i.id) }))
+  const prompt: PromptImage[] = described.map((i) => ({ id: i.id, kind: i.kind, description: i.description, note: i.note, focus: focusIds.includes(i.id), ...(i.videoPath ? { video: Math.round(i.duration ?? 0) } : {}), ...(i.source && i.source !== 'upload' ? { source: i.source } : {}) }))
   const seen = await Promise.all(described.filter((i) => focusIds.includes(i.id)).slice(0, shown).map((i) => dataUri(i.path)))
   return { prompt, shown: seen }
 }
 
-/** Imágenes de la app usadas por las diapositivas del post (id → tipo y data URI). Las borradas se omiten. */
+/**
+ * Imágenes de la app usadas por las diapositivas del post (id → tipo y data URI). Las borradas se omiten.
+ * Los videos traen su portada como `src` (para las piezas fijas) y el archivo en `video` (para los reels).
+ */
 export async function slideImages(appId: string, ids: string[]) {
   const imgs = ids.length ? await db.appImage.findMany({ where: { appId, id: { in: ids } } }) : []
-  const out = new Map<string, { kind: AppImageKind; src: string }>()
-  for (const i of imgs) if (existsSync(mediaPath(i.path))) out.set(i.id, { kind: i.kind, src: await dataUri(i.path) })
+  const out = new Map<string, { kind: AppImageKind; src: string; video?: string; duration?: number | null; credit?: string | null }>()
+  for (const i of imgs)
+    if (i.path && existsSync(mediaPath(i.path))) out.set(i.id, { kind: i.kind, src: await dataUri(i.path), ...(i.videoPath && existsSync(mediaPath(i.videoPath)) ? { video: i.videoPath, duration: i.duration } : {}), credit: i.credit })
   return out
 }
 

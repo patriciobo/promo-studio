@@ -12,6 +12,8 @@ const FIELDS: { key: SecretKey; label: string; hint: string }[] = [
   { key: 'META_TOKEN_CLIENTS', label: 'Token de Meta para clientes', hint: 'El del usuario de sistema del portfolio de clientes (guía, sección C). Lo usan las apps marcadas "De un cliente"; si está vacío, usan el de arriba.' },
   { key: 'OPENROUTER_API_KEY', label: 'API key de OpenRouter', hint: 'openrouter.ai/keys — poné un límite de crédito a la key.' },
   { key: 'GITHUB_TOKEN', label: 'Token de GitHub (fine-grained)', hint: 'Lectura de Contents y Metadata en los repos; para abrir PRs, escritura en Contents y Pull requests.' },
+  { key: 'PEXELS_API_KEY', label: 'Pexels: API key', hint: 'Opcional, gratis en pexels.com/api: videos y fotos reales para el tipo "Material real" (uso comercial sin atribución).' },
+  { key: 'PIXABAY_API_KEY', label: 'Pixabay: API key', hint: 'Opcional, gratis en pixabay.com/api/docs: más videos y fotos reales. Wikimedia Commons no pide clave.' },
   { key: 'WAHA_URL', label: 'WAHA: URL', hint: 'WhatsApp (opcional): aprobación de los clientes y avisos, p. ej. http://waha:3000' },
   { key: 'WAHA_API_KEY', label: 'WAHA: API key', hint: 'Si tu WAHA la pide.' },
   { key: 'WAHA_CHAT_ID', label: 'WAHA: número de origen', hint: 'El número conectado a WAHA, p. ej. 5493511234567: desde ahí salen los mensajes a los clientes y ahí llegan sus respuestas. Los avisos para vos van al chat con vos mismo de ese número.' },

@@ -188,8 +188,20 @@ model AppImage {
   flowId      String?
   step        Int? // desde 0
   sha         String? // sha del archivo en el repo: sólo se vuelve a bajar si cambió
+  // Videos: `path` es un cuadro de portada (JPG), así todo lo que usa imágenes sigue andando; el MP4 va en videoPath.
+  videoPath   String? // relativo a MEDIA_DIR
+  duration    Float? // segundos
+  // Material real de un banco (src/lib/stock.ts): de dónde salió y cómo hay que citarlo.
+  source      String? // upload | pexels | pixabay | commons (null = subida desde el panel, como antes)
+  sourceId    String? // id en ese banco: no se importa dos veces
+  sourceUrl   String? // página del archivo en el banco
+  sourceInfo  String? // título y etiquetas del banco (ayudan a describirlo y a verificar el lugar)
+  author      String?
+  license     String?
+  credit      String? // atribución obligatoria que va al final de la descripción del post (null = no hace falta)
 
   @@unique([appId, flowId, step])
+  @@unique([appId, source, sourceId])
   @@index([appId, archived])
 }
 

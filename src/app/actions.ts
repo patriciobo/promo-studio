@@ -11,6 +11,8 @@ import { enqueue, QUEUES } from '@/lib/jobs'
 import { actId, adAccounts, discoverAccounts, graph, token, type AdAccount } from '@/lib/instagram'
 import { manifestToYaml, parseManifest, setYamlBrand, type Manifest } from '@/lib/manifest'
 import { parseImageChoice, parseImageKind, parseKindChoice } from '@/lib/models'
+import { importStock } from '@/lib/stock'
+import { z } from 'zod'
 import { estimateSuggestion, suggestCampaign, type SuggestInput } from '@/lib/ad-suggest'
 import { activateCampaign, campaignLink, deleteCampaign, estimateAudience, friendly, pauseCampaign, searchPlaces, searchTargeting, syncCampaign, DETAIL_TYPES, EDUCATION, type Detail, type DetailType, type GeoPlace, type Objective, type Targeting } from '@/lib/meta-ads'
 import { explain } from '@/lib/meta-errors'
@@ -659,7 +661,7 @@ export async function estimateAction(slug: string, t: Targeting, placements: str
 
 export async function saveSecrets(f: FormData) {
   await requireUser()
-  for (const k of ['META_TOKEN', 'META_TOKEN_CLIENTS', 'OPENROUTER_API_KEY', 'GITHUB_TOKEN', 'WAHA_URL', 'WAHA_API_KEY', 'WAHA_CHAT_ID'] as SecretKey[]) {
+  for (const k of ['META_TOKEN', 'META_TOKEN_CLIENTS', 'OPENROUTER_API_KEY', 'GITHUB_TOKEN', 'WAHA_URL', 'WAHA_API_KEY', 'WAHA_CHAT_ID', 'PEXELS_API_KEY', 'PIXABAY_API_KEY'] as SecretKey[]) {
     const v = str(f, k)
     if (v === '__borrar__') await setSecret(k, '')
     else if (v) await setSecret(k, v)
@@ -882,4 +884,36 @@ export async function setAlgoNoteActive(id: string, active: boolean) {
   await requireUser()
   await db.algoNote.update({ where: { id }, data: { active } })
   revalidatePath('/tendencias')
+}
+
+// --- Material real (bancos libres) --------------------------------------------------
+
+const StockItemSchema = z.object({
+  source: z.enum(['pexels', 'pixabay', 'commons']),
+  id: z.string().min(1).max(300),
+  kind: z.enum(['video', 'photo']),
+  title: z.string().max(500),
+  preview: z.string().max(2000),
+  url: z.url().max(2000),
+  width: z.number(),
+  height: z.number(),
+  duration: z.number().optional(),
+  author: z.string().max(300),
+  pageUrl: z.url().max(2000),
+  license: z.string().max(100),
+  credit: z.string().max(300).nullable(),
+})
+
+/** Importa a la biblioteca un video o foto elegido en el buscador de Imágenes. */
+export async function importStockItem(slug: string, f: FormData) {
+  await requireUser()
+  const app = await db.app.findUniqueOrThrow({ where: { slug }, select: { id: true, slug: true } })
+  const parsed = StockItemSchema.safeParse(JSON.parse(str(f, 'item') || '{}'))
+  if (!parsed.success) return
+  try {
+    await importStock(app, parsed.data, str(f, 'note').slice(0, 500) || null)
+  } catch (e) {
+    redirect(`/apps/${slug}/imagenes?${new URLSearchParams({ q: str(f, 'q'), tipo: parsed.data.kind, error: `No se pudo importar: ${(e as Error).message}` })}`)
+  }
+  revalidatePath(`/apps/${slug}`, 'layout')
 }

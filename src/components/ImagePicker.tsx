@@ -5,7 +5,7 @@ import type { AppImage } from '@prisma/client'
 import { mediaSrc } from '@/lib/media'
 import { ImageShrinker } from './ImageShrinker'
 
-export function ImagePicker({ images, slug, hint, form }: { images: Pick<AppImage, 'id' | 'path' | 'description' | 'note'>[]; slug: string; hint: string; form?: string }) {
+export function ImagePicker({ images, slug, hint, form }: { images: Pick<AppImage, 'id' | 'path' | 'description' | 'note' | 'videoPath' | 'duration'>[]; slug: string; hint: string; form?: string }) {
   return (
     <details className="image-picker">
       <ImageShrinker />
@@ -31,6 +31,7 @@ export function ImagePicker({ images, slug, hint, form }: { images: Pick<AppImag
                   <input type="checkbox" name="imageIds" form={form} value={i.id} />
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={mediaSrc(i.path)} alt={i.description ?? 'Imagen de la biblioteca'} loading="lazy" />
+                  {i.videoPath && <span className="badge info pick-badge">▶ {i.duration ? `${Math.round(i.duration)} s` : 'video'}</span>}
                 </label>
               ))}
             </div>

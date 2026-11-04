@@ -9,8 +9,11 @@ export type Tier = 'pruebas' | 'mejor-calidad'
 /** Sin calidad alta: cuesta el triple que la media y en las piezas (con texto encima) casi no se nota. */
 export type ImageQuality = 'low' | 'medium'
 export type ImageKind = 'illustration' | 'photo'
-/** Tipo de un post: con imagen IA (ilustración o foto), sólo texto (pieza tipográfica) o capturas reales de la app; los dos últimos sin imagen generada. */
-export type PostKind = ImageKind | 'text' | 'screens'
+/**
+ * Tipo de un post: con imagen IA (ilustración o foto), sólo texto (pieza tipográfica), capturas reales de la app o
+ * material real (fotos y videos propios o de bancos libres); los tres últimos sin imagen generada.
+ */
+export type PostKind = ImageKind | 'text' | 'screens' | 'real'
 /** Qué tan bien le sale cada tipo de imagen a un modelo. */
 export type Fit = 'ideal' | 'bien' | 'flojo'
 
@@ -32,6 +35,7 @@ export const imageKindsIn = (k: KindChoice): ImageKind[] => kindsIn(k).filter((x
 export const KIND_CHOICES: { id: KindChoice; label: string; hint: string }[] = [
   ...IMAGE_KINDS,
   { id: 'screens', label: 'Capturas de la app', hint: 'Las pantallas reales de la app (las de Imágenes, los flujos y el promo.yaml) enmarcadas junto al texto, sin imagen IA. No gasta en imágenes.' },
+  { id: 'real', label: 'Material real (fotos y videos)', hint: 'Fotos y videos reales: los de Imágenes (subidos o importados de Pexels, Pixabay o Wikimedia Commons) y, si falta alguno, se busca solo en esos bancos y se elige el que muestra el lugar. Para lugares reales: la IA no inventa el paisaje. En los reels, cada escena es un tramo de un video real.' },
   { id: 'text', label: 'Sólo texto', hint: 'Piezas tipográficas con los colores de la marca, sin imagen IA: el título lleva la idea (un dato, una pregunta, un checklist). No gasta en imágenes.' },
   { id: 'mix', label: 'Mezcla: ilustración y foto', hint: 'Cada publicación sale en ilustración o en foto realista, repartidas mitad y mitad.' },
   { id: 'text+photo', label: 'Mezcla: texto y foto', hint: 'Mitad de las publicaciones sólo con texto y mitad con foto realista.' },
@@ -44,6 +48,7 @@ export const KIND_PLURAL: Record<KindChoice, string> = {
   photo: 'fotos',
   text: 'sólo texto',
   screens: 'las capturas',
+  real: 'el material real',
   mix: 'la mezcla de ilustraciones y fotos',
   'text+photo': 'las fotos',
   'text+illustration': 'las ilustraciones',
@@ -170,7 +175,10 @@ export function imagesPerMonth(c: Cadence, daily?: { types: ('CAROUSEL' | 'IMAGE
 
 export const parseImageKind = (v: string | null | undefined): ImageKind | undefined => (v === 'illustration' || v === 'photo' ? v : undefined)
 
-export const parsePostKind = (v: string | null | undefined): PostKind | undefined => (v === 'text' || v === 'screens' ? v : parseImageKind(v))
+export const parsePostKind = (v: string | null | undefined): PostKind | undefined => (v === 'text' || v === 'screens' || v === 'real' ? v : parseImageKind(v))
+
+/** Tipos sin imagen generada por IA. */
+export const noAiImage = (k: PostKind) => k === 'text' || k === 'screens' || k === 'real'
 
 export const parseKindChoice = (v: string | null | undefined): KindChoice | undefined => KIND_CHOICES.find((k) => k.id === v)?.id
 

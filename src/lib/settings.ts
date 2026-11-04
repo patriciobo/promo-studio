@@ -11,6 +11,8 @@ export const SECRET_KEYS = {
   WAHA_URL: 'WAHA_URL',
   WAHA_API_KEY: 'WAHA_API_KEY',
   WAHA_CHAT_ID: 'WAHA_CHAT_ID',
+  PEXELS_API_KEY: 'PEXELS_API_KEY',
+  PIXABAY_API_KEY: 'PIXABAY_API_KEY',
 } as const
 export type SecretKey = keyof typeof SECRET_KEYS
 

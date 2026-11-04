@@ -128,7 +128,7 @@ async function hasAudio(file: string) {
  * se le suma una placa de cierre de marca y se unen. Audio: el de los clips si lo traen; si ninguno trae, la música
  * del promo.yaml (con fundido al final) o silencio. H.264 + AAC, yuv420p y faststart: lo que Instagram acepta.
  */
-export async function composeReel(scenes: { clip: Buffer; overlay?: Buffer }[], endCard: Buffer, opts: { endSeconds?: number; music?: Buffer } = {}): Promise<Buffer> {
+export async function composeReel(scenes: { clip: Buffer; overlay?: Buffer; start?: number; seconds?: number }[], endCard: Buffer, opts: { endSeconds?: number; music?: Buffer } = {}): Promise<Buffer> {
   const dir = await mkdtemp(join(tmpdir(), 'reel-'))
   try {
     const parts: string[] = []
@@ -138,7 +138,8 @@ export async function composeReel(scenes: { clip: Buffer; overlay?: Buffer }[], 
       await writeFile(clip, s.clip)
       const audio = await hasAudio(clip)
       anyAudio ||= audio
-      const inputs = ['-i', clip]
+      // Material real: se usa un tramo (desde `start`, `seconds` de largo); los clips generados van enteros.
+      const inputs = [...(s.start ? ['-ss', String(s.start)] : []), ...(s.seconds ? ['-t', String(s.seconds)] : []), '-i', clip]
       let filter = `[0:v]${FILL}[base]`
       if (s.overlay) {
         const ov = join(dir, `ov${i}.png`)
@@ -178,10 +179,48 @@ export async function composeReel(scenes: { clip: Buffer; overlay?: Buffer }[], 
 
 /** Duración en segundos (de la salida de ffmpeg -i). */
 async function durationOf(file: string) {
+  return (await probeVideo(file)).duration ?? 15
+}
+
+/** Duración, tamaño y si es un video, leyendo la salida de ffmpeg -i (no hace falta ffprobe). */
+export async function probeVideo(file: string): Promise<{ duration: number | null; width: number | null; height: number | null; video: boolean }> {
   const out = await run(env.ffmpegPath, ['-hide_banner', '-i', file], { maxBuffer: 1 << 22 }).then(
     (r) => r.stderr,
     (e: { stderr?: string }) => e.stderr ?? '',
   )
-  const m = /Duration: (\d+):(\d+):(\d+(?:\.\d+)?)/.exec(out)
-  return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : 15
+  const d = /Duration: (\d+):(\d+):(\d+(?:\.\d+)?)/.exec(out)
+  // La primera pista de video que no sea una imagen adjunta (portada embebida).
+  const v = out.split('\n').find((l) => /Stream #.*Video:/.test(l) && !/attached pic/.test(l))
+  const size = v ? /, (\d{2,5})x(\d{2,5})/.exec(v) : null
+  return { duration: d ? Number(d[1]) * 3600 + Number(d[2]) * 60 + Number(d[3]) : null, width: size ? Number(size[1]) : null, height: size ? Number(size[2]) : null, video: !!v }
+}
+
+/** Un cuadro del video como JPEG (la portada en la biblioteca y en las piezas que no son reels). */
+export async function videoFrame(file: string, at = 1): Promise<Buffer> {
+  const dir = await mkdtemp(join(tmpdir(), 'frame-'))
+  try {
+    const out = join(dir, 'f.jpg')
+    await run(env.ffmpegPath, ['-y', '-loglevel', 'error', '-ss', String(at), '-i', file, '-frames:v', '1', '-vf', "scale='min(1600,iw)':-2", '-q:v', '3', out], { maxBuffer: 1 << 22 })
+    return await readFile(out)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+}
+
+/** Cuatro cuadros repartidos en una grilla 2×2: para que el modelo de visión describa (y verifique) todo el video, no un instante. */
+export async function contactSheet(file: string, duration: number): Promise<Buffer> {
+  const dir = await mkdtemp(join(tmpdir(), 'sheet-'))
+  try {
+    const frames: string[] = []
+    for (const [i, f] of [0.1, 0.35, 0.6, 0.85].entries()) {
+      const p = join(dir, `${i}.jpg`)
+      await run(env.ffmpegPath, ['-y', '-loglevel', 'error', '-ss', String(Math.max(0, duration * f)), '-i', file, '-frames:v', '1', '-vf', 'scale=640:640:force_original_aspect_ratio=decrease,pad=640:640:(ow-iw)/2:(oh-ih)/2', p], { maxBuffer: 1 << 22 })
+      frames.push(p)
+    }
+    const out = join(dir, 'sheet.jpg')
+    await run(env.ffmpegPath, ['-y', '-loglevel', 'error', ...frames.flatMap((f) => ['-i', f]), '-filter_complex', '[0:v][1:v]hstack[a];[2:v][3:v]hstack[b];[a][b]vstack', '-q:v', '4', out], { maxBuffer: 1 << 22 })
+    return await readFile(out)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
 }

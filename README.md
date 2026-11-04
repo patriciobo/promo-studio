@@ -100,6 +100,22 @@ genera, la música del `promo.yaml`. Los clips se guardan: corregir un texto no 
 El modelo se elige en **Ajustes → Modelo de video** (catálogo en `src/lib/video-models.ts`, con link a ejemplos de cada uno).
 Sugerido: Veo 3.1 Lite (~US$ 0,05/s con sonido, ~US$ 0,60 por reel de 3 escenas). Con `OPENROUTER_MOCK=1` se arma con escenas fijas.
 
+## Material real (fotos y videos de lugares)
+
+Para cuentas que muestran lugares reales (turismo, naturaleza), el tipo de imagen **Material real** no genera nada con IA:
+usa fotos y videos reales de la biblioteca de la app (pestaña **Imágenes**), que se cargan de tres formas:
+
+- **Videos propios**: se suben desde Imágenes (MP4, MOV o WebM, hasta 300 MB; van directo a disco por `PUT /api/library/<app>`).
+  Es lo mejor para Instagram, que premia el contenido original.
+- **Buscar material real**: busca en Pexels y Pixabay (claves gratis en Configuración) y en Wikimedia Commons (sin clave; muy bueno
+  para fotos de lugares puntuales) y se importa con su autor y licencia.
+- **Solo, al generar**: si una diapositiva o escena no encuentra nada en la biblioteca, el plan pide una búsqueda (`stockQuery`),
+  el modelo de visión elige el resultado que de verdad muestra ese lugar (descarta Córdoba, España, marcas de agua, caras) y se importa.
+
+En los reels, cada escena es un tramo del video real con el título encima; una foto se anima con el modelo de video sólo con
+movimiento natural (agua, viento, nubes), sin tocar el paisaje. Los videos se describen con 4 cuadros repartidos. Lo de Commons
+con CC BY / BY-SA lleva la atribución (`📷 Autor / Wikimedia Commons (licencia)`) al final de la descripción del post, sola.
+
 ## Radar de tendencias
 
 Dos veces por día, 7:30 y 19:30 (o con **Tendencias → Actualizar ahora**) se pregunta a dos modelos con búsqueda web qué formatos, memes y

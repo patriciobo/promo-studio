@@ -11,4 +11,5 @@ export default auth((req) => {
   return NextResponse.next()
 })
 
-export const config = { matcher: ['/((?!_next/static|_next/image).*)'] }
+// /api/library (subida de videos) queda fuera: el proxy copia el cuerpo y cortaba los videos grandes; la ruta verifica la sesión ella misma.
+export const config = { matcher: ['/((?!_next/static|_next/image|api/library).*)'] }

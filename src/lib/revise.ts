@@ -8,7 +8,7 @@ import { dataUri } from './media'
 import { imagesForPlan, type PromptImage } from './images'
 import { notify } from './notify'
 import { completeJson } from './openrouter'
-import { manifestOf, renderPost, toClient } from './pipeline'
+import { fillFromStock, manifestOf, renderPost, toClient, type PlannedPost } from './pipeline'
 import { MAX_CAROUSEL } from './photos'
 import { sendText } from './whatsapp'
 import type { Manifest } from './manifest'
@@ -16,7 +16,7 @@ import type { Manifest } from './manifest'
 /** Correcciones automáticas por publicación; después de esto el pedido queda para el dueño (evita idas y vueltas sin fin). */
 export const MAX_AUTO_REVISIONS = 3
 
-const SlideSchema = z.object({ eyebrow: z.string().optional(), title: z.string(), body: z.string().optional(), items: z.array(z.string()).optional(), imagePrompt: z.string().optional(), videoPrompt: z.string().optional(), imageId: z.string().optional().nullable() })
+const SlideSchema = z.object({ eyebrow: z.string().optional(), title: z.string(), body: z.string().optional(), items: z.array(z.string()).optional(), imagePrompt: z.string().optional(), videoPrompt: z.string().optional(), stockQuery: z.string().optional().nullable(), imageId: z.string().optional().nullable() })
 export const RevisionSchema = z.object({
   caption: z.string(),
   altText: z.string().default(''),
@@ -31,15 +31,15 @@ type Slide = z.infer<typeof SlideSchema>
 
 const MAX_SLIDES: Record<PostType, number> = { IMAGE: 1, STORY: 1, CAROUSEL: MAX_CAROUSEL, REEL: 5 }
 
-export function buildRevisePrompt(m: Manifest, post: Pick<Post, 'type' | 'caption' | 'altText' | 'imagePrompt' | 'slides'>, note: string, images: PromptImage[]) {
+export function buildRevisePrompt(m: Manifest, post: Pick<Post, 'type' | 'caption' | 'altText' | 'imagePrompt' | 'slides'> & { imageKind?: string | null }, note: string, images: PromptImage[]) {
   const system = `You edit an Instagram post of "${m.name}" following the change request its client sent by WhatsApp. Apply exactly what the client asks and keep everything else as it is (same type, structure, tone and hashtags unless asked).
 Write ALL user-facing text in ${m.languages[0]} with this tone: ${m.tone}. Never mention: ${m.avoid.join('; ') || 'nothing in particular'}. Never invent facts, prices, dates, features or claims that are not in the app data or in the client's request.
 Never describe the images in the text (no colors, walls, furniture, objects or what is "in the photo"): titles, bodies and caption talk about the business, unless the client explicitly asks otherwise.
 Slides: keep the same number unless the client asks to add or remove (max ${MAX_SLIDES[post.type]} for this ${post.type}). The attached images are the current slides as the client saw them, in order.
 Images: a slide with imageId shows a real image of the business. To show a different real image, set imageId to one of appImages (only those ids). If the client wants a different generated picture (another scene, other colors, other style), rewrite that slide's imagePrompt in English (no text, letters or logos in the image) and put its 0-based index in "regenerate". Do not put in "regenerate" slides that keep their picture.
-${post.type === 'REEL' ? 'This is a REEL: each slide is a video scene (an AI-generated clip with its title overlaid; a branded end card is added automatically). To change what happens in a scene, rewrite its videoPrompt (English, one continuous shot, no text in the video) and/or its imagePrompt (the first frame) and put its index in "regenerate". Changing only a title does not need "regenerate".\n' : ''}If the request cannot be done with these tools (for example the client will send a new photo or video, wants to change the logo or brand colors, asks something unrelated to the post, or it is too unclear to act on), set "needsHuman" to a short explanation in Spanish for the account manager and return the post unchanged. Otherwise "needsHuman" is null.
+${post.imageKind === 'real' ? 'This post uses only REAL photos and videos of real places (never generated images): to show a different one, set imageId to one of appImages or, if none fits, set imageId null and "stockQuery" to a short English search for a free stock bank naming the place and region (e.g. "Champaqui hill Cordoba Argentina"). Never use "regenerate" in this post.\n' : ''}${post.type === 'REEL' ? 'This is a REEL: each slide is a video scene (an AI-generated clip with its title overlaid; a branded end card is added automatically). To change what happens in a scene, rewrite its videoPrompt (English, one continuous shot, no text in the video) and/or its imagePrompt (the first frame) and put its index in "regenerate". Changing only a title does not need "regenerate".\n' : ''}If the request cannot be done with these tools (for example the client will send a new photo or video, wants to change the logo or brand colors, asks something unrelated to the post, or it is too unclear to act on), set "needsHuman" to a short explanation in Spanish for the account manager and return the post unchanged. Otherwise "needsHuman" is null.
 "summary": one short sentence in ${m.languages[0]} for the client saying what was changed.
-Answer only with JSON: {"caption":string,"altText":string,"imagePrompt":string,"slides":[{"eyebrow"?:string,"title":string,"body"?:string,"items"?:string[],"imagePrompt"?:string${post.type === 'REEL' ? ',"videoPrompt"?:string' : ''},"imageId"?:string|null}],"regenerate":number[],"needsHuman":string|null,"summary":string}`
+Answer only with JSON: {"caption":string,"altText":string,"imagePrompt":string,"slides":[{"eyebrow"?:string,"title":string,"body"?:string,"items"?:string[],"imagePrompt"?:string${post.type === 'REEL' ? ',"videoPrompt"?:string' : ''}${post.imageKind === 'real' ? ',"stockQuery"?:string|null' : ''},"imageId"?:string|null}],"regenerate":number[],"needsHuman":string|null,"summary":string}`
   const user = JSON.stringify({
     clientRequest: note,
     post: { type: post.type, caption: post.caption, altText: post.altText, imagePrompt: post.imagePrompt, slides: post.slides },
@@ -101,6 +101,11 @@ export async function reviseFromClient(postId: string, note: string) {
     if (rev.needsHuman) return manual(rev.needsHuman)
     const summary = rev.summary.trim().replace(/[.\s]+$/, '')
     const fix = applyRevision(post.type, rev, new Set(images.prompt.map((i) => i.id)))
+    // Material real: lo que pidió buscar se trae de un banco (verificado con visión) antes de volver a armarla.
+    if (post.imageKind === 'real') {
+      await fillFromStock(app, m, { slides: fix.slides } as unknown as PlannedPost, post.type, new Set())
+      fix.regenerate = []
+    }
     await db.post.update({
       where: { id: postId },
       data: { caption: fix.caption, altText: fix.altText, slides: fix.slides, imagePrompt: fix.imagePrompt, revisions: { increment: 1 }, textCostUsd: (post.textCostUsd ?? 0) + cost, error: null },
