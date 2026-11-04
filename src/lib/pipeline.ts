@@ -1,11 +1,11 @@
-// Lote semanal de una app: sincronizar el manifiesto → planificar con el modelo de texto →
-// generar fondos con el modelo de imagen → renderizar las piezas → cola de revisión.
+// Lote semanal de una app: sincronizar el manifiesto → planificar con el modelo de texto (con las tendencias del radar) →
+// generar fondos con el modelo de imagen (y clips con el de video, en los reels) → renderizar las piezas → cola de revisión.
 import type { App, AppImageKind, Post, PostType, Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { brandFrom, type Brand } from '@/templates/brand'
-import { SIZES, type SlideData } from '@/templates/html'
+import { reelOverlay, SIZES, type SlideData } from '@/templates/html'
 import { TEMPLATES } from '@/templates/styles'
-import { buildReel, renderHtml } from '@/render/renderer'
+import { buildReel, composeReel, renderHtml } from '@/render/renderer'
 import { db } from './db'
 import { getFile, getRawBytes, latestReleases } from './github'
 import { imagesForPlan, importFlowScreens, libraryScreens, slideImages, type PromptImage } from './images'
@@ -18,7 +18,10 @@ import { kindsIn, parseKindChoice, parsePostKind, type ImageChoice, type ImageKi
 import { drawLooks, forIllustration, ILLUSTRATION_ONLY, kindsFor, NATURAL_PHOTO, type Look, type Rng } from './variety'
 import { designStyle, parseDesignStyle } from './styles'
 import { MAX_CAROUSEL, parsePhotoMode, photoSetSlides, photoTreatment, type PhotoMode } from './photos'
-import { completeJson, generateImage } from './openrouter'
+import { assertBudget } from './budget'
+import { completeJson, generateImage, generateVideo } from './openrouter'
+import { END_CARD_SECONDS, MAX_REEL_SCENES, reelPlan, videoModelOf } from './video-models'
+import { keepKnownTrends, trendSlotsFor, trendsForApp, type PromptTrend } from './trends'
 import { localParts, roundTime, weekSlots, zonedTime, type Slot } from './schedule'
 import { existsSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
@@ -138,7 +141,8 @@ const PlanSchema = z.object({
       altText: z.string().default(''),
       imagePrompt: z.string(),
       sourceId: z.string().optional().nullable(),
-      slides: z.array(z.object({ eyebrow: z.string().optional(), title: z.string(), body: z.string().optional(), items: z.array(z.string()).optional(), imagePrompt: z.string().optional(), imageId: z.string().optional().nullable() })).min(1),
+      trendId: z.string().optional().nullable(),
+      slides: z.array(z.object({ eyebrow: z.string().optional(), title: z.string(), body: z.string().optional(), items: z.array(z.string()).optional(), imagePrompt: z.string().optional(), videoPrompt: z.string().optional(), imageId: z.string().optional().nullable() })).min(1),
     }),
   ),
 })
@@ -164,7 +168,7 @@ const photoSetRules = (n: number) => `${n} slides, exactly one per focus appImag
 const SLIDE_RULES: Record<PostType, string> = {
   IMAGE: '1 slide: title (max 70 chars) + body (max 140 chars).',
   CAROUSEL: '4-7 slides: slide 1 is a hook cover (title max 60 chars); middle slides teach one idea each (title + up to 4 short items OR a body); last slide is a call to action.',
-  REEL: '3-5 scenes for a 15-second vertical video: very short titles (max 45 chars), optional body (max 80 chars); last scene is the call to action.',
+  REEL: `2-${MAX_REEL_SCENES} scenes of a ~12-second vertical Reel generated with an AI video model: each scene is a real moving clip of 3-6 seconds (never a still image), with a videoPrompt and a very short on-screen title (max 40 chars, optional body max 70 chars). Scene 1 is the hook and must grab attention in the first second (a surprising action, a relatable pain, a pattern interrupt). Do NOT write a call-to-action scene: a branded end card with the call to action is added automatically.`,
   STORY: '1 slide: a short title (max 50 chars) and body (max 90 chars), conversational, inviting a reply or a link tap.',
 }
 
@@ -192,7 +196,7 @@ export function looksFor(m: Manifest, design: string | null | undefined, choice:
 /** Lo que el modelo de texto tiene que respetar en las imagePrompts de cada post. */
 const visualOf = (l: Look) => (l.kind === 'text' || l.kind === 'screens' ? { imageType: l.kind } : { imageType: l.kind, style: l.style, people: l.people, setting: l.setting, framing: l.framing, light: l.light })
 
-export function buildPlanPrompt(m: Manifest, slots: Slot[], ctx: { feed: Feed['items']; texts: string[]; releases: { name: string; body: string }[]; recent: { pillar: string | null; hook: string | null }[]; bestPillars: string[]; topic?: string; daily?: { date: string; report: string }; images?: PromptImage[]; kind?: KindChoice; design?: string | null; brief?: string | null; starter?: { theme: string; goal: string; pin?: boolean }[]; photoMode?: PhotoMode; photoSet?: string[]; looks?: Look[] }) {
+export function buildPlanPrompt(m: Manifest, slots: Slot[], ctx: { feed: Feed['items']; texts: string[]; releases: { name: string; body: string }[]; recent: { pillar: string | null; hook: string | null }[]; bestPillars: string[]; topic?: string; daily?: { date: string; report: string }; images?: PromptImage[]; kind?: KindChoice; design?: string | null; brief?: string | null; starter?: { theme: string; goal: string; pin?: boolean }[]; photoMode?: PhotoMode; photoSet?: string[]; looks?: Look[]; trends?: PromptTrend[]; algo?: string[]; trendSlots?: number; forcedTrend?: string | null }) {
   const images = ctx.images ?? []
   const looks: Look[] = ctx.looks ?? kindsFor(ctx.kind ?? 'illustration', slots.length).map((kind) => ({ kind, style: kind === 'text' || kind === 'screens' ? '' : styleFor(m, kind, ctx.design) }))
   const kinds = new Set(looks.map((l) => l.kind))
@@ -200,6 +204,9 @@ export function buildPlanPrompt(m: Manifest, slots: Slot[], ctx: { feed: Feed['i
   const styled = looks.some((l) => l.kind !== 'text' && l.kind !== 'screens' && !l.people)
   const shots = images.some((i) => i.kind === 'SCREENSHOT')
   const focus = images.filter((i) => i.focus)
+  const trends = ctx.trends ?? []
+  const reels = slots.some((s) => s.type === 'REEL')
+  const forced = ctx.forcedTrend ? trends.find((t) => t.id === ctx.forcedTrend) : undefined
   const system = `You are the social media manager of the app "${m.name}". You write Instagram content that promotes the app with real value for its audience, never clickbait.
 Write ALL user-facing text in ${m.languages[0]} with this tone: ${m.tone}.
 Never mention: ${m.avoid.join('; ') || 'nothing in particular'}.
@@ -209,12 +216,15 @@ Image prompts are in English. Each slot has a "visual" brief drawn at random so 
 - imageType "illustration": describe an illustration in that style, with simplified UI shapes. Never use photographic words (photo, realistic, camera, lens, bokeh, cinematic): it must not look like a photo.` : ''}${kinds.has('photo') ? `
 - imageType "photo": describe a realistic photo in that style that looks candid, unposed and a bit imperfect, like a snapshot a friend took with a phone, with screens angled or out of focus. Ordinary-looking people as they really are, never models, a photoshoot or a studio.` : ''}
 ${drawn ? `Show people using the app or the problem it solves: when the visual brief has people, setting, framing and light, use them (describe the people concretely: age, look, build and clothes) and change them only if they contradict the slide or the app's audience; never default to young good-looking people. ` : ''}${styled ? `When the visual brief has only a style, that style rules the subject and composition: show the slide's idea the way it describes, and add people only if the style includes them. ` : ''}No readable text, letters, numbers or logos anywhere; fit the brand colors ${m.brand.colors.join(', ')} and leave calm space for overlaid text.
-Every slide (or reel scene) also gets its own imagePrompt${kinds.has('text') || kinds.has('screens') ? ' (except in "text" and "screens" posts)' : ''}: the same people, setting and style as the rest of its post, showing that slide's idea.${images.length ? `
+Every slide (or reel scene) also gets its own imagePrompt${kinds.has('text') || kinds.has('screens') ? ' (except in "text" and "screens" posts)' : ''}: the same people, setting and style as the rest of its post, showing that slide's idea.${reels ? `
+REEL scenes: the imagePrompt is the FIRST FRAME of the clip and "videoPrompt" (English) describes one continuous shot that starts there: the concrete action that happens (people moving, reacting, using the app on a phone, something changing), the camera (handheld phone, push-in, whip pan, POV, over-the-shoulder), the setting and the natural sound (ambience, effects; no voice-over unless it is a short natural line). It must feel like a native Instagram Reel shot by a real person, not an ad and never a slideshow or a slow zoom over a still. Keep the same people and setting across the scenes so it reads as one story. No on-screen text, letters, logos or watermarks in the video (the title is overlaid later). In "text" or "screens" reels the imagePrompt is "" but videoPrompt is still required.` : ''}${trends.length ? `
+"trends" are formats, memes and sounds trending right now on Instagram and TikTok for this audience (stage "emerging" = new, "peak" = at its best; yourResult = how this account did with it before). ${forced ? `This post MUST be based on the trend "${forced.name}" (set trendId "${forced.id}"): adapt its format (structure, joke, hook, editing pattern) to the topic.` : `Base at most ${ctx.trendSlots ?? 1} post(s) on one of them, only when it genuinely fits the app and its audience (prefer feed posts and reels, and trends that did well for this account): set its trendId and adapt the FORMAT (structure, joke, hook, editing pattern) to the app's topic. If none fits naturally, use none (trendId null): a forced trend hurts more than it helps.`} Never copy anyone else's images, characters, footage, brand or copyrighted audio: recreate the format with the app's own world. A trend-based post still gives real value about the app.` : ''}${ctx.algo?.length ? `
+Current Instagram ranking notes (apply them when writing hooks, captions and formats): ${ctx.algo.join(' | ')}` : ''}${images.length ? `
 appImages are real images of the app uploaded by the user (SCREENSHOT = a screen of the app, PHOTO = a photo). A slide can show one instead of a generated image: set its "imageId". Use what the image shows only as context to pick the right topic (a SCREENSHOT tells which feature to talk about, a PHOTO which part of the business); never invent features that are not visible. ${PHOTO_LAYOUT[ctx.photoMode ?? 'fondo']} Use each image at most once per post${ctx.photoSet ? '' : ' and never on the last call-to-action slide'}.` : ''}
 NEVER describe the images in any user-facing text (titles, bodies, items, captions): the reader already sees them. Do not mention their colors, walls, furniture, decor, objects, materials, light, composition or what is "in the photo"; talk about the business instead: what it offers, why it matters to the audience and how to get it.
 Captions: first line is a hook, 2-5 short lines of value, then the CTA "${m.cta}", then 3-5 specific hashtags (from: ${m.hashtags.join(' ') || 'choose relevant ones'}).
 altText describes the image for accessibility and includes keywords people would search.
-Answer only with JSON: {"posts":[{"slot":number,"pillar":string,"hook":string,"caption":string,"hashtags":string[],"altText":string,"imagePrompt":string,"sourceId":string|null,"slides":[{"eyebrow"?:string,"title":string,"body"?:string,"items"?:string[],"imagePrompt":string${images.length ? ',"imageId"?:string|null' : ''}}]}]}`
+Answer only with JSON: {"posts":[{"slot":number,"pillar":string,"hook":string,"caption":string,"hashtags":string[],"altText":string,"imagePrompt":string,"sourceId":string|null${trends.length ? ',"trendId":string|null' : ''},"slides":[{"eyebrow"?:string,"title":string,"body"?:string,"items"?:string[],"imagePrompt":string${reels ? ',"videoPrompt"?:string' : ''}${images.length ? ',"imageId"?:string|null' : ''}}]}]}`
   const focusRule = focus.length
     ? ` The user wants this content based on the appImages marked focus:true (also attached as images): ${slots.length > 1 ? 'spread them across the week and use each one in at least one post' : 'use them in this post (a step-by-step if they show a flow, in order)'}, and build the text around the business topic they point to (never a description of the images).`
     : images.length
@@ -230,6 +240,7 @@ Answer only with JSON: {"posts":[{"slot":number,"pillar":string,"hook":string,"c
     bestPerformingPillars: ctx.bestPillars,
     todaysEdition: ctx.daily ? { date: ctx.daily.date, report: ctx.daily.report } : undefined,
     appImages: images.length ? images.map((i) => ({ id: i.id, kind: i.kind, shows: i.description, userNote: i.note ?? undefined, focus: i.focus || undefined })) : undefined,
+    trends: trends.length ? trends : undefined,
     instructions: (ctx.daily
       ? `Create exactly one post per slot about TODAY's edition (${ctx.daily.date}) in todaysEdition. Use ONLY facts stated in that report: no other news, no opinions, no predictions, no invented figures; attribute claims to the sources as the report does. CAROUSEL: slide 1 is a cover with the date as eyebrow and the day's main story as title; then 3-5 slides with the most relevant regions or the trade/commodities climate (title + up to 4 short items each); last slide invites to read the full edition and subscribe. STORY: the 3 main headlines of the day, very short. Captions summarize the day in 2-4 lines and invite to read the full edition.`
       : ctx.topic
@@ -275,12 +286,14 @@ async function planPosts(app: App, m: Manifest, batchId: string, weekStart: Date
   const starter = batchKind === 'STARTER'
   const slots = starter ? starterSlots(weekStart, app.postTime, app.timezone) : await withoutStarterDays(app, weekSlots(weekStart, m.cadence, roundTime(app.postTime, round), app.timezone))
   if (!slots.length) return db.batch.update({ where: { id: batch.id }, data: { status: 'READY', notes: 'Cadencia semanal en 0' } })
-  const [src, releases, recent, scored, images] = await Promise.all([
+  const [src, releases, recent, scored, images, trending] = await Promise.all([
     sources(m),
     app.repo ? latestReleases(app.repo) : [],
     db.post.findMany({ where: { appId }, orderBy: { createdAt: 'desc' }, take: 30, select: { pillar: true, hook: true } }),
     db.post.groupBy({ by: ['pillar'], where: { appId, score: { not: null } }, _avg: { score: true } }),
     imagesForPlan(appId, imageIds, undefined, kindsIn(kind).includes('screens')),
+    // El kit inicial explica el negocio: sin tendencias.
+    starter ? { trends: [], algo: [] } : trendsForApp(app, m).catch((e) => (console.error('[tendencias]', e.message), { trends: [], algo: [] })),
   ])
   const bestPillars = scored
     .filter((s) => s.pillar)
@@ -288,10 +301,10 @@ async function planPosts(app: App, m: Manifest, batchId: string, weekStart: Date
     .slice(0, 3)
     .map((s) => s.pillar!)
   const looks = looksFor(m, app.designStyle, kind, slots.length)
-  const { system, user } = buildPlanPrompt(m, slots, { ...src, releases: releases.filter((r) => Date.now() - Date.parse(r.date) < 30 * 864e5), recent, bestPillars, images: images.prompt, looks, design: app.designStyle, photoMode: parsePhotoMode(app.photoMode), brief, starter: starter ? STARTER_TOPICS.map((t) => ({ theme: t.label, goal: t.brief, pin: t.pin })) : undefined })
+  const { system, user } = buildPlanPrompt(m, slots, { ...src, releases: releases.filter((r) => Date.now() - Date.parse(r.date) < 30 * 864e5), recent, bestPillars, images: images.prompt, looks, design: app.designStyle, photoMode: parsePhotoMode(app.photoMode), brief, starter: starter ? STARTER_TOPICS.map((t) => ({ theme: t.label, goal: t.brief, pin: t.pin })) : undefined, ...trending, trendSlots: trendSlotsFor(slots.filter((s) => s.type !== 'STORY').length) })
   let textCost = 0
   const raw = process.env.OPENROUTER_MOCK === '1' ? mockPlan(m, slots, src.feed, imageIds) : await completeJson({ appId, model: app.textModel, system, user, images: images.shown, purpose: `${starter ? 'kit inicial' : 'plan'} ${weekStart.toISOString().slice(0, 10)}`, onCost: (c) => (textCost = c) })
-  const plan = keepKnownImages(PlanSchema.parse(raw), images.prompt)
+  const plan = keepKnownTrends(keepKnownImages(PlanSchema.parse(raw), images.prompt), trending.trends)
   for (const [i, slot] of slots.entries()) {
     const p = plan.posts.find((x) => x.slot === i) ?? plan.posts[i]
     if (!p) continue
@@ -327,7 +340,10 @@ export function mockPlan(m: Manifest, slots: Slot[], feed: Feed['items'], imageI
         s.type === 'CAROUSEL'
           ? [{ eyebrow: idea.pillar ?? m.pillars[0], title: idea.title, body: idea.body?.slice(0, 120) }, { title: 'Cómo hacerlo', items: bullets }, { title: m.tagline, items: m.features.slice(0, 3) }, { title: m.cta, body: m.url }]
           : s.type === 'REEL'
-            ? [{ eyebrow: idea.pillar ?? m.pillars[0], title: idea.title }, { title: bullets[0] ?? m.tagline }, { title: m.cta }]
+            ? [
+                { eyebrow: idea.pillar ?? m.pillars[0], title: idea.title, videoPrompt: `Handheld phone shot: a person reacts surprised while using a phone app about ${idea.title}` },
+                { title: bullets[0] ?? m.tagline, videoPrompt: 'Over-the-shoulder shot of the same person tapping through the app, smiling' },
+              ]
             : [{ eyebrow: idea.pillar ?? m.pillars[0], title: idea.title, body: (idea.body ?? m.tagline).slice(0, 120) }]
       // Las imágenes elegidas se reparten entre los posts: van en la segunda diapositiva (o la única).
       const imageId = imageIds[i % (imageIds.length || 1)]
@@ -349,7 +365,7 @@ export function mockPlan(m: Manifest, slots: Slot[], feed: Feed['items'], imageI
 
 export function postFromPlan(app: Pick<App, 'id'>, batchId: string | null, slot: Slot, p: PlannedPost, look?: Look): Prisma.PostUncheckedCreateInput {
   const tags = p.hashtags.map((h) => (h.startsWith('#') ? h : `#${h}`)).filter((h) => !p.caption.includes(h))
-  const slides = slot.type === 'CAROUSEL' ? p.slides.slice(0, MAX_CAROUSEL) : slot.type === 'REEL' ? p.slides.slice(0, 5) : p.slides.slice(0, 1)
+  const slides = slot.type === 'CAROUSEL' ? p.slides.slice(0, MAX_CAROUSEL) : slot.type === 'REEL' ? p.slides.slice(0, MAX_REEL_SCENES) : p.slides.slice(0, 1)
   return {
     appId: app.id,
     batchId,
@@ -363,6 +379,7 @@ export function postFromPlan(app: Pick<App, 'id'>, batchId: string | null, slot:
     imagePrompt: p.imagePrompt,
     imageKind: look?.kind,
     imageStyle: look?.style,
+    trendId: p.trendId ?? null,
     scheduledAt: slot.at,
   }
 }
@@ -371,7 +388,7 @@ export function postFromPlan(app: Pick<App, 'id'>, batchId: string | null, slot:
 // 3. Generar y renderizar
 // ---------------------------------------------------------------------------
 
-type Slide = { eyebrow?: string; title: string; body?: string; items?: string[]; imagePrompt?: string; imageId?: string | null }
+type Slide = { eyebrow?: string; title: string; body?: string; items?: string[]; imagePrompt?: string; videoPrompt?: string; imageId?: string | null }
 
 const vertical = (t: PostType) => t === 'REEL' || t === 'STORY'
 
@@ -437,6 +454,8 @@ export async function renderPost(postId: string, opts: { regenerateImage?: boole
   const app = post.app
   const brand = await brandOf(app)
   const slides = (post.slides as Slide[] | null) ?? [{ title: post.hook ?? app.name }]
+  // Reels con un modelo de video. En modo demo (sin gastar) se arma con escenas fijas, como antes.
+  if (post.type === 'REEL' && process.env.OPENROUTER_MOCK !== '1') return renderReel(app, post, slides, brand, opts)
   const shots = await screenshots(app)
   const own = await slideImages(app.id, slides.flatMap((s) => (s.imageId ? [s.imageId] : [])))
   const size = vertical(post.type) ? SIZES.story : SIZES.feed
@@ -505,6 +524,94 @@ export async function renderPost(postId: string, opts: { regenerateImage?: boole
   }
 }
 
+/**
+ * Prompt de una escena de reel para el modelo de video: una toma continua con movimiento real, vertical y con la estética
+ * del post (foto natural o ilustración animada). Sin texto en el video: el título se superpone después.
+ */
+export function videoPromptFor(m: Manifest, scene: string, look: { kind: string; style: string }) {
+  const colors = m.brand.colors.join(', ')
+  const style = look.kind === 'illustration' ? `Animated in this illustration style: ${look.style}.` : `Realistic, candid handheld phone footage, natural light, ordinary-looking people (never models or a studio)${look.style && look.kind === 'photo' ? `; look: ${look.style}` : ''}.`
+  return `Vertical 9:16 Instagram Reel shot. ${scene}. ${style} Subtle touches of the brand colors ${colors}. Real continuous motion and action in the scene, not a slideshow or a slow zoom over a still image. No on-screen text, captions, subtitles, letters, logos or watermarks.`
+}
+
+/**
+ * Reel con modelo de video: por escena, un primer cuadro (la foto elegida, o una imagen IA del estilo del post para que
+ * toda la historia tenga la misma gente) y un clip generado a partir de él; encima va el título de la escena y al final
+ * una placa de cierre de marca. Los clips se reutilizan al volver a renderizar (corregir un texto no gasta video).
+ */
+async function renderReel(app: App, post: Post, all: Slide[], brand: Brand, opts: { regenerateImage?: boolean; regenerate?: number[]; image?: ImageChoice }) {
+  const m = manifestOf(app)
+  const t = TEMPLATES[designStyle(app.designStyle).id]
+  const size = SIZES.story
+  const vm = videoModelOf(app.videoModel)
+  // Escenas: sin la de llamado a la acción que traían los reels de antes (ahora la pone la placa final).
+  const ctaLike = all.length > 2 && !all[all.length - 1].videoPrompt && all.slice(0, -1).some((s) => s.videoPrompt)
+  const scenes = (ctaLike ? all.slice(0, -1) : all).slice(0, MAX_REEL_SCENES)
+  const plan = reelPlan(vm, scenes.length)
+  const image = opts.image ?? { model: app.imageModel, quality: app.imageQuality }
+  const look = await lookOf(app, post, opts.image?.kind)
+  const own = await slideImages(app.id, scenes.flatMap((s) => (s.imageId ? [s.imageId] : [])))
+  const force = (i: number) => !!(opts.regenerateImage || opts.regenerate?.includes(i))
+  // Los clips salen en paralelo: se controla el tope con el costo de todos los que faltan antes de pedir el primero.
+  const missing = await Promise.all(scenes.map(async (_, i) => force(i) || !(await db.asset.count({ where: { postId: post.id, kind: 'CLIP', position: i } }))))
+  await assertBudget(app.id, missing.filter(Boolean).length * plan.seconds * vm.pricePerSec)
+
+  // 1. Primeros cuadros, en orden: el primero es la referencia de estilo y de gente de los demás.
+  const frames: (string | undefined)[] = []
+  const refs: string[] = []
+  for (const [i, s] of scenes.entries()) {
+    const mine = s.imageId ? own.get(s.imageId) : undefined
+    if (mine?.kind === 'PHOTO') {
+      frames.push(mine.src)
+      continue
+    }
+    if (look.kind === 'text' || look.kind === 'screens') {
+      frames.push(undefined)
+      continue
+    }
+    const scene = s.imagePrompt || post.imagePrompt || s.title
+    const img = await background(app, post, i, scene, { force: force(i), references: refs.slice(0, 1), image, look: { kind: look.kind, style: look.style } })
+    if (img && !refs.length) refs.push(img)
+    frames.push(img)
+  }
+
+  // 2. Clips: en paralelo (cada uno tarda uno o dos minutos).
+  const clips = await Promise.all(
+    scenes.map(async (s, i) => {
+      const prev = await db.asset.findFirst({ where: { postId: post.id, kind: 'CLIP', position: i }, orderBy: { createdAt: 'desc' } })
+      if (prev && !force(i) && existsSync(mediaPath(prev.path))) return readFile(mediaPath(prev.path))
+      const prompt = videoPromptFor(m, s.videoPrompt || s.imagePrompt || `${post.imagePrompt ?? ''} ${s.title}`.trim(), look)
+      const clip = await generateVideo({ appId: app.id, model: vm.id, prompt, seconds: plan.seconds, resolution: vm.resolution, firstFrame: frames[i], audio: vm.audio || undefined, estimateUsd: plan.seconds * vm.pricePerSec, purpose: `video REEL escena ${i + 1}` })
+      const rel = await saveMedia(`apps/${app.slug}/posts/${post.id}/clip-${i}-${Date.now()}.mp4`, clip.data)
+      await db.asset.create({ data: { postId: post.id, kind: 'CLIP', position: i, path: rel, prompt, model: vm.id, costUsd: clip.cost, width: size.w, height: size.h } })
+      return clip.data
+    }),
+  )
+
+  // 3. Texto de cada escena, placa final y armado.
+  const overlays = await Promise.all(scenes.map((s) => renderHtml(reelOverlay(brand, s, size), size.w, size.h, 'png', true)))
+  const endCard = await renderHtml(t.cta(brand, { title: m.cta, body: ctaLike ? all[all.length - 1].title : undefined }, size), size.w, size.h)
+  const musicRel = m.music ? `apps/${app.slug}/music${extname(m.music) || '.mp3'}` : null
+  const music = musicRel && existsSync(mediaPath(musicRel)) ? await readFile(mediaPath(musicRel)) : undefined
+  const video = await composeReel(
+    clips.map((clip, i) => ({ clip, overlay: overlays[i] })),
+    endCard,
+    { endSeconds: END_CARD_SECONDS, music },
+  )
+  // Portada (para la grilla y la revisión): la primera escena con su título.
+  const cover = await renderHtml(t.cover(brand, { ...scenes[0], index: 0, background: frames[0] }, size), size.w, size.h)
+  await db.asset.deleteMany({ where: { postId: post.id, kind: { in: ['SLIDE', 'VIDEO'] } } })
+  const stamp = Date.now()
+  const rel = await saveMedia(`apps/${app.slug}/posts/${post.id}/reel-${stamp}.mp4`, video)
+  const coverRel = await saveMedia(`apps/${app.slug}/posts/${post.id}/cover-${stamp}.jpg`, cover)
+  await db.asset.createMany({
+    data: [
+      { postId: post.id, kind: 'VIDEO', path: rel, width: size.w, height: size.h, position: 0 },
+      { postId: post.id, kind: 'SLIDE', path: coverRel, width: size.w, height: size.h, position: 0 },
+    ],
+  })
+}
+
 /** Posts del lote que falta renderizar: los nuevos y los que fallaron al generarse. Lo revisado no se toca. */
 export const needsRender = (p: { status: string; slideCount: number }) => p.status === 'DRAFT' || (p.status === 'FAILED' && p.slideCount === 0)
 
@@ -563,42 +670,79 @@ export async function runWeekly(appId: string, weekStart: Date, image?: ImageCho
 // ---------------------------------------------------------------------------
 
 /**
+ * Planifica un solo post (tema, imágenes, tendencia) y guarda sus textos. `trendId`: la tendencia en la que se basa sí o sí;
+ * `trendPick`: puede elegir una de las vivas si encaja (al rehacer uno cuya tendencia murió), `skipTrend` excluida.
+ */
+async function planOne(post: Post & { app: App }, topic: string, opts: { image?: ImageChoice; imageIds?: string[]; photoSet?: boolean; trendId?: string | null; trendPick?: boolean; skipTrend?: string | null; at?: Date } = {}) {
+  const app = post.app
+  const imageIds = opts.imageIds ?? []
+  const m = manifestOf(app)
+  const at = opts.at ?? new Date()
+  const slot: Slot = { type: post.type, day: (at.getDay() + 6) % 7, at }
+  const fullTopic = post.pillar ? `${topic} (pillar: ${post.pillar})` : topic
+  const useTrends = !!opts.trendId || !!opts.trendPick
+  const [src, recent, images, trending] = await Promise.all([
+    sources(m),
+    db.post.findMany({ where: { appId: app.id, id: { not: post.id } }, orderBy: { createdAt: 'desc' }, take: 30, select: { pillar: true, hook: true } }),
+    imagesForPlan(app.id, imageIds, opts.photoSet ? MAX_CAROUSEL : undefined, kindsIn(kindOf(app, opts.image)).includes('screens')),
+    useTrends ? trendsForApp(opts.trendId ? { ...app, useTrends: true } : app, m, opts.trendId).catch(() => ({ trends: [], algo: [] })) : { trends: [] as PromptTrend[], algo: [] as string[] },
+  ])
+  const trends = trending.trends.filter((x) => x.id !== opts.skipTrend)
+  const set = opts.photoSet ? imageIds.slice(0, MAX_CAROUSEL) : undefined
+  const photoMode = parsePhotoMode(post.photoMode) ?? parsePhotoMode(app.photoMode)
+  const looks = looksFor(m, app.designStyle, kindOf(app, opts.image), 1)
+  const { system, user } = buildPlanPrompt(m, [slot], { feed: [], texts: src.texts, releases: [], recent, bestPillars: [], topic: fullTopic, images: images.prompt, looks, design: app.designStyle, photoMode, photoSet: set, trends, algo: trending.algo, trendSlots: 1, forcedTrend: opts.trendId })
+  let textCost = 0
+  const raw =
+    process.env.OPENROUTER_MOCK === '1'
+      ? mockPlan(m, [slot], [{ id: 'tema', title: topic, body: m.tagline, pillar: post.pillar ?? m.pillars[0] }], imageIds)
+      : await completeJson({ appId: app.id, model: app.textModel, system, user, images: images.shown, purpose: `a pedido ${post.type}`, onCost: (c) => (textCost = c) })
+  const p = keepKnownTrends(keepKnownImages(PlanSchema.parse(raw), images.prompt), trends).posts[0]
+  if (!p) throw new Error('El modelo no devolvió ninguna publicación')
+  if (opts.trendId && trends.some((x) => x.id === opts.trendId)) p.trendId = opts.trendId
+  if (set) p.slides = photoSetSlides(p.slides, set, p.hook)
+  const { pillar, hook, caption, altText, slides, imagePrompt, imageKind, imageStyle, trendId } = postFromPlan(app, null, slot, p, looks[0])
+  await db.post.update({ where: { id: post.id }, data: { pillar: post.pillar ?? pillar, hook, caption, altText, slides, imagePrompt, imageKind, imageStyle, trendId, textCostUsd: textCost } })
+}
+
+/**
  * Arma y renderiza un solo post sobre un tema elegido. Queda en revisión sin fecha ni aprobación automática:
  * se publica cuando lo pedís desde Revisión.
+ * `photoSet`: carrusel de fotos, una diapositiva por imagen elegida (en orden). `trendId`: basado en esa tendencia.
  */
-/** `photoSet`: carrusel de fotos, una diapositiva por imagen elegida (en orden). */
-export async function createOnDemand(postId: string, topic: string, image?: ImageChoice, imageIds: string[] = [], photoSet = false) {
+export async function createOnDemand(postId: string, topic: string, image?: ImageChoice, imageIds: string[] = [], photoSet = false, trendId?: string | null) {
   const post = await db.post.findUniqueOrThrow({ where: { id: postId }, include: { app: true } })
-  const app = post.app
   try {
-    const m = manifestOf(app)
-    const now = new Date()
-    const slot: Slot = { type: post.type, day: (now.getDay() + 6) % 7, at: now }
-    const fullTopic = post.pillar ? `${topic} (pillar: ${post.pillar})` : topic
-    const [src, recent, images] = await Promise.all([
-      sources(m),
-      db.post.findMany({ where: { appId: app.id, id: { not: postId } }, orderBy: { createdAt: 'desc' }, take: 30, select: { pillar: true, hook: true } }),
-      imagesForPlan(app.id, imageIds, photoSet ? MAX_CAROUSEL : undefined, kindsIn(kindOf(app, image)).includes('screens')),
-    ])
-    const set = photoSet ? imageIds.slice(0, MAX_CAROUSEL) : undefined
-    const photoMode = parsePhotoMode(post.photoMode) ?? parsePhotoMode(app.photoMode)
-    const looks = looksFor(m, app.designStyle, kindOf(app, image), 1)
-    const { system, user } = buildPlanPrompt(m, [slot], { feed: [], texts: src.texts, releases: [], recent, bestPillars: [], topic: fullTopic, images: images.prompt, looks, design: app.designStyle, photoMode, photoSet: set })
-    let textCost = 0
-    const raw =
-      process.env.OPENROUTER_MOCK === '1'
-        ? mockPlan(m, [slot], [{ id: 'tema', title: topic, body: m.tagline, pillar: post.pillar ?? m.pillars[0] }], imageIds)
-        : await completeJson({ appId: app.id, model: app.textModel, system, user, images: images.shown, purpose: `a pedido ${post.type}`, onCost: (c) => (textCost = c) })
-    const p = keepKnownImages(PlanSchema.parse(raw), images.prompt).posts[0]
-    if (!p) throw new Error('El modelo no devolvió ninguna publicación')
-    if (set) p.slides = photoSetSlides(p.slides, set, p.hook)
-    const { pillar, hook, caption, altText, slides, imagePrompt, imageKind, imageStyle } = postFromPlan(app, null, slot, p, looks[0])
-    await db.post.update({ where: { id: postId }, data: { pillar: post.pillar ?? pillar, hook, caption, altText, slides, imagePrompt, imageKind, imageStyle, textCostUsd: textCost } })
+    await planOne(post, topic, { image, imageIds, photoSet, trendId })
     await renderPost(postId, { image })
     await db.post.update({ where: { id: postId }, data: { status: 'PENDING_REVIEW', reviewDueAt: null, error: null } })
-    await toClient(app.id)
+    await toClient(post.app.id)
   } catch (e) {
     await db.post.update({ where: { id: postId }, data: { status: 'FAILED', error: `No se pudo generar: ${(e as Error).message}` } })
+  }
+}
+
+/**
+ * Rehace un post programado cuya tendencia pasó de moda antes de salir: mismo tipo, día y pilar, otra idea (puede
+ * subirse a otra tendencia viva si encaja), imágenes nuevas. Vuelve a revisión y se aprueba sola a la hora de siempre.
+ * Si falla, el post queda como estaba pero sin aprobar, con el aviso para que lo mires.
+ */
+export async function replanPost(postId: string, reason: string) {
+  const post = await db.post.findUnique({ where: { id: postId }, include: { app: true } })
+  if (!post || !['PENDING_REVIEW', 'APPROVED'].includes(post.status) || post.publishedAt || !post.scheduledAt) return
+  const app = post.app
+  const old = post.trendId
+  try {
+    const topic = `A new post for the pillar "${post.pillar ?? 'any'}" replacing "${post.hook ?? ''}", which was based on a trend that is no longer trending. Use a different hook and format.`
+    await planOne(post, topic, { trendPick: app.useTrends, skipTrend: old, at: post.scheduledAt })
+    await renderPost(postId, { regenerateImage: true })
+    const due = new Date(Math.max(Date.now() + 3600e3, Math.min(Date.now() + app.autoApproveHours * 3600e3, post.scheduledAt.getTime() - 3600e3)))
+    await db.post.update({ where: { id: postId }, data: { status: 'PENDING_REVIEW', reviewDueAt: due, waNumber: null, error: `Rehecha sola: ${reason}.` } })
+    await notify(`🔁 ${app.name}: rehice la publicación del ${post.scheduledAt.toISOString().slice(0, 10)} porque ${reason}. Revisala; se aprueba sola si no la tocás.`)
+    await toClient(app.id)
+  } catch (e) {
+    await db.post.update({ where: { id: postId }, data: { status: 'PENDING_REVIEW', reviewDueAt: null, error: `${reason[0].toUpperCase()}${reason.slice(1)} y no se pudo rehacer sola (${(e as Error).message}). Rehacela o rechazala.` } })
+    await notify(`⚠️ ${app.name}: ${reason} y no pude rehacer la publicación del ${post.scheduledAt.toISOString().slice(0, 10)}: ${(e as Error).message}`)
   }
 }
 

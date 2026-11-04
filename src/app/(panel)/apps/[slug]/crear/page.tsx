@@ -10,19 +10,28 @@ import { db } from '@/lib/db'
 import { MAX_CAROUSEL } from '@/lib/photos'
 import { PhotoModePicker } from '@/components/PhotoModePicker'
 import type { Manifest } from '@/lib/manifest'
+import { KIND_LABEL, LIVE_STAGES, marketOf, STAGE_LABEL, type Stage } from '@/lib/trends'
+import { reelPlan, videoModelOf } from '@/lib/video-models'
+import { usd } from '@/lib/view'
 
 const TYPES: { value: PostType | 'PHOTOS'; label: string; hint: string }[] = [
   { value: 'IMAGE', label: 'Imagen', hint: '1 pieza 4:5 para el feed' },
   { value: 'CAROUSEL', label: 'Carrusel', hint: '4 a 7 diapositivas que enseñan algo' },
   { value: 'PHOTOS', label: 'Carrusel de fotos', hint: `una diapositiva por foto elegida, en orden, de 2 a ${MAX_CAROUSEL}` },
+  { value: 'REEL', label: 'Reel', hint: 'video vertical de ~12 s con escenas generadas por un modelo de video' },
   { value: 'STORY', label: 'Story', hint: '1 pieza vertical, dura 24 h' },
 ]
 
 export default async function CreateNow({ params, searchParams }: PageProps<'/apps/[slug]/crear'>) {
   const { slug } = await params
-  const { aviso, n } = await searchParams
+  const { aviso, n, tendencia, tipo } = await searchParams
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
-  const pillars = (app.manifest as unknown as Manifest | null)?.pillars ?? []
+  const manifest = app.manifest as unknown as Manifest | null
+  const pillars = manifest?.pillars ?? []
+  const trends = manifest ? await db.trend.findMany({ where: { OR: [{ market: marketOf(manifest), stage: { in: LIVE_STAGES }, hidden: false }, ...(typeof tendencia === 'string' ? [{ id: tendencia }] : [])] }, orderBy: { momentum: 'desc' }, take: 15 }) : []
+  const vm = videoModelOf(app.videoModel)
+  const reel = reelPlan(vm, 3)
+  const preType = typeof tipo === 'string' && TYPES.some((t) => t.value === tipo) ? tipo : TYPES[0].value
   const posts = await db.post.findMany({ where: { appId: app.id, batchId: null, dailyDate: null, adOnly: false }, orderBy: { createdAt: 'desc' }, take: 10, include: { assets: true } })
   const images = await db.appImage.findMany({ where: { appId: app.id, archived: false }, orderBy: { createdAt: 'desc' }, take: 24 })
   const busy = posts.some((p) => p.status === 'DRAFT' || p.status === 'PUBLISHING' || (p.status === 'APPROVED' && p.scheduledAt && p.scheduledAt <= new Date()))
@@ -40,14 +49,31 @@ export default async function CreateNow({ params, searchParams }: PageProps<'/ap
         <form action={createPostNow.bind(null, slug)} className="stack">
           <fieldset className="stack-sm" style={{ border: 0, padding: 0, margin: 0 }}>
             <legend className="small muted">Tipo</legend>
-            {TYPES.map((t, i) => (
+            {TYPES.map((t) => (
               <label key={t.value} className="check">
-                <input type="radio" name="type" value={t.value} defaultChecked={i === 0} required /> {t.label} <span className="hint">{t.hint}</span>
+                <input type="radio" name="type" value={t.value} defaultChecked={t.value === preType} required /> {t.label}{' '}
+                <span className="hint">
+                  {t.hint}
+                  {t.value === 'REEL' && ` · ${vm.name}, ~${usd(reel.costUsd)} de video (Ajustes > Modelo de video)`}
+                </span>
               </label>
             ))}
           </fieldset>
+          {trends.length > 0 && (
+            <label>
+              Basar en una tendencia <span className="hint">opcional · del radar de tendencias, para el público de esta cuenta</span>
+              <select name="trendId" defaultValue={typeof tendencia === 'string' ? tendencia : ''}>
+                <option value="">Ninguna</option>
+                {trends.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} · {KIND_LABEL[t.kind] ?? t.kind} · {STAGE_LABEL[t.stage as Stage] ?? t.stage}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label>
-            Tema <span className="hint">opcional si elegís imágenes</span>
+            Tema <span className="hint">opcional si elegís imágenes o una tendencia</span>
             <textarea name="topic" rows={3} maxLength={500} placeholder="Por ejemplo: 3 errores comunes al cargar gastos y cómo la app los evita" />
           </label>
           {pillars.length > 0 && (

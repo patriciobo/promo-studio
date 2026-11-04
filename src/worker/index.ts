@@ -6,7 +6,8 @@ import { getBoss, QUEUES } from '@/lib/jobs'
 import { autoApprove, collectInsights, publishDue } from '@/lib/publisher'
 import { describeImage } from '@/lib/images'
 import { pushCampaign, syncActiveCampaigns } from '@/lib/meta-ads'
-import { createOnDemand, renderPost, runDaily, runWeekly, syncApp, toClient, type BatchKind } from '@/lib/pipeline'
+import { createOnDemand, renderPost, replanPost, runDaily, runWeekly, syncApp, toClient, type BatchKind } from '@/lib/pipeline'
+import { refreshTrends } from '@/lib/trends'
 import { reviseFromClient } from '@/lib/revise'
 import { nextMonday } from '@/lib/schedule'
 import { closeBrowser, renderHtml } from '@/render/renderer'
@@ -34,6 +35,8 @@ async function main() {
   // Domingo 18:00: se arma el lote de la semana siguiente de cada app.
   await boss.schedule(QUEUES.weekly, '0 18 * * 0', {}, { tz: TZ })
   await boss.schedule(QUEUES.syncAds, '40 */3 * * *', {}, { tz: TZ })
+  // Radar de tendencias: a la mañana (antes de que salgan los posts del día) y a la noche; el domingo, la de la mañana llega antes del lote de las 18.
+  await boss.schedule(QUEUES.trends, '30 7,19 * * *', {}, { tz: TZ })
 
   await boss.work(QUEUES.tick, async () => {
     const approved = await autoApprove()
@@ -99,11 +102,25 @@ async function main() {
     }
   })
 
-  type CreateJob = { postId: string; topic: string; image?: ImageChoice; imageIds?: string[]; photoSet?: boolean }
+  // Sin reintentos: cada pasada cuesta unos centavos; si falla, la de mañana (o "Actualizar ahora") la reemplaza.
+  await boss.work(QUEUES.trends, async () => {
+    const log = await refreshTrends().catch((e) => [`error: ${(e as Error).message}`])
+    console.log(`[tendencias] ${log.join(' · ') || 'sin apps que usen tendencias'}`)
+  })
+
+  await boss.work<{ postId: string; reason: string }>(QUEUES.replanPost, async (jobs: Job<{ postId: string; reason: string }>[]) => {
+    for (const j of jobs) {
+      console.log(`[tendencias] rehacer ${j.data.postId}: ${j.data.reason}`)
+      await replanPost(j.data.postId, j.data.reason)
+      await closeBrowser()
+    }
+  })
+
+  type CreateJob = { postId: string; topic: string; image?: ImageChoice; imageIds?: string[]; photoSet?: boolean; trendId?: string | null }
   await boss.work<CreateJob>(QUEUES.createPost, async (jobs: Job<CreateJob>[]) => {
     for (const j of jobs) {
       console.log(`[a pedido] ${j.data.postId}: ${j.data.topic}`)
-      await createOnDemand(j.data.postId, j.data.topic, j.data.image, j.data.imageIds, j.data.photoSet)
+      await createOnDemand(j.data.postId, j.data.topic, j.data.image, j.data.imageIds, j.data.photoSet, j.data.trendId)
       await closeBrowser()
     }
   })

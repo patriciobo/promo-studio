@@ -11,13 +11,17 @@ import { genericOrigin, listSamples } from '@/lib/style-samples'
 import type { StyleSuggestion } from '@/lib/styles'
 import { imageModels, textModels } from '@/lib/openrouter'
 import { usd } from '@/lib/view'
+import { reelPlan, SUGGESTED_VIDEO_MODEL, VIDEO_ARENA_URL, VIDEO_MODELS, videoModelOf } from '@/lib/video-models'
 
 export default async function Settings({ params, searchParams }: PageProps<'/apps/[slug]/ajustes'>) {
   const { slug } = await params
   const { aviso, pr, error } = await searchParams
   const app = await db.app.findUniqueOrThrow({ where: { slug } })
   const manifest = app.manifest as unknown as Manifest | null
-  const cadence = manifest?.cadence ?? { feed: 3, stories: 2 }
+  const cadence = manifest?.cadence ?? { feed: 3, reels: 0, stories: 2 }
+  const reelsPerMonth = Math.round(Math.min(cadence.reels ?? 0, cadence.feed) * 4.33)
+  const vm = videoModelOf(app.videoModel)
+  const custom = app.videoModel && !VIDEO_MODELS.some((m) => m.id === app.videoModel) ? app.videoModel : null
   const [images, texts, spent, generic, mine, origin] = await Promise.all([imageModels().catch(() => []), textModels().catch(() => []), spentThisMonth(app.id), listSamples(), listSamples(app.slug, app.imageKind), genericOrigin()])
   const styleApp = {
     name: app.name,
@@ -66,6 +70,33 @@ export default async function Settings({ params, searchParams }: PageProps<'/app
           <ImageModelPicker current={app.imageModel} quality={app.imageQuality} kind={app.imageKind} imagesPerMonth={imagesPerMonth(cadence, (app.manifest as unknown as Manifest | null)?.daily)} budget={app.monthlyBudgetUsd} available={images} designStyle={app.designStyle} samples={generic} styleApp={styleApp} />
         </div>
         <PhotoModePicker current={app.photoMode} legend="Cómo se muestran las fotos que elegís (de la biblioteca o subidas) en las piezas. Se puede cambiar en cada publicación desde Crear ahora o Revisión." />
+        <label>
+          Modelo de video para los reels{' '}
+          <span className="hint">
+            Cada escena del reel es un clip generado por este modelo (movimiento real, no una imagen con zoom), a partir de un primer cuadro hecho con el modelo de imagen para que toda la historia tenga la misma gente. Un reel de 3 escenas sale ~{usd(reelPlan(vm, 3).costUsd)} de video
+            {reelsPerMonth ? ` (con ${cadence.reels} por semana en el promo.yaml, ~${usd(reelPlan(vm, 3).costUsd * reelsPerMonth)}/mes)` : ' (el promo.yaml no programa reels: cadence.reels)'}. Ejemplos de cada modelo en el link; para compararlos con el mismo prompt, <a href={VIDEO_ARENA_URL} target="_blank" rel="noreferrer">la arena de video de Artificial Analysis</a>.
+          </span>
+          <select name="videoModel" defaultValue={app.videoModel ?? ''}>
+            <option value="">Sugerido ({VIDEO_MODELS.find((m) => m.id === SUGGESTED_VIDEO_MODEL)?.name})</option>
+            {VIDEO_MODELS.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name} · ~US$ {m.pricePerSec.toFixed(2)}/s{m.audio ? ' · con sonido' : ''} · {m.uses}
+              </option>
+            ))}
+            {custom && <option value={custom}>{custom}</option>}
+          </select>
+          <span className="xs muted">
+            Ejemplos:{' '}
+            {VIDEO_MODELS.map((m, i) => (
+              <span key={m.id}>
+                {i ? ' · ' : ''}
+                <a href={m.examples} target="_blank" rel="noreferrer">
+                  {m.name.split(' (')[0]}
+                </a>
+              </span>
+            ))}
+          </span>
+        </label>
         <div className="stack-sm">
           <strong>Modelo de texto</strong>
           <span className="hint">Planifica la semana (1 llamada por semana por app), sugiere estilos y campañas y describe las imágenes subidas.</span>
@@ -82,7 +113,7 @@ export default async function Settings({ params, searchParams }: PageProps<'/app
       </section>
       <section className="card stack">
         <h2>Publicación</h2>
-        <p className="small muted">La cantidad por semana (feed y stories) se define en el promo.yaml (cadence).</p>
+        <p className="small muted">La cantidad por semana (feed, cuántos de esos son reels y stories) se define en el promo.yaml (cadence: feed, reels, stories).</p>
         <div className="form-grid">
           <label>
             Hora de publicación
@@ -109,6 +140,9 @@ export default async function Settings({ params, searchParams }: PageProps<'/app
         </label>
         <label className="check">
           <input type="checkbox" name="autoWeekly" defaultChecked={app.autoWeekly} /> Generar sola la semana siguiente cada domingo a las 18:00 (si no, se genera a mano desde el Calendario)
+        </label>
+        <label className="check">
+          <input type="checkbox" name="useTrends" defaultChecked={app.useTrends} /> Subirse a tendencias: el lote semanal puede basar 1 o 2 posts en formatos, memes o sonidos que están pegando ahora en este público (radar de Tendencias), y si una pasa de moda antes de que salga el post, se rehace solo
         </label>
         <label className="check">
           <input type="checkbox" name="offerStarter" defaultChecked={!app.starterDismissed} /> Ofrecer el kit de publicaciones iniciales en el Calendario (desmarcalo si la cuenta ya tiene contenido)

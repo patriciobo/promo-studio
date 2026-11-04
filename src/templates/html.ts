@@ -104,6 +104,25 @@ h1{font-size:104px;margin-top:auto}
   )
 }
 
+/**
+ * Texto de una escena de reel, sobre fondo transparente (PNG que se superpone al clip de video).
+ * Respeta la zona segura de Instagram: nada en el 13% de arriba, el 22% de abajo ni la columna de botones de la derecha.
+ */
+export function reelOverlay(b: Brand, d: Pick<SlideData, 'eyebrow' | 'title' | 'body'>, size: { w: number; h: number } = SIZES.story) {
+  const fg = onColor(b.primary)
+  return shell(
+    b,
+    size.w,
+    size.h,
+    `html,body{background:transparent!important}
+.wrap{position:absolute;left:72px;right:170px;top:${Math.round(size.h * 0.15)}px;display:flex;flex-direction:column;align-items:flex-start;gap:18px}
+.eyebrow{background:rgba(0,0,0,.55);color:#fff;padding:10px 22px;border-radius:12px;font-size:28px;letter-spacing:.06em}
+h1{font-size:68px;line-height:1.08;background:${b.primary};color:${fg};padding:18px 26px;border-radius:20px;box-decoration-break:clone;-webkit-box-decoration-break:clone;box-shadow:0 10px 40px rgba(0,0,0,.25)}
+.body{font-size:38px;line-height:1.28;font-weight:600;color:#fff;background:rgba(0,0,0,.55);padding:14px 22px;border-radius:16px}`,
+    `<div class="wrap">${d.eyebrow ? `<span class="eyebrow">${esc(d.eyebrow)}</span>` : ''}<h1>${esc(d.title)}</h1>${d.body ? `<p class="body">${esc(d.body)}</p>` : ''}</div>`,
+  )
+}
+
 /** Foto de perfil: logo centrado en el color de la marca, sin texto (se ve a 110 px). */
 export function profilePhoto(b: Brand) {
   const fg = onColor(b.primary)

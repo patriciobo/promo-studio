@@ -11,13 +11,15 @@ export const QUEUES = {
   renderPost: 'render-post', // { postId, regenerateImage?, image? }
   syncApp: 'sync-app', // { appId }
   revisePost: 'revise-post', // { postId, note }: aplicar el cambio que pidió el cliente por WhatsApp
-  createPost: 'create-post', // { postId, topic, image?, imageIds?, photoSet? }: publicación a pedido (photoSet: carrusel de fotos)
+  createPost: 'create-post', // { postId, topic, image?, imageIds?, photoSet?, trendId? }: publicación a pedido (photoSet: carrusel de fotos)
   describeImage: 'describe-image', // { imageId }: descripción de una imagen subida
   pushCampaign: 'push-campaign', // { campaignId }: crear (o completar) la campaña en Meta, en pausa
   syncAds: 'sync-ads', // cada 3 horas: estado y resultados de las campañas
   styleSamples: 'style-samples', // { appId: string | null, styles, qualities }: muestras de estilo (null = genéricas)
   brandRound: 'brand-round', // { projectId, logoModel?, notes? }: 3 alternativas de identidad de marca
   brandVector: 'brand-vector', // { optionId }: logo de una alternativa a SVG
+  trends: 'trends', // 7:30 y 19:30 (y a pedido): radar de tendencias, etapas y posts a rehacer
+  replanPost: 'replan-post', // { postId, reason }: rehacer un post programado cuya tendencia pasó de moda
 } as const
 
 let boss: Promise<PgBoss> | null = null

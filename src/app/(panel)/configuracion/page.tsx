@@ -76,7 +76,7 @@ export default async function Config() {
             {byApp.map((r) => (
               <tr key={`${r.appId}-${r.kind}`}>
                 <td>{name(r.appId)}</td>
-                <td>{r.kind === 'image' ? 'Imágenes' : 'Texto'}</td>
+                <td>{r.kind === 'image' ? 'Imágenes' : r.kind === 'video' ? 'Video' : 'Texto'}</td>
                 <td className="num">{r._count}</td>
                 <td className="num">{usd(r._sum.costUsd ?? 0)}</td>
               </tr>

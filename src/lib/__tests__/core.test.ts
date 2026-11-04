@@ -47,7 +47,7 @@ describe('manifest', () => {
     const r = parseManifest(YAML)
     expect(r.ok).toBe(true)
     if (r.ok) {
-      expect(r.manifest.cadence).toEqual({ feed: 3, stories: 2 })
+      expect(r.manifest.cadence).toEqual({ feed: 3, reels: 0, stories: 2 })
       expect(r.hash).toHaveLength(16)
     }
   })

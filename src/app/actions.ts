@@ -89,6 +89,8 @@ export async function updateSettings(slug: string, f: FormData) {
       imageQuality: str(f, 'imageQuality') || null,
       imageKind: parseKindChoice(str(f, 'imageKind')) ?? null,
       designStyle: parseDesignStyle(str(f, 'designStyle')) ?? null,
+      videoModel: str(f, 'videoModel') || null,
+      useTrends: f.get('useTrends') === 'on',
       monthlyBudgetUsd: Number(str(f, 'monthlyBudgetUsd') || 7),
       adMonthlyBudget: str(f, 'adMonthlyBudget') ? Number(str(f, 'adMonthlyBudget')) : null,
       timezone: str(f, 'timezone'),
@@ -247,7 +249,7 @@ export async function dismissStarter(slug: string) {
 
 // --- A pedido ----------------------------------------------------------------
 
-const POST_TYPES: PostType[] = ['IMAGE', 'CAROUSEL', 'STORY']
+const POST_TYPES: PostType[] = ['IMAGE', 'CAROUSEL', 'REEL', 'STORY']
 
 export async function createPostNow(slug: string, f: FormData) {
   await requireUser()
@@ -260,10 +262,12 @@ export async function createPostNow(slug: string, f: FormData) {
   if (photoSet && all.length < 2) redirect(`/apps/${slug}/crear?aviso=faltan-fotos`)
   const imageIds = photoSet ? all.slice(0, MAX_CAROUSEL) : all
   // Con imágenes el tema es opcional: el post cuenta lo que muestran.
-  const topic = str(f, 'topic').slice(0, 500) || (imageIds.length ? 'Lo que muestran las imágenes elegidas' : '')
+  const topic = str(f, 'topic').slice(0, 500) || (imageIds.length ? 'Lo que muestran las imágenes elegidas' : str(f, 'trendId') ? 'Un tema de la app que encaje con la tendencia elegida' : '')
   if (!topic) return
-  const post = await db.post.create({ data: { appId: app.id, type, status: 'DRAFT', hook: topic.slice(0, 200), pillar: str(f, 'pillar') || null, photoMode: parsePhotoMode(str(f, 'photoMode')) ?? null } })
-  await enqueue(QUEUES.createPost, { postId: post.id, topic, image: parseImageChoice(str(f, 'imageChoice'), str(f, 'imageKind')), imageIds, photoSet })
+  // Basado en una tendencia del radar (sólo una que exista y no esté descartada).
+  const trend = str(f, 'trendId') ? await db.trend.findFirst({ where: { id: str(f, 'trendId'), hidden: false }, select: { id: true, name: true } }) : null
+  const post = await db.post.create({ data: { appId: app.id, type, status: 'DRAFT', hook: (topic || trend?.name || '').slice(0, 200), pillar: str(f, 'pillar') || null, photoMode: parsePhotoMode(str(f, 'photoMode')) ?? null, trendId: trend?.id ?? null } })
+  await enqueue(QUEUES.createPost, { postId: post.id, topic, image: parseImageChoice(str(f, 'imageChoice'), str(f, 'imageKind')), imageIds, photoSet, trendId: trend?.id ?? null })
   if (photoSet && all.length > MAX_CAROUSEL) redirect(`/apps/${slug}/crear?aviso=fotos-recortadas&n=${all.length}`)
   revalidatePath(`/apps/${slug}`, 'layout')
 }
@@ -549,8 +553,7 @@ export async function createCampaign(slug: string, _prev: { error?: string } | n
   const newType = str(f, 'newPostType') as PostType
   const topic = str(f, 'newPostTopic').slice(0, 500)
   let fresh: string | null = null
-  // Los reels ya existentes se pueden anunciar, pero no se generan nuevos.
-  if (AD_POST_TYPES.includes(newType) && newType !== 'REEL' && topic && app.manifest) {
+  if (AD_POST_TYPES.includes(newType) && topic && app.manifest) {
     const post = await db.post.create({ data: { appId: app.id, type: newType, status: 'DRAFT', hook: topic.slice(0, 200), adOnly: true } })
     await enqueue(QUEUES.createPost, { postId: post.id, topic: `${topic}. Es un anuncio pago: una sola idea clara y un llamado a la acción concreto.`, image: parseImageChoice(str(f, 'imageChoice'), str(f, 'imageKind')), imageIds: [] })
     fresh = post.id
@@ -856,4 +859,27 @@ export async function sendReviewAction(slug: string, postId?: string) {
   revalidatePath(`/apps/${slug}`, 'layout')
   const q = r.error ? `whatsapp-error=${encodeURIComponent(r.error)}` : `whatsapp=${r.sent}`
   redirect(`/apps/${slug}/revision?${q}`)
+}
+
+// --- Tendencias -----------------------------------------------------------------
+
+/** Pasada del radar ahora (además de la diaria de las 7:30). */
+export async function refreshTrendsNow() {
+  await requireUser()
+  await enqueue(QUEUES.trends, {}, { singletonKey: 'trends-now' })
+  redirect('/tendencias?aviso=actualizando')
+}
+
+/** Descartar una tendencia a mano (no se le ofrece al plan) o volver a ofrecerla. */
+export async function setTrendHidden(id: string, hidden: boolean) {
+  await requireUser()
+  await db.trend.update({ where: { id }, data: { hidden } })
+  revalidatePath('/tendencias')
+}
+
+/** Apagar una nota del algoritmo que no te parece confiable (o volver a usarla). */
+export async function setAlgoNoteActive(id: string, active: boolean) {
+  await requireUser()
+  await db.algoNote.update({ where: { id }, data: { active } })
+  revalidatePath('/tendencias')
 }

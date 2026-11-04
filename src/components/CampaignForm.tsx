@@ -126,6 +126,7 @@ export function CampaignForm({
                 <option value="">Ninguna</option>
                 <option value="IMAGE">Imagen</option>
                 <option value="CAROUSEL">Carrusel</option>
+                <option value="REEL">Reel (video IA)</option>
               </select>
             </label>
             {newType && (

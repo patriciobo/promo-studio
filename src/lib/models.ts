@@ -155,13 +155,16 @@ export function imagePrice(m: ImageModel, quality?: string | null) {
 }
 
 /** Diapositivas o escenas típicas: una ilustración por cada una. */
-export const ILLUSTRATIONS_PER_POST = { CAROUSEL: 5, IMAGE: 1, REEL: 4, STORY: 1 } as const
+/** En los reels, la imagen es el primer cuadro de cada escena (el video se cobra aparte: src/lib/video-models.ts). */
+export const ILLUSTRATIONS_PER_POST = { CAROUSEL: 5, IMAGE: 1, REEL: 3, STORY: 1 } as const
 
 /** Ilustraciones por mes según la cadencia (mismo reparto que weekSlots) y la edición diaria, si la hay. */
 export function imagesPerMonth(c: Cadence, daily?: { types: ('CAROUSEL' | 'IMAGE' | 'STORY')[] }) {
   const perDay = daily ? daily.types.reduce((n, t) => n + ILLUSTRATIONS_PER_POST[t], 0) : 0
-  const carousels = Math.ceil(c.feed / 2)
-  const week = carousels * ILLUSTRATIONS_PER_POST.CAROUSEL + (c.feed - carousels) * ILLUSTRATIONS_PER_POST.IMAGE + c.stories * ILLUSTRATIONS_PER_POST.STORY
+  const reels = Math.min(c.reels ?? 0, c.feed)
+  const rest = c.feed - reels
+  const carousels = Math.ceil(rest / 2)
+  const week = carousels * ILLUSTRATIONS_PER_POST.CAROUSEL + (rest - carousels) * ILLUSTRATIONS_PER_POST.IMAGE + reels * ILLUSTRATIONS_PER_POST.REEL + c.stories * ILLUSTRATIONS_PER_POST.STORY
   return Math.round(week * 4.33 + perDay * 30)
 }
 

@@ -1,6 +1,6 @@
 # Promo Studio
 
-Servicio que genera y publica contenido de Instagram (posts, carruseles y stories) para promocionar tus apps,
+Servicio que genera y publica contenido de Instagram (posts, carruseles, reels con video IA y stories) para promocionar tus apps,
 cada una con su propia cuenta. Lee la información de cada app desde su repositorio (`promo.yaml`), arma un lote semanal
 con un modelo de texto y otro de imagen de OpenRouter, te lo deja para revisar, lo publica a horario, mide cómo rinde
 y crea anuncios **en pausa** con los mejores posts.
@@ -9,17 +9,18 @@ y crea anuncios **en pausa** con los mejores posts.
 
 | Paso | Cuándo | Qué hace |
 |---|---|---|
+| Tendencias | 7:30, 19:30 y a pedido | Radar de formatos, memes y sonidos de Instagram/TikTok por público (ver abajo) |
 | Sincronizar | domingo 18:00 y a pedido | Lee `promo.yaml`, logo, capturas y fuentes de la app |
-| Planificar | después de sincronizar | **1 llamada** al modelo de texto arma la semana (tipo, gancho, descripción, textos y prompt de imagen) |
-| Generar | igual | **1 imagen por pieza** con el modelo de imagen (sin texto) |
-| Renderizar | igual | Plantillas HTML con la marca → JPEG 1080×1350 / 1080×1920; reels con ffmpeg |
+| Planificar | después de sincronizar | **1 llamada** al modelo de texto arma la semana (tipo, gancho, descripción, textos, prompt de imagen y de video), con 1–2 posts sobre tendencias vivas si encajan |
+| Generar | igual | **1 imagen por pieza** con el modelo de imagen (sin texto); en los reels, además, **1 clip por escena** con el modelo de video |
+| Renderizar | igual | Plantillas HTML con la marca → JPEG 1080×1350 / 1080×1920; reels: clips + títulos + placa final con ffmpeg |
 | Revisión | 48 h | Editás, regenerás, aprobás o rechazás. Lo no revisado se aprueba solo |
 | Publicar | a la hora programada | API de Instagram, con reintentos y errores explicados |
 | Medir | 24 h, 72 h y 7 días | Alcance, guardados, compartidos… → puntaje de **potencial** |
 | Anunciar | a pedido | Campaña, conjunto y anuncio con el post como creatividad, **siempre en pausa** |
 
-**Ritmo por defecto** (configurable en `promo.yaml → cadence`): 3 posts de feed (lunes carrusel, miércoles imagen, viernes carrusel; no se generan reels)
-y 2 stories por semana. Unas 5 imágenes de IA por app y por semana: con modelos de ~US$ 0,03–0,04 por imagen, **US$ 2–3 por mes
+**Ritmo por defecto** (configurable en `promo.yaml → cadence`): 3 posts de feed (lunes carrusel, miércoles imagen, viernes carrusel)
+y 2 stories por semana; `cadence.reels: 1` convierte el último post de feed en reel. Unas 5 imágenes de IA por app y por semana: con modelos de ~US$ 0,03–0,04 por imagen, **US$ 2–3 por mes
 para las 3 apps**. Hay tope mensual por app y uno global; al llegar, deja de generar y te avisa.
 
 ## Desarrollo
@@ -85,8 +86,34 @@ links: [{ label: Ver demo, url: "https://miapp.com/demo" }]
 sources:                                       # opcional: ideas que publica la app
   - { type: feed, url: "https://miapp.com/promo-feed.json" }   # { items: [{ id, title, body, bullets, pillar, url }] }
   - { type: url, url: "https://miapp.com/llms.txt" }
-cadence: { feed: 3, stories: 2 }               # por semana
+cadence: { feed: 3, reels: 0, stories: 2 }     # por semana (reels: cuántos de los de feed son reels)
 ```
+
+## Reels con video IA
+
+Cada escena del reel (2 a 4, ~12 s en total) es un **clip generado por un modelo de video de OpenRouter** (`POST /api/v1/videos`):
+movimiento real, no una imagen fija con zoom. Por escena: un primer cuadro con el modelo de imagen (la foto elegida, o una imagen
+del estilo del post, así toda la historia tiene la misma gente) → clip con el modelo de video a partir de ese cuadro → título encima
+(respetando la zona segura de Instagram) → placa final de marca con el llamado a la acción. Audio: el que genera el modelo; si no
+genera, la música del `promo.yaml`. Los clips se guardan: corregir un texto no vuelve a gastar video.
+
+El modelo se elige en **Ajustes → Modelo de video** (catálogo en `src/lib/video-models.ts`, con link a ejemplos de cada uno).
+Sugerido: Veo 3.1 Lite (~US$ 0,05/s con sonido, ~US$ 0,60 por reel de 3 escenas). Con `OPENROUTER_MOCK=1` se arma con escenas fijas.
+
+## Radar de tendencias
+
+Dos veces por día, 7:30 y 19:30 (o con **Tendencias → Actualizar ahora**) se pregunta a dos modelos con búsqueda web qué formatos, memes y
+sonidos se están usando ahora en el público de cada app (idioma y países del `promo.yaml`): Perplexity Sonar (web y prensa) y
+Grok (lo que circula en X). Cada pasada guarda una observación por tendencia y la **etapa** (emergente → pico → saturada → muerta)
+sale de la serie: un pico que cae fuerte o dos pasadas seguidas está saturado, y una que deja de aparecer 4 días está muerta.
+
+- El plan semanal puede basar 1 post (2 si hay 4+ de feed) en una tendencia viva que encaje, adaptando el formato sin copiar
+  material ajeno. Se desactiva por app en **Ajustes → Publicación**.
+- Si la tendencia de un post programado se satura o muere antes de que salga, el post **se rehace solo** (otra idea, o otra
+  tendencia viva) y vuelve a revisión.
+- Una vez por semana busca cambios del algoritmo de Instagram con fuente (Mosseri, @creators, Meta) y se los pasa al plan.
+- Modelos: `TREND_WEB_MODEL` (por defecto `perplexity/sonar-pro`), `TREND_X_MODEL` (`x-ai/grok-4.3`), `TREND_ALGO_MODEL`.
+  Unos US$ 0,05 por pasada y por público (~US$ 3 por mes cada uno).
 
 ## Identidad de marca
 
@@ -127,7 +154,7 @@ tipografías, tono de voz, frase y gráfico de apoyo), cada una con su lámina p
 ## Estructura
 
 ```
-src/lib/          manifiesto, GitHub, OpenRouter (costos y topes), pipeline semanal, Instagram, anuncios, métricas
+src/lib/          manifiesto, GitHub, OpenRouter (costos y topes), pipeline semanal, tendencias, modelos de video, Instagram, anuncios, métricas
 src/lib/onboarding/  asistente de promo.yaml, control de salud de Meta, kit de perfil
 src/lib/brand/    identidad de marca: catálogo de conceptos, brief, lectura de repos y generación de alternativas
 src/templates/    plantillas HTML de las piezas (marca de cada app)

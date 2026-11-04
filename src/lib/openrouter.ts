@@ -1,4 +1,5 @@
-// OpenRouter: texto (planificación) e imágenes (fondos). Cada llamada registra su costo real.
+// OpenRouter: texto (planificación), imágenes (fondos), video (escenas de reels) y búsqueda web (radar de tendencias).
+// Cada llamada registra su costo real.
 import { assertBudget } from './budget'
 import { db } from './db'
 import { imageModel, type ImageKind } from './models'
@@ -34,7 +35,7 @@ export class OpenRouterError extends Error {
 
 const imagePart = (url: string) => ({ type: 'image_url', image_url: { url } })
 
-async function record(appId: string | null, kind: 'text' | 'image', model: string, cost: number, tokens: number | undefined, purpose: string) {
+async function record(appId: string | null, kind: 'text' | 'image' | 'video', model: string, cost: number, tokens: number | undefined, purpose: string) {
   await db.usageLedger.create({ data: { appId, kind, model, costUsd: cost, tokens, purpose } })
 }
 
@@ -157,6 +158,80 @@ async function generateImageWith(opts: ImageOpts): Promise<{ data: Buffer; mime:
   const cost = r.usage?.cost ?? 0
   await record(opts.appId, 'image', opts.model, cost, r.usage?.total_tokens, opts.purpose)
   return { data: Buffer.from(b64, 'base64'), mime: meta.slice(5, meta.indexOf(';')), cost }
+}
+
+type VideoOpts = { appId: string | null; model: string; prompt: string; seconds: number; resolution: string; purpose: string; estimateUsd: number; firstFrame?: string; audio?: boolean }
+
+const VIDEO_POLL_MS = 5000
+const VIDEO_TIMEOUT_MS = 15 * 60e3
+
+async function get(path: string) {
+  const res = await fetch(`${API}${path}`, { headers: { Authorization: `Bearer ${await key()}` } })
+  const json = (await res.json().catch(() => ({}))) as Record<string, unknown> & { error?: { message?: string } | string }
+  const err = typeof json.error === 'string' ? json.error : json.error?.message
+  if (!res.ok) throw new OpenRouterError(res.status, err ?? `HTTP ${res.status}`)
+  return json
+}
+
+/**
+ * Genera un clip vertical (9:16) con un modelo de video: encola el pedido, espera a que termine y baja el MP4.
+ * `firstFrame` (data URI): el clip arranca desde esa imagen (misma gente y estilo entre escenas).
+ */
+export async function generateVideo(opts: VideoOpts): Promise<{ data: Buffer; cost: number }> {
+  await assertBudget(opts.appId, opts.estimateUsd)
+  const job = (await call('/videos', {
+    model: opts.model,
+    prompt: opts.prompt,
+    duration: opts.seconds,
+    resolution: opts.resolution,
+    aspect_ratio: '9:16',
+    ...(opts.audio === undefined ? {} : { generate_audio: opts.audio }),
+    ...(opts.firstFrame ? { frame_images: [{ type: 'image_url', image_url: { url: opts.firstFrame }, frame_type: 'first_frame' }] } : {}),
+  })) as { id?: string; status?: string }
+  if (!job.id) throw new OpenRouterError(200, `${opts.model} no devolvió un id de trabajo de video`)
+  const until = Date.now() + VIDEO_TIMEOUT_MS
+  let status = job.status ?? 'pending'
+  let r: { status?: string; error?: unknown; usage?: { cost?: number } } = {}
+  while (status !== 'completed') {
+    if (Date.now() > until) throw new OpenRouterError(504, `${opts.model} tardó más de ${VIDEO_TIMEOUT_MS / 60e3} minutos en generar el video`)
+    await new Promise((ok) => setTimeout(ok, VIDEO_POLL_MS))
+    r = (await get(`/videos/${job.id}`)) as typeof r
+    status = r.status ?? 'pending'
+    if (['failed', 'cancelled', 'expired'].includes(status)) {
+      const e = r.error as { message?: string } | string | undefined
+      throw new OpenRouterError(200, `${opts.model} no pudo generar el video (${status}): ${typeof e === 'string' ? e : (e?.message ?? 'sin detalle')}`)
+    }
+  }
+  const res = await fetch(`${API}/videos/${job.id}/content?index=0`, { headers: { Authorization: `Bearer ${await key()}` } })
+  if (!res.ok) throw new OpenRouterError(res.status, `no se pudo bajar el video de ${opts.model}`)
+  const data = Buffer.from(await res.arrayBuffer())
+  const cost = r.usage?.cost ?? opts.estimateUsd
+  await record(opts.appId, 'video', opts.model, cost, undefined, opts.purpose)
+  return { data, cost }
+}
+
+/**
+ * Pregunta con búsqueda web (modelos Sonar de Perplexity, que buscan solos, o cualquier otro con `web`: el plugin de
+ * OpenRouter; con xAI usa su búsqueda propia, que incluye X). Devuelve el JSON de la respuesta.
+ * Sin response_format: no todos los modelos de búsqueda lo aceptan.
+ */
+export async function researchJson<T = unknown>(opts: { model: string; system: string; user: string; purpose: string; web?: boolean; maxTokens?: number }): Promise<T> {
+  await assertBudget(null, 0.1)
+  const r = (await call('/chat/completions', {
+    model: opts.model,
+    messages: [
+      { role: 'system', content: opts.system },
+      { role: 'user', content: opts.user },
+    ],
+    max_tokens: opts.maxTokens ?? 8000,
+    ...(opts.web ? { plugins: [{ id: 'web', max_results: 10 }] } : {}),
+    usage: { include: true },
+  })) as { choices: { message: { content: string } }[]; usage?: { cost?: number; total_tokens?: number } }
+  await record(null, 'text', opts.model, r.usage?.cost ?? 0, r.usage?.total_tokens, opts.purpose)
+  const content = r.choices?.[0]?.message?.content ?? ''
+  const parsed = parseJsonLoose(content)
+  if (parsed === undefined) throw new OpenRouterError(200, `la respuesta de ${opts.model} no es JSON válido. Empieza: ${content.slice(0, 120)}`)
+  return parsed as T
 }
 
 /** Modelo que redibuja una imagen como SVG (logos): Recraft V4.1 Vector, ~US$ 0,08 por imagen. */

@@ -18,12 +18,14 @@ export const fmtDate = (d: Date | null | undefined, tz = 'America/Argentina/Buen
 
 export const usd = (n: number) => `US$ ${n.toFixed(2)}`
 
-/** Lo que costó generar el post: su parte del texto más todas sus ilustraciones (incluidas las regeneradas). */
+/** Lo que costó generar el post: su parte del texto más todas sus ilustraciones y clips de video (incluidos los regenerados). */
 export function postCost(post: { textCostUsd: number | null; assets: { kind: string; costUsd: number | null }[] }) {
+  const sum = (kind: string) => post.assets.filter((a) => a.kind === kind).reduce((s, a) => s + (a.costUsd ?? 0), 0)
   const images = post.assets.filter((a) => a.kind === 'BACKGROUND')
-  const image = images.reduce((s, a) => s + (a.costUsd ?? 0), 0)
+  const image = sum('BACKGROUND')
+  const video = sum('CLIP')
   const text = post.textCostUsd ?? 0
-  return { total: text + image, text, image, images: images.length }
+  return { total: text + image + video, text, image, images: images.length, video }
 }
 
 /** Montos chicos con más decimales (US$ 0,004). */

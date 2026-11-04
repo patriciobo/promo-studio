@@ -31,6 +31,8 @@ model App {
   imageModel       String?
   imageQuality     String? // low | medium | high, para modelos que cobran según la calidad
   imageKind        String? // illustration | photo | text | mix | text+photo | text+illustration (null = illustration)
+  videoModel       String? // modelo de video de OpenRouter para los reels (null = el sugerido, src/lib/video-models.ts)
+  useTrends        Boolean  @default(true) // el plan puede subirse a tendencias del radar (src/lib/trends)
   photoMode        String   @default("fondo") // fotos elegidas: fondo | marco | mezcla
   starterDismissed Boolean  @default(false) // no ofrecer el kit inicial (la cuenta ya tiene contenido)
   autoRevise       Boolean  @default(true) // aplicar solos (con el modelo de texto) los cambios que pide el cliente por WhatsApp
@@ -119,6 +121,8 @@ model Post {
   imageKind   String? // illustration | photo | text (sin imagen IA): el tipo con que se planificó (null = el de la app)
   imageStyle  String? // estética sorteada para sus imágenes IA (null = la del estilo de diseño)
   revisions   Int       @default(0) // correcciones automáticas por pedidos del cliente
+  trendId     String? // tendencia del radar en la que se basa (si pasa de moda antes de publicarse, se rehace)
+  trend       Trend?    @relation(fields: [trendId], references: [id], onDelete: SetNull)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
@@ -166,6 +170,7 @@ enum AssetKind {
   BACKGROUND // imagen generada por IA, sin texto
   SLIDE // pieza final (JPEG) que se publica
   VIDEO // reel o story en video
+  CLIP // escena de video generada por IA (sin texto), parte de un reel
 }
 
 /// Imagen subida por el usuario (captura de la app o foto) para basar publicaciones en ella.
@@ -332,4 +337,55 @@ model BrandOption {
   createdAt  DateTime     @default(now())
 
   @@unique([projectId, round, index])
+}
+
+/// Tendencia de Instagram/TikTok detectada por el radar (src/lib/trends). Una por mercado (idioma:países) y clave.
+model Trend {
+  id        String          @id @default(cuid())
+  market    String // "es:AR,UY": idioma y países del público
+  key       String // slug estable que el radar repite en cada pasada
+  platform  String // instagram | tiktok | x | web
+  kind      String // format | meme | audio | challenge | hashtag | topic
+  name      String
+  summary   String // qué es y por qué funciona
+  howTo     String // cómo adaptarla a una marca sin copiar material ajeno
+  example   String? // URL de un ejemplo
+  stage     String          @default("emerging") // emerging | peak | saturated | dead
+  momentum  Int             @default(50) // 0-100, último valor
+  brandSafe Boolean         @default(true)
+  hidden    Boolean         @default(false) // descartada a mano: no se ofrece
+  firstSeen DateTime        @default(now())
+  lastSeen  DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  snapshots TrendSnapshot[]
+  posts     Post[]
+
+  @@unique([market, key])
+  @@index([market, stage])
+}
+
+/// Una observación de una tendencia en una pasada del radar.
+model TrendSnapshot {
+  id       String   @id @default(cuid())
+  trendId  String
+  trend    Trend    @relation(fields: [trendId], references: [id], onDelete: Cascade)
+  source   String // modelo o fuente que la vio
+  momentum Int // 0-100 según esa fuente
+  stage    String // la etapa que estimó la fuente
+  rank     Int? // posición en la lista de esa pasada
+  evidence String? // por qué (menciones, ejemplos, fechas)
+  at       DateTime @default(now())
+
+  @@index([trendId, at])
+}
+
+/// Cambio del algoritmo de Instagram reportado por una fuente creíble (Mosseri, Meta, prensa especializada).
+model AlgoNote {
+  id         String   @id @default(cuid())
+  key        String   @unique // hash del texto normalizado, para no repetir
+  text       String // la regla práctica, en español
+  source     String? // URL
+  observedAt DateTime? // fecha del anuncio, si se sabe
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
 }

@@ -37,6 +37,7 @@ export default async function PanelLayout({ children }: LayoutProps<'/'>) {
           + Conectar cuenta de cliente
         </NavLink>
         <div className="spacer" />
+        <NavLink href="/tendencias">Tendencias</NavLink>
         <NavLink href="/guia">Guía de conexión</NavLink>
         <NavLink href="/configuracion">Configuración</NavLink>
       </aside>

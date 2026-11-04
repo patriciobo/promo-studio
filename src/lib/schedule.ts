@@ -3,6 +3,8 @@ import type { PostType } from '@prisma/client'
 
 export interface Cadence {
   feed: number
+  /** Cuántos de los posts de feed son reels (con modelo de video). Opcional: los promo.yaml de antes no lo traen. */
+  reels?: number
   stories: number
 }
 
@@ -71,7 +73,7 @@ const FEED_DAYS = [0, 2, 4, 6, 1, 3, 5] // lunes, miércoles, viernes, domingo�
 const STORY_DAYS = [1, 3, 5, 6, 0, 2, 4] // martes, jueves, sábado…
 
 /**
- * Reparte la semana: los posts de feed en días alternos (carrusel e imagen intercalados; no se generan reels)
+ * Reparte la semana: los posts de feed en días alternos (carrusel e imagen intercalados; los últimos `reels`, reels)
  * y las stories en los días libres, más tarde que el post.
  */
 export function weekSlots(weekStart: Date, cadence: Cadence, postTime: string, timeZone: string): Slot[] {
@@ -82,7 +84,8 @@ export function weekSlots(weekStart: Date, cadence: Cadence, postTime: string, t
     return zonedTime(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate(), h, m, timeZone)
   }
   const feedDays = FEED_DAYS.slice(0, Math.min(7, cadence.feed)).sort((a, b) => a - b)
-  const slots: Slot[] = feedDays.map((day, i) => ({ day, type: i % 2 === 0 ? 'CAROUSEL' : 'IMAGE', at: at(day, hh, mm) }))
+  const reels = Math.min(cadence.reels ?? 0, feedDays.length)
+  const slots: Slot[] = feedDays.map((day, i) => ({ day, type: i >= feedDays.length - reels ? 'REEL' : i % 2 === 0 ? 'CAROUSEL' : 'IMAGE', at: at(day, hh, mm) }))
   const storyDays = STORY_DAYS.filter((d) => !feedDays.includes(d)).concat(STORY_DAYS.filter((d) => feedDays.includes(d)))
   for (const day of storyDays.slice(0, cadence.stories)) slots.push({ day, type: 'STORY', at: at(day, Math.min(23, hh + 9), mm) })
   return slots.sort((a, b) => a.at.getTime() - b.at.getTime())

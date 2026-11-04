@@ -1,4 +1,4 @@
-// Captura de plantillas con Chrome (puppeteer) y armado de reels con ffmpeg.
+// Captura de plantillas con Chrome (puppeteer) y armado de reels con ffmpeg (clips de video generados o, en modo demo, escenas fijas).
 import { execFile } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -41,8 +41,8 @@ export async function closeBrowser(force = false) {
   if (openPages === 0) idleTimer = setTimeout(() => void (openPages === 0 && shutdown()), IDLE_MS)
 }
 
-/** HTML → JPEG (o PNG) del tamaño exacto. */
-export async function renderHtml(html: string, w: number, h: number, type: 'jpeg' | 'png' = 'jpeg'): Promise<Buffer> {
+/** HTML → JPEG (o PNG) del tamaño exacto. `transparent`: PNG sin fondo (texto para superponer a un video). */
+export async function renderHtml(html: string, w: number, h: number, type: 'jpeg' | 'png' = 'jpeg', transparent = false): Promise<Buffer> {
   openPages++
   if (idleTimer) clearTimeout(idleTimer)
   idleTimer = null
@@ -58,7 +58,7 @@ export async function renderHtml(html: string, w: number, h: number, type: 'jpeg
     await page.setViewport({ width: w, height: h, deviceScaleFactor: 1 })
     await page.setContent(html, { waitUntil: 'load', timeout: 30000 })
     await page.evaluate(() => document.fonts.ready)
-    return Buffer.from(await page.screenshot({ type, quality: type === 'jpeg' ? 92 : undefined, clip: { x: 0, y: 0, width: w, height: h } }))
+    return Buffer.from(await page.screenshot({ type, quality: type === 'jpeg' ? 92 : undefined, omitBackground: transparent && type === 'png', clip: { x: 0, y: 0, width: w, height: h } }))
   } finally {
     await page.close().catch(() => {})
     openPages--
@@ -67,7 +67,7 @@ export async function renderHtml(html: string, w: number, h: number, type: 'jpeg
 }
 
 /**
- * Reel 1080×1920 a partir de escenas (JPEG): zoom lento en cada una y fundido entre escenas.
+ * Reel 1080×1920 en modo demo (sin modelo de video): escenas fijas (JPEG) con zoom lento en cada una y fundido entre escenas.
  * H.264 + AAC (música o silencio), yuv420p y faststart: lo que Instagram acepta sin reprocesar.
  */
 export async function buildReel(scenes: Buffer[], opts: { secondsPerScene?: number; music?: Buffer } = {}): Promise<Buffer> {
@@ -108,4 +108,80 @@ export async function buildReel(scenes: Buffer[], opts: { secondsPerScene?: numb
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
+}
+
+/** Formato común de todos los tramos: así se pueden unir sin volver a codificar. */
+const SEGMENT = ['-c:v', 'libx264', '-profile:v', 'high', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-r', '30', '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-ac', '2']
+const FILL = 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30,format=yuv420p'
+
+/** ¿El archivo trae pista de audio? (ffmpeg -i sin salida termina con error, pero lista las pistas). */
+async function hasAudio(file: string) {
+  const out = await run(env.ffmpegPath, ['-hide_banner', '-i', file], { maxBuffer: 1 << 22 }).then(
+    (r) => r.stderr,
+    (e: { stderr?: string }) => e.stderr ?? '',
+  )
+  return /Stream #\d+:\d+.*Audio:/.test(out)
+}
+
+/**
+ * Reel final a partir de clips generados por un modelo de video: cada clip lleva su texto encima (PNG transparente),
+ * se le suma una placa de cierre de marca y se unen. Audio: el de los clips si lo traen; si ninguno trae, la música
+ * del promo.yaml (con fundido al final) o silencio. H.264 + AAC, yuv420p y faststart: lo que Instagram acepta.
+ */
+export async function composeReel(scenes: { clip: Buffer; overlay?: Buffer }[], endCard: Buffer, opts: { endSeconds?: number; music?: Buffer } = {}): Promise<Buffer> {
+  const dir = await mkdtemp(join(tmpdir(), 'reel-'))
+  try {
+    const parts: string[] = []
+    let anyAudio = false
+    for (const [i, s] of scenes.entries()) {
+      const clip = join(dir, `clip${i}.mp4`)
+      await writeFile(clip, s.clip)
+      const audio = await hasAudio(clip)
+      anyAudio ||= audio
+      const inputs = ['-i', clip]
+      let filter = `[0:v]${FILL}[base]`
+      if (s.overlay) {
+        const ov = join(dir, `ov${i}.png`)
+        await writeFile(ov, s.overlay)
+        inputs.push('-loop', '1', '-i', ov)
+        // El texto entra con un fundido corto y queda hasta el final del clip.
+        filter += `;[1:v]format=rgba,fps=30,fade=t=in:st=0:d=0.35:alpha=1[ov];[base][ov]overlay=0:0:shortest=1,format=yuv420p[v]`
+      } else filter += ';[base]null[v]'
+      const silence = s.overlay ? 2 : 1
+      if (!audio) inputs.push('-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo')
+      const aMap = audio ? '0:a:0' : `${silence}:a`
+      const out = join(dir, `seg${i}.mp4`)
+      await run(env.ffmpegPath, ['-y', '-loglevel', 'error', ...inputs, '-filter_complex', filter, '-map', '[v]', '-map', aMap, '-shortest', ...SEGMENT, out], { maxBuffer: 1 << 26 })
+      parts.push(out)
+    }
+    const sec = opts.endSeconds ?? 2.5
+    const card = join(dir, 'end.jpg')
+    await writeFile(card, endCard)
+    const end = join(dir, 'end.mp4')
+    await run(env.ffmpegPath, ['-y', '-loglevel', 'error', '-loop', '1', '-t', String(sec), '-i', card, '-f', 'lavfi', '-t', String(sec), '-i', 'anullsrc=r=44100:cl=stereo', '-filter_complex', `[0:v]${FILL},fade=t=in:st=0:d=0.3[v]`, '-map', '[v]', '-map', '1:a', '-shortest', ...SEGMENT, end], { maxBuffer: 1 << 26 })
+    parts.push(end)
+    const list = join(dir, 'list.txt')
+    await writeFile(list, parts.map((p) => `file '${p}'`).join('\n'))
+    const joined = join(dir, 'joined.mp4')
+    await run(env.ffmpegPath, ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', '-movflags', '+faststart', joined], { maxBuffer: 1 << 26 })
+    if (anyAudio || !opts.music) return await readFile(joined)
+    const music = join(dir, 'music')
+    await writeFile(music, opts.music)
+    const total = await durationOf(joined)
+    const out = join(dir, 'reel.mp4')
+    await run(env.ffmpegPath, ['-y', '-loglevel', 'error', '-i', joined, '-i', music, '-filter_complex', `[1:a]atrim=0:${total},afade=t=out:st=${Math.max(0, total - 1.5)}:d=1.5,aresample=44100[a]`, '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-ac', '2', '-t', String(total), '-movflags', '+faststart', out], { maxBuffer: 1 << 26 })
+    return await readFile(out)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+}
+
+/** Duración en segundos (de la salida de ffmpeg -i). */
+async function durationOf(file: string) {
+  const out = await run(env.ffmpegPath, ['-hide_banner', '-i', file], { maxBuffer: 1 << 22 }).then(
+    (r) => r.stderr,
+    (e: { stderr?: string }) => e.stderr ?? '',
+  )
+  const m = /Duration: (\d+):(\d+):(\d+(?:\.\d+)?)/.exec(out)
+  return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : 15
 }
