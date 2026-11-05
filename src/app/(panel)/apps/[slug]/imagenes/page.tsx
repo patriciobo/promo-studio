@@ -102,8 +102,13 @@ export default async function Images({ params, searchParams }: PageProps<'/apps/
               const done = imported.has(`${it.source}:${it.id}`)
               return (
                 <article key={`${it.source}:${it.id}`} className="card stack-sm library-card">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={it.preview} alt={it.title || 'Resultado'} loading="lazy" />
+                  {it.kind === 'video' && it.clip ? (
+                    // Se reproduce desde el banco: nada se baja hasta importar.
+                    <video src={it.clip} poster={it.preview || undefined} controls muted playsInline loop preload={it.preview ? 'none' : 'metadata'} aria-label={it.title || 'Video'} />
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={it.preview} alt={it.title || 'Resultado'} loading="lazy" />
+                  )}
                   <div className="row" style={{ gap: 6 }}>
                     <span className="badge">{SOURCE_LABEL[it.source]}</span>
                     {it.kind === 'video' && it.duration ? <span className="badge info">Video {Math.round(it.duration)} s</span> : null}

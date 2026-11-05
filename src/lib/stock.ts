@@ -22,6 +22,8 @@ export interface StockItem {
   title: string
   /** Miniatura para mostrar y para que el modelo de visión elija. */
   preview: string
+  /** Video liviano para mirarlo en el buscador antes de importarlo. */
+  clip?: string
   /** Archivo a bajar (MP4 o JPEG), ya elegido en un tamaño razonable. */
   url: string
   width: number
@@ -48,6 +50,12 @@ async function json<T>(url: string, headers: Record<string, string> = {}): Promi
 }
 
 /** Videos: el archivo MP4 más grande que no pase de 1920 px del lado largo (Instagram no usa más). */
+/** El MP4 más liviano (para la vista previa). */
+export function lightestFile<T extends { width: number; height: number; type?: string }>(files: T[]): T | undefined {
+  const mp4 = files.filter((f) => (!f.type || f.type === 'video/mp4') && f.width > 0)
+  return (mp4.length ? mp4 : files).sort((a, b) => a.width * a.height - b.width * b.height)[0]
+}
+
 export function bestFile<T extends { width: number; height: number; type?: string }>(files: T[]): T | undefined {
   const ok = files.filter((f) => (!f.type || f.type === 'video/mp4') && f.width > 0 && Math.max(f.width, f.height) <= 1920)
   return ok.sort((a, b) => b.width * b.height - a.width * a.height)[0] ?? files.sort((a, b) => a.width * a.height - b.width * b.height)[0]
@@ -70,7 +78,8 @@ export async function searchPexels(q: string, kind: StockKind, n = 12): Promise<
       const f = bestFile(v.video_files.map((x) => ({ ...x, type: x.file_type })))
       if (!f) return []
       const title = v.url.split('/').filter(Boolean).pop()?.replace(/-\d+$/, '').replace(/-/g, ' ') ?? ''
-      return [{ source: 'pexels' as const, id: String(v.id), kind, title, preview: v.image, url: f.link, width: f.width, height: f.height, duration: v.duration, author: v.user.name, pageUrl: v.url, license: 'Licencia de Pexels', credit: null }]
+      const clip = lightestFile(v.video_files.map((x) => ({ ...x, type: x.file_type })))?.link
+      return [{ source: 'pexels' as const, id: String(v.id), kind, title, preview: v.image, clip, url: f.link, width: f.width, height: f.height, duration: v.duration, author: v.user.name, pageUrl: v.url, license: 'Licencia de Pexels', credit: null }]
     })
   }
   const r = await json<{ photos: PexelsPhoto[] }>(`https://api.pexels.com/v1/search?query=${encodeURIComponent(q)}&per_page=${n}`, h)
@@ -90,7 +99,8 @@ export async function searchPixabay(q: string, kind: StockKind, n = 12): Promise
       const sizes = Object.values(v.videos).filter((x) => x?.url)
       const f = bestFile(sizes)
       if (!f) return []
-      return [{ source: 'pixabay' as const, id: String(v.id), kind, title: v.tags, preview: v.videos.medium?.thumbnail ?? v.videos.small?.thumbnail ?? '', url: f.url, width: f.width, height: f.height, duration: v.duration, author: v.user, pageUrl: v.pageURL, license: 'Licencia de Pixabay', credit: null }]
+      const preview = v.videos.medium?.thumbnail || v.videos.small?.thumbnail || v.videos.tiny?.thumbnail || ''
+      return [{ source: 'pixabay' as const, id: String(v.id), kind, title: v.tags, preview, clip: lightestFile(sizes)?.url, url: f.url, width: f.width, height: f.height, duration: v.duration, author: v.user, pageUrl: v.pageURL, license: 'Licencia de Pixabay', credit: null }]
     })
   }
   const r = await json<{ hits: PixabayPhoto[] }>(`https://pixabay.com/api/?key=${encodeURIComponent(key)}&q=${encodeURIComponent(q)}&image_type=photo&per_page=${per}&safesearch=true`)
@@ -126,6 +136,7 @@ export async function searchCommons(q: string, kind: StockKind, n = 12): Promise
       kind,
       title,
       preview: ii.thumburl ?? ii.url,
+      clip: kind === 'video' ? ii.url : undefined,
       // Fotos: la versión de 1600 px (el original puede pesar decenas de MB). Videos: el original (WebM; ffmpeg lo lee).
       url: kind === 'photo' ? (ii.thumburl ?? ii.url) : ii.url,
       width: ii.width,

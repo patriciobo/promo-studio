@@ -57,7 +57,8 @@ export default async function Settings({ params, searchParams }: PageProps<'/app
           </label>
           <label>
             Rama
-            <input name="branch" defaultValue={app.branch} />
+            <input name="branch" defaultValue={app.branch} placeholder="La del repo" />
+            <span className="hint">De dónde se lee el promo.yaml y a cuál apuntan los PR. Vacío: la rama por defecto del repo.</span>
           </label>
         </div>
         <OwnerFields owner={app.owner} clientName={app.clientName} />

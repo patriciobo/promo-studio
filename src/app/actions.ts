@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { requireUser } from '@/auth'
 import { db } from '@/lib/db'
-import { normalizeRepo } from '@/lib/github'
+import { defaultBranch, normalizeRepo } from '@/lib/github'
 import { addImages, imageFiles, inOrder } from '@/lib/images'
 import { enqueue, QUEUES } from '@/lib/jobs'
 import { actId, adAccounts, discoverAccounts, graph, token, type AdAccount } from '@/lib/instagram'
@@ -61,7 +61,8 @@ export async function createApp(f: FormData) {
   const name = str(f, 'name') || repo?.split('/')[1] || ''
   const slug = slugify(str(f, 'slug') || name)
   if (!slug) return
-  const app = await db.app.create({ data: { slug, repo, name, branch: str(f, 'branch') || 'main', ...ownerOf(f), imageModel: str(f, 'imageModel') || null, imageQuality: str(f, 'imageQuality') || null, imageKind: parseKindChoice(str(f, 'imageKind')) ?? null, designStyle: parseDesignStyle(str(f, 'designStyle')) ?? null } })
+  const branch = str(f, 'branch') || (repo ? await defaultBranch(repo) : 'main')
+  const app = await db.app.create({ data: { slug, repo, name, branch, ...ownerOf(f), imageModel: str(f, 'imageModel') || null, imageQuality: str(f, 'imageQuality') || null, imageKind: parseKindChoice(str(f, 'imageKind')) ?? null, designStyle: parseDesignStyle(str(f, 'designStyle')) ?? null } })
   const description = str(f, 'description').slice(0, 4000)
   let q = ''
   if (!repo && description) {
@@ -80,12 +81,15 @@ export async function createApp(f: FormData) {
 export async function updateSettings(slug: string, f: FormData) {
   await requireUser()
   const before = await db.app.findUniqueOrThrow({ where: { slug }, select: { repo: true, branch: true } })
+  const repo = str(f, 'repo') ? normalizeRepo(str(f, 'repo')) : null
+  // Rama vacía: la por defecto del repo (main, master, prod…).
+  const branch = str(f, 'branch') || (repo ? await defaultBranch(repo) : 'main')
   await db.app.update({
     where: { slug },
     data: {
       name: str(f, 'name'),
-      repo: str(f, 'repo') ? normalizeRepo(str(f, 'repo')) : null,
-      branch: str(f, 'branch') || 'main',
+      repo,
+      branch,
       textModel: str(f, 'textModel'),
       imageModel: str(f, 'imageModel') || null,
       imageQuality: str(f, 'imageQuality') || null,
@@ -415,7 +419,7 @@ export async function draftManifestAction(slug: string, description?: string): P
       const r = await draftManifestFromText(description.slice(0, 4000), app.textModel, { name: app.name, igUsername: app.igUsername })
       return { yaml: r.yaml, error: r.error }
     }
-    const ctx = await repoContext(app.repo)
+    const ctx = await repoContext(app.repo, app.branch)
     const r = await draftManifest(ctx, app.textModel)
     return { yaml: r.yaml, error: r.error }
   } catch (e) {
@@ -894,6 +898,7 @@ const StockItemSchema = z.object({
   kind: z.enum(['video', 'photo']),
   title: z.string().max(500),
   preview: z.string().max(2000),
+  clip: z.string().max(2000).optional(),
   url: z.url().max(2000),
   width: z.number(),
   height: z.number(),

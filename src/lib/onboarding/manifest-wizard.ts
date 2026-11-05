@@ -13,9 +13,9 @@ import type { DesignStyleId } from '../styles'
 const CANDIDATE_FILES = ['README.md', 'readme.md', 'package.json', 'public/llms.txt', 'llms.txt', 'public/manifest.json', 'public/manifest.webmanifest', 'app.json', 'capacitor.config.json']
 
 /** Junta lo que sirve del repo para describir la app (sin leer todo el código). */
-export async function repoContext(repo: string) {
+export async function repoContext(repo: string, ref?: string) {
   const info = await getRepo(repo)
-  const branch = info.default_branch
+  const branch = ref || info.default_branch
   const tree = await listTree(repo, branch)
   const pick = (re: RegExp) => tree.filter((p) => re.test(p) && !/node_modules|\/dist\//.test(p))
   const files: Record<string, string> = {}

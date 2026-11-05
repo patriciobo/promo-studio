@@ -56,7 +56,8 @@ export default async function NewApp({ searchParams }: PageProps<'/apps/nueva'>)
           {!noRepo && (
             <label>
               Rama
-              <input name="branch" defaultValue="main" />
+              <input name="branch" placeholder="La del repo" />
+              <span className="hint">Vacío: la rama por defecto del repo (main, master, prod…)</span>
             </label>
           )}
         </div>

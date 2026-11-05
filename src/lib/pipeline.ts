@@ -7,7 +7,7 @@ import { reelOverlay, SIZES, type SlideData } from '@/templates/html'
 import { TEMPLATES } from '@/templates/styles'
 import { buildReel, composeReel, renderHtml } from '@/render/renderer'
 import { db } from './db'
-import { getFile, getRawBytes, latestReleases } from './github'
+import { defaultBranch, getFile, getRawBytes, latestReleases } from './github'
 import { imagesForPlan, importFlowScreens, libraryScreens, slideImages, type PromptImage } from './images'
 import { DEFAULT_IMAGE_STYLE, DEFAULT_PHOTO_STYLE, FeedSchema, parseManifest, setYamlBrand, type Feed, type Manifest } from './manifest'
 import { bufferDataUri, dataUri, mediaPath, saveMedia } from './media'
@@ -39,7 +39,11 @@ export async function syncApp(appId: string) {
   const inRepo = app.repo ? await getFile(app.repo, app.manifestPath, app.branch) : null
   const file = inRepo ?? (app.manifestYaml ? { text: app.manifestYaml } : null)
   if (!file) {
-    await db.app.update({ where: { id: appId }, data: { manifestError: app.repo ? `No existe ${app.manifestPath} en ${app.repo}@${app.branch}. Creálo con el asistente.` : 'Todavía no hay promo.yaml. Armalo en la pestaña promo.yaml a partir de una descripción del negocio.', syncedAt: new Date() } })
+    // Si la rama configurada no es la del repo y ahí sí está, se avisa cuál poner.
+    const main = app.repo ? await defaultBranch(app.repo) : null
+    const elsewhere = app.repo && main && main !== app.branch && (await getFile(app.repo, app.manifestPath, main).catch(() => null))
+    const hint = elsewhere ? ` Está en la rama ${main}: ponela en Ajustes > Rama.` : ' Creálo con el asistente.'
+    await db.app.update({ where: { id: appId }, data: { manifestError: app.repo ? `No existe ${app.manifestPath} en ${app.repo}@${app.branch}.${hint}` : 'Todavía no hay promo.yaml. Armalo en la pestaña promo.yaml a partir de una descripción del negocio.', syncedAt: new Date() } })
     return { ok: false as const, error: 'sin manifiesto' }
   }
   const r = parseManifest(file.text)

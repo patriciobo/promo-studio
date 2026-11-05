@@ -78,6 +78,14 @@ export async function getRepo(repo: string) {
   return (await gh(`/repos/${repo}`)) as { default_branch: string; description: string | null; homepage: string | null; topics?: string[]; full_name: string }
 }
 
+/** Rama por defecto del repo (la que muestra GitHub al abrirlo). Sin acceso o repo local: 'main'. */
+export async function defaultBranch(repo: string): Promise<string> {
+  if (local(repo)) return 'main'
+  return getRepo(repo)
+    .then((r) => r.default_branch || 'main')
+    .catch(() => 'main')
+}
+
 export async function listTree(repo: string, ref: string): Promise<string[]> {
   const dir = local(repo)
   if (dir) {
