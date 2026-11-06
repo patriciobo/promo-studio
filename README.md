@@ -107,14 +107,19 @@ usa fotos y videos reales de la biblioteca de la app (pestaña **Imágenes**), q
 
 - **Videos propios**: se suben desde Imágenes (MP4, MOV o WebM, hasta 300 MB; van directo a disco por `PUT /api/library/<app>`).
   Es lo mejor para Instagram, que premia el contenido original.
-- **Buscar material real**: busca en Pexels y Pixabay (claves gratis en Configuración) y en Wikimedia Commons (sin clave; muy bueno
-  para fotos de lugares puntuales) y se importa con su autor y licencia.
-- **Solo, al generar**: si una diapositiva o escena no encuentra nada en la biblioteca, el plan pide una búsqueda (`stockQuery`),
-  el modelo de visión elige el resultado que de verdad muestra ese lugar (descarta Córdoba, España, marcas de agua, caras) y se importa.
+- **Buscar material real**: por palabras en Pexels y Pixabay (claves gratis en Configuración), Wikimedia Commons y Flickr vía
+  Openverse (estos dos sin clave, con licencias que permiten uso comercial). La búsqueda se hace en español y en inglés a la vez
+  (Commons y Flickr en los dos), con páginas de 24. Se puede ver cada video antes de importarlo.
+- **Cerca de un lugar**: las fotos (o videos) de Commons sacadas a menos de 1 a 10 km de un lugar, de la más cercana a la más
+  lejana. Las coordenadas salen del artículo de Wikipedia del lugar (o se escriben: `-31.72, -65.00`). Es lo más preciso para
+  lugares naturales.
+- **Solo, al generar**: si una diapositiva o escena no encuentra nada en la biblioteca, el plan pide una búsqueda (`stockQuery`, y
+  `stockPlace` con el lugar exacto para sumar lo sacado ahí), el modelo de visión elige el resultado que de verdad muestra ese
+  lugar (descarta Córdoba, España, marcas de agua, caras) y se importa.
 
 En los reels, cada escena es un tramo del video real con el título encima; una foto se anima con el modelo de video sólo con
 movimiento natural (agua, viento, nubes), sin tocar el paisaje. Los videos se describen con 4 cuadros repartidos. Lo de Commons
-con CC BY / BY-SA lleva la atribución (`📷 Autor / Wikimedia Commons (licencia)`) al final de la descripción del post, sola.
+y Flickr con CC BY / BY-SA lleva la atribución (`📷 Autor / Wikimedia Commons (licencia)`) al final de la descripción del post, sola.
 
 ## Radar de tendencias
 

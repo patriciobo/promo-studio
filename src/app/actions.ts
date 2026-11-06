@@ -893,7 +893,7 @@ export async function setAlgoNoteActive(id: string, active: boolean) {
 // --- Material real (bancos libres) --------------------------------------------------
 
 const StockItemSchema = z.object({
-  source: z.enum(['pexels', 'pixabay', 'commons']),
+  source: z.enum(['pexels', 'pixabay', 'commons', 'openverse']),
   id: z.string().min(1).max(300),
   kind: z.enum(['video', 'photo']),
   title: z.string().max(500),
@@ -918,7 +918,11 @@ export async function importStockItem(slug: string, f: FormData) {
   try {
     await importStock(app, parsed.data, str(f, 'note').slice(0, 500) || null)
   } catch (e) {
-    redirect(`/apps/${slug}/imagenes?${new URLSearchParams({ q: str(f, 'q'), tipo: parsed.data.kind, error: `No se pudo importar: ${(e as Error).message}` })}`)
+    // Vuelve a la misma búsqueda (y página), con el error.
+    const back = str(f, 'back')
+    const params = new URLSearchParams(back.startsWith('?') ? back.slice(1).split('#')[0] : '')
+    params.set('error', `No se pudo importar: ${(e as Error).message}`)
+    redirect(`/apps/${slug}/imagenes?${params}#buscar`)
   }
   revalidatePath(`/apps/${slug}`, 'layout')
 }

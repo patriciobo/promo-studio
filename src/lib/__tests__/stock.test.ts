@@ -8,7 +8,7 @@ import { parseManifest } from '../manifest'
 import { weekSlots } from '../schedule'
 import { KIND_CHOICES, noAiImage, parsePostKind } from '../models'
 import { buildPlanPrompt, realCut, videoPromptFor } from '../pipeline'
-import { bestFile, COMMONS_OK, creditsOf, searchCommons, searchPexels, searchPixabay, searchStock, withCredits } from '../stock'
+import { bestFile, COMMONS_OK, creditsOf, flickrLarge, geocode, parseCoords, searchCommons, searchCommonsNear, searchOpenverse, searchPexels, searchPixabay, searchStock, withCredits } from '../stock'
 
 const m = (parseManifest(`
 name: Sierras Vivas
@@ -82,6 +82,40 @@ describe('bancos de material real', () => {
     const r = await searchStock('x', 'photo')
     expect(r.items.map((i) => i.source)).toEqual(['pexels', 'commons', 'pexels'])
     expect(r.errors[0]).toMatch(/Pixabay: caído/)
+  })
+  it('Openverse: sólo Flickr con licencia comercial, crédito cuando la piden y la versión grande de Flickr', async () => {
+    const fetch = vi.fn(async (url: string) => (void url,
+    reply({ results: [
+      { id: 'a', title: 'Champaquí', url: 'https://live.staticflickr.com/8697/17039598170_ff03494732.jpg', thumbnail: 'https://api.openverse.org/v1/images/a/thumb/', creator: 'euge', license: 'by', license_version: '2.0', foreign_landing_url: 'https://www.flickr.com/photos/x/1', width: 500, height: 500 },
+      { id: 'b', url: 'https://live.staticflickr.com/1/2_ab.jpg', license: 'cc0', foreign_landing_url: 'https://flickr.com/2' },
+      { id: 'c', url: 'https://live.staticflickr.com/1/3_cd.jpg', license: 'by-nc', foreign_landing_url: 'https://flickr.com/3' },
+    ] })))
+    vi.stubGlobal('fetch', fetch)
+    const r = await searchOpenverse('Champaquí', 'photo', 12, 2)
+    expect(String(fetch.mock.calls[0][0])).toMatch(/license=by,by-sa,cc0,pdm&source=flickr.*page=2/)
+    expect(r.map((x) => x.id)).toEqual(['a', 'b'])
+    expect(r[0]).toMatchObject({ source: 'openverse', license: 'CC BY 2.0', credit: 'euge / Flickr (CC BY 2.0)' })
+    expect(r[1].credit).toBeNull()
+    expect(await searchOpenverse('x', 'video')).toEqual([])
+    expect(flickrLarge('https://live.staticflickr.com/8697/17039598170_ff03494732.jpg')).toBe('https://live.staticflickr.com/8697/17039598170_ff03494732_b.jpg')
+    expect(flickrLarge('https://live.staticflickr.com/1/2_ab_z.jpg')).toBe('https://live.staticflickr.com/1/2_ab_b.jpg')
+    expect(flickrLarge('https://upload.wikimedia.org/a.jpg')).toBeNull()
+  })
+  it('cerca de un lugar: coordenadas de Wikipedia y fotos de Commons de la más cercana a la más lejana', async () => {
+    expect(parseCoords('-31.72, -65.00')).toMatchObject({ lat: -31.72, lon: -65 })
+    expect(parseCoords('Mina Clavero')).toBeNull()
+    const info = (title: string, license = 'CC0') => ({ title, imageinfo: [{ url: `https://upload.wikimedia.org/${title}`, descriptionurl: 'd', mime: 'image/jpeg', width: 1, height: 1, extmetadata: { LicenseShortName: { value: license } } }] })
+    const fetch = vi.fn(async (u: string) => {
+      if (u.includes('wikipedia.org')) return reply({ query: { pages: { 1: { title: 'Condorito (desambiguación)', index: 1 }, 2: { title: 'Parque nacional Quebrada del Condorito', index: 2, coordinates: [{ lat: -31.66, lon: -64.66 }] } } } })
+      if (u.includes('list=geosearch')) return reply({ query: { geosearch: [{ title: 'File:Cerca.jpg' }, { title: 'File:Privada.jpg' }, { title: 'File:Lejos.jpg' }] } })
+      return reply({ query: { pages: { x: info('File:Lejos.jpg'), y: info('File:Privada.jpg', 'Copyrighted'), z: info('File:Cerca.jpg') } } })
+    })
+    vi.stubGlobal('fetch', fetch)
+    const place = (await geocode('Quebrada del Condorito'))!
+    expect(place).toMatchObject({ name: 'Parque nacional Quebrada del Condorito', lat: -31.66, from: 'Wikipedia' })
+    const r = await searchCommonsNear(place, 'photo', 3)
+    expect(r.map((x) => x.id)).toEqual(['File:Cerca.jpg', 'File:Lejos.jpg'])
+    expect(fetch.mock.calls.some(([u]) => String(u).includes('gsradius=3000&gscoord=-31.66|-64.66'))).toBe(true)
   })
   it('bestFile cae al más chico si todos son enormes', () => {
     expect(bestFile([{ width: 3840, height: 2160 }, { width: 2560, height: 1440 }])?.width).toBe(2560)
